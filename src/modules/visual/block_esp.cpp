@@ -33,16 +33,15 @@ namespace
 			(static_cast<std::uint64_t>(y) & 0xFFFULL);
 	}
 
-	bool camera_snapshot(double& x, double& y, double& z,
+	bool camera_snapshot(const services::game::client_context& context, double& x, double& y, double& z,
 		float& yaw, float& pitch, float& fov)
 	{
-		maps::MinecraftClient instance = maps::MinecraftClient{}.instance.get();
-		if (!instance) return false;
-		maps::ClientPlayerEntity player = instance.player.get();
+		const auto& instance = context.instance;
+		const auto& player = context.player;
 		auto& adapter = platform::adapter::get();
 		float tick_delta = adapter.get_tick_delta(instance);
 		auto cam = adapter.get_camera_data(instance, player, tick_delta);
-		if (!cam.valid) return false;
+		if (platform::jni_context::clear_exception() || !cam.valid) return false;
 		x = cam.pos.x;
 		y = cam.pos.y;
 		z = cam.pos.z;
@@ -89,10 +88,16 @@ namespace
 void modules::block_esp::run(::cache& cache)
 {
     auto settings_snapshot = settings_.read();
-	if (!cache.is_valid() || !cache.player || !cache.world || !jni::get_env()) return;
+	if (!cache.is_valid() || !cache.player || !cache.world || !jni::get_env()) { clear_snapshot(); return; }
 	try
 	{
 		jni::frame frame{ 4096 };
+        std::uint64_t generation;
+        {
+            std::scoped_lock lock(marker_mutex);
+            if (session_.observe({cache.world, cache.player})) { markers.clear(); scan_index = 0; }
+            generation = session_.ticket();
+        }
 		maps::DefaultedRegistry block_registry = maps::Registries{}.BLOCK.get();
 		if (!block_registry || platform::jni_context::clear_exception()) return;
 		if (!registry_loaded)
@@ -131,16 +136,17 @@ void modules::block_esp::run(::cache& cache)
 		const int vertical = r * 2 + 1;
 		const int total = side * side * vertical;
 
+        int start = 0;
 		{
 			std::scoped_lock lock(marker_mutex);
 			if (px != origin_x || py != origin_y || pz != origin_z)
 			{
 				origin_x = px; origin_y = py; origin_z = pz; scan_index = 0;
 			}
+            start = scan_index;
 		}
 
 		std::vector<scanned_block> scanned;
-		const int start = scan_index;
 		const int end = std::min(total, start + 128);
 		scanned.reserve(static_cast<std::size_t>(end - start));
 		for (int index = start; index < end; ++index)
@@ -176,6 +182,7 @@ void modules::block_esp::run(::cache& cache)
 			scanned_keys.insert(block_key(static_cast<int>(cell.x), static_cast<int>(cell.y), static_cast<int>(cell.z)));
 
 		std::scoped_lock lock(marker_mutex);
+        if (!session_.accepts(generation)) return;
 		markers.erase(std::remove_if(markers.begin(), markers.end(), [&](const marker& old)
 		{
 			return scanned_keys.contains(block_key(
@@ -190,23 +197,29 @@ void modules::block_esp::run(::cache& cache)
 		}), markers.end());
 		scan_index = end >= total ? 0 : end;
 	}
-	catch (...) { platform::jni_context::clear_exception(); }
+	catch (...) { platform::jni_context::clear_exception(); clear_snapshot(); }
 }
 
 void modules::block_esp::render_overlay()
 {
     auto settings_snapshot = settings_.read();
-	if (!platform::jni_context::bind_current_thread()) return;
+    if (!platform::jni_context::bind_current_thread()) { clear_snapshot(); return; }
+    jni::frame render_frame{96};
+    services::game::client_context context;
+    if (!services::game::capture_client_context(context, true, false)) { clear_snapshot(); return; }
 	double cx = 0.0, cy = 0.0, cz = 0.0;
 	float yaw = 0.0f, pitch = 0.0f, fov = 70.0f;
 	{
 		jni::frame frame{ 48 };
-		if (!camera_snapshot(cx, cy, cz, yaw, pitch, fov)) return;
+		if (!camera_snapshot(context, cx, cy, cz, yaw, pitch, fov)) { clear_snapshot(); return; }
 	}
 
 	std::vector<marker> draw_markers;
 	{
 		std::scoped_lock lock(marker_mutex);
+        if (session_.observe({context.world, context.player})) {
+            markers.clear(); scan_index = 0; return;
+        }
 		draw_markers = markers;
 	}
 	if (draw_markers.empty()) return;
@@ -251,10 +264,16 @@ void modules::block_esp::render_overlay()
 	}
 }
 
+void modules::block_esp::clear_snapshot()
+{
+    std::scoped_lock lock(marker_mutex);
+    if (jni::get_env()) session_.reset(); else session_.invalidate();
+    markers.clear(); scan_index = 0;
+}
+
 void modules::block_esp::on_disable(::cache&)
 {
-	std::scoped_lock lock(marker_mutex);
-	markers.clear(); scan_index = 0;
+    clear_snapshot();
 }
 
 void modules::block_esp::render_options()

@@ -27,6 +27,7 @@ TESTS = {
     "remaining_settings": ["tests/remaining_settings_test.cpp", "src/modules/core/config_fields.cpp"],
     "settings_renderer": ["tests/settings_renderer_test.cpp"],
     "public_config": ["tests/public_config_test.cpp", "src/modules/core/public_config.cpp", "src/modules/core/config_fields.cpp"],
+    "snapshot_session": ["tests/snapshot_session_test.cpp"],
 }
 
 
@@ -61,11 +62,20 @@ def main():
                 for include in includes:
                     command += [f"/I{include}"] if msvc else ["-I", str(include)]
                 sdk = ROOT / "src/sdk/minecraft/fabric_1_21_1"
-                headers = json.loads((sdk / "manifest.json").read_text(encoding="utf-8"))["headers"]
+                headers = [sdk / name for name in json.loads((sdk / "manifest.json").read_text(encoding="utf-8"))["headers"]]
+                headers += [ROOT / name for name in (
+                    "src/services/game/overlay_context.hpp",
+                    "src/modules/visual/storage_esp.hpp", "src/modules/visual/block_esp.hpp")]
                 # Each domain must compile without a later umbrella completing it.
                 for header in headers:
                     probe = work / "header_check.cpp"
-                    probe.write_text(f'#include "{(sdk / header).as_posix()}"\n', encoding="utf-8")
+                    probe.write_text(f'#include "{header.as_posix()}"\n', encoding="utf-8")
+                    if header.name == "overlay_context.hpp":
+                        probe.write_text(probe.read_text(encoding="utf-8") +
+                            "void check_overlay(services::game::overlay_session& session, "
+                            "const maps::ClientWorld& world, const maps::ClientPlayerEntity& player) { "
+                            "session.observe({world, player}); session.accepts(session.ticket()); session.reset(); }\n",
+                            encoding="utf-8")
                     syntax = [compiler]
                     syntax += ["/nologo", "/std:c++20", "/EHsc", "/Zs"] if msvc else ["-std=c++20", "-fsyntax-only", "-pthread"]
                     for include in includes:

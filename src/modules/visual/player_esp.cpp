@@ -2,6 +2,8 @@
 #include "../../ui/settings_renderer.hpp"
 #include "../../gui/gui.hpp"
 #include "../../platform/adapter/game_adapter.hpp"
+#include "../../services/game/client_context.hpp"
+#include "../../platform/jni/jni_context.hpp"
 #include <imgui/imgui.h>
 #include <algorithm>
 #include <cmath>
@@ -41,18 +43,16 @@ static bool clear_render_exception()
 	return true;
 }
 
-static bool read_render_camera(double& x, double& y, double& z,
+static bool read_render_camera(const services::game::client_context& context, double& x, double& y, double& z,
 	float& yaw, float& pitch, float& fov)
 {
-	if (!ensure_render_jni_env()) return false;
 	jni::frame frame{ 64 };
-	maps::MinecraftClient instance = maps::MinecraftClient{}.instance.get();
-	if (!instance || clear_render_exception()) return false;
+	const auto& instance = context.instance;
 
 	// Camera position and angles come from the shared adapter, which already
 	// resolves the render side FOV and the correct Camera member for this build.
 	auto& adapter = platform::adapter::get();
-	maps::ClientPlayerEntity player = instance.player.get();
+	const auto& player = context.player;
 	const float delta = adapter.get_tick_delta(instance);
 	const auto data = adapter.get_camera_data(instance, player, delta);
 	if (!data.valid || clear_render_exception()) return false;
@@ -64,14 +64,12 @@ static bool read_render_camera(double& x, double& y, double& z,
 	return true;
 }
 
-static bool read_render_players(std::vector<PlayerBox>& output)
+static bool read_render_players(const services::game::client_context& context, std::vector<PlayerBox>& output)
 {
-	if (!ensure_render_jni_env()) return false;
 	jni::frame frame{ 1024 };
-	maps::MinecraftClient instance = maps::MinecraftClient{}.instance.get();
-	maps::ClientWorld world = instance ? instance.world.get() : maps::ClientWorld{};
-	maps::ClientPlayerEntity local = instance ? instance.player.get() : maps::ClientPlayerEntity{};
-	if (!instance || !world || !local || clear_render_exception()) return false;
+	const auto& instance = context.instance;
+	const auto& world = context.world;
+	const auto& local = context.player;
 	maps::RenderTickCounter counter = instance.renderTickCounter.get();
 	const float tick_delta = counter ? std::clamp(counter.tickDelta.get(), 0.0f, 1.0f) : 1.0f;
 	const maths::vector3d local_position = local.get_position();
@@ -119,7 +117,7 @@ static bool read_render_players(std::vector<PlayerBox>& output)
 		box.distance = static_cast<float>(std::sqrt(dx * dx + dy * dy + dz * dz));
 		output.push_back(std::move(box));
 	}
-	return true;
+	return !clear_render_exception();
 }
 
 // Shared state - protected by mutex
@@ -134,6 +132,18 @@ static std::atomic<double> s_cam_x{ 0.0 };
 static std::atomic<double> s_cam_y{ 0.0 };
 static std::atomic<double> s_cam_z{ 0.0 };
 static std::atomic<float> s_game_fov{ 70.f };
+
+static void clear_player_snapshot()
+{
+    s_cam_valid.store(false, std::memory_order_release);
+    std::lock_guard lock(s_mutex);
+    s_player_boxes.clear();
+}
+
+void modules::player_esp::on_disable(::cache&)
+{
+    clear_player_snapshot();
+}
 
 // Correct Minecraft 1.21.1 world-to-screen projection.
 // Derived from Minecraft's camera coordinate system:
@@ -274,7 +284,7 @@ void modules::player_esp::run(::cache& cache)
 
     try
     {
-        if (!cache.is_valid() || !cache.instance || !cache.world || !cache.player) return;
+        if (!cache.is_valid() || !cache.instance || !cache.world || !cache.player) { clear_player_snapshot(); return; }
 
         JNIEnv* env = jni::get_env();
 
@@ -495,13 +505,18 @@ void modules::player_esp::run(::cache& cache)
     {
         JNIEnv* env = jni::get_env();
         if (env && env->ExceptionCheck()) env->ExceptionClear();
+        clear_player_snapshot();
     }
 }
 
-// ---- Render thread (ZERO JNI) ----
+// Live client-thread reads only: disconnects must never fall back to old boxes.
 void modules::player_esp::render_overlay()
 {
     auto settings_snapshot = settings_.read();
+    if (!platform::jni_context::bind_current_thread()) { clear_player_snapshot(); return; }
+    jni::frame render_frame{96};
+    services::game::client_context context;
+    if (!services::game::capture_client_context(context, true, false)) { clear_player_snapshot(); return; }
     const float sw = ImGui::GetIO().DisplaySize.x;
     const float sh = ImGui::GetIO().DisplaySize.y;
     if (sw < 1.f || sh < 1.f) return;
@@ -517,8 +532,8 @@ void modules::player_esp::render_overlay()
     float  pitch = s_cam_pitch.load(std::memory_order_relaxed);
     float  fov   = settings_snapshot.use_game_fov ? s_game_fov.load(std::memory_order_relaxed) : settings_snapshot.fov_value;
 	float render_fov = fov;
-	if (read_render_camera(cx, cy, cz, yaw, pitch, render_fov) && settings_snapshot.use_game_fov)
-		fov = render_fov;
+	if (!read_render_camera(context, cx, cy, cz, yaw, pitch, render_fov)) { clear_player_snapshot(); return; }
+    if (settings_snapshot.use_game_fov) fov = render_fov;
 
 	ImVec4 active_color = settings_snapshot.use_theme_color
 		? gui::get_dynamic_color().Value
@@ -528,11 +543,7 @@ void modules::player_esp::render_overlay()
     ImU32 col = ImGui::ColorConvertFloat4ToU32(active_color);
 
 	std::vector<PlayerBox> boxes;
-	if (!read_render_players(boxes))
-	{
-		std::lock_guard<std::mutex> lock(s_mutex);
-		boxes = s_player_boxes;
-	}
+	if (!read_render_players(context, boxes)) { clear_player_snapshot(); return; }
 
     for (const PlayerBox& b : boxes)
     {

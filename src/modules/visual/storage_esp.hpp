@@ -3,6 +3,7 @@
 #include "../module_support.hpp"
 #include "../core/settings_store.hpp"
 #include "settings/storage_esp_settings.hpp"
+#include "../../services/game/overlay_context.hpp"
 
 namespace modules
 {
@@ -26,5 +27,7 @@ class storage_esp : public module
 		int origin_x = 0, origin_y = 0, origin_z = 0;
 		std::vector<marker> markers{};
 		std::mutex marker_mutex{};
+        services::game::overlay_session session_;
+        void clear_snapshot();
 	};
 }

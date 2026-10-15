@@ -294,7 +294,8 @@ void modules::chams::render_overlay()
     try {
         jni::frame frame{128};
         services::game::client_context context;
-        if (!services::game::capture_client_context(context,true,false) || context.screen) return;
+        if (!services::game::capture_client_context(context,true,false)) { state->clear(); return; }
+        if (context.screen) return;
         settings_type config;
         { std::lock_guard lock(settings_mutex); config = settings; }
         if (!std::isfinite(config.range) || !std::isfinite(config.opacity) ||

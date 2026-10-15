@@ -34,16 +34,13 @@ Komutları depo kökünde çalıştır:
 # İmzasız yerel derleme
 .\scripts\Build-Release.ps1 -SkipSign
 
-# DLL'yi içeren ImGui launcher EXE paketi
-.\scripts\Build-Launcher.ps1
 ```
 
-DLL çıktısı Onestep adını kullanır; launcher'ın teknik dosya adı korunuyor:
+Proje yalnızca DLL olarak derlenir:
 
 | Çıktı | Yol |
 | --- | --- |
 | İstemci DLL | `build\Onestep.dll` |
-| Launcher EXE | `dist\Thedorius.exe` |
 
 İmzalama scriptleri, mevcut kullanıcı sertifika deposundaki
 `CN=Thedorius Lite Test` sertifikasını arar. Sertifika adı henüz değiştirilmedi.
@@ -55,7 +52,6 @@ DLL'yi derler ve `Onestep-Windows-x64` artifact'i olarak saklar. Bu çıktı imz
 ```text
 assets/                   Fontlar, ikonlar ve arka plan
 include/                  Üçüncü taraf kütüphaneler
-launcher/                 Windows launcher ve DLL yükleme akışı
 scripts/                  Derleme ve kaynak doğrulama araçları
 server/                   Gelecekteki auth için korunan Worker ve veritabanı kaynakları
 src/
@@ -100,7 +96,7 @@ python .\scripts\Test-JumpResetSources.py
 python .\scripts\Refresh-ProjectFilters.py
 ```
 
-17 offline testi tek komutla derleyip çalıştırmak için:
+18 offline testi tek komutla derleyip çalıştırmak için:
 
 ```sh
 python scripts/Test-Offline.py
@@ -123,6 +119,11 @@ atomik reddini doğrular. Renderer testi gerçek çizim yapmadan kontrol
 bağlantılarını, koşullu görünürlüğü, yüzde dönüşümünü ve UI/import limitlerini sınar.
 SDK testi 127 sınıf adını, temel JNI imzalarını ve dokuz domain başlığının
 tek başına derlenmesini kontrol eder; JVM başlatmaz veya oyuna bağlanmaz.
+ESP oturum testi ani bağlantı kopmasını, hızlı dünya/sunucu değişimini,
+oyuncu nesnesinin yenilenmesini ve eski worker sonuçlarının reddini doğrular.
+Player ESP canlı dünya/kamera/oyuncu verisi okunamadığında eski kutulara dönmez.
+Block/Storage ESP, Nametag ve Radar önbellekleri dünya ve oyuncu kimliğine
+bağlıdır; geçersiz oturumda temizlenir, önceki oturumun taraması yeniden yazılamaz.
 Windows'a bağlı UI tercihleri ve görsel arayüz testleri bu pakete dahil değildir.
 
 Kaynak kontrolleri ve offline testler tek başına oyun içi doğrulama değildir.

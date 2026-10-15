@@ -5,6 +5,7 @@
 #include <algorithm>
 #include "../../cache/cache.hpp"
 #include "../../platform/jni/jni_context.hpp"
+#include "../../services/game/overlay_context.hpp"
 #include <chrono>
 #include <cmath>
 #include <mutex>
@@ -32,6 +33,7 @@ namespace
 	};
 
 	std::mutex radar_mutex;
+    services::game::overlay_session session;
 	std::vector<radar_player> radar_players;
 	float radar_yaw = 0.0f;
 	std::chrono::steady_clock::time_point next_update{};
@@ -39,7 +41,9 @@ namespace
 	void clear_snapshot()
 	{
 		std::lock_guard lock(radar_mutex);
+        if (jni::get_env()) session.reset(); else session.invalidate();
 		radar_players.clear();
+        radar_yaw = 0.f;
 	}
 
 	ImVec2 rotate_point(float relative_x, float relative_z, float yaw, bool rotate)
@@ -69,6 +73,12 @@ void modules::radar::run(::cache& cache)
 	try
 	{
 		jni::frame frame{ 160 };
+        std::uint64_t generation;
+        {
+            std::lock_guard lock(radar_mutex);
+            if (session.observe({cache.world, cache.player})) radar_players.clear();
+            generation = session.ticket();
+        }
 		const maths::vector3d local_position = cache.player.get_position();
 		const float local_yaw = cache.player.yaw.get();
 		if (platform::jni_context::clear_exception()) return;
@@ -133,6 +143,7 @@ void modules::radar::run(::cache& cache)
 		}
 
 		std::lock_guard lock(radar_mutex);
+        if (!session.accepts(generation)) return;
 		radar_players = std::move(updated);
 		float active_yaw = local_yaw;
 		float td = platform::adapter::get().get_tick_delta(cache.instance);
@@ -140,12 +151,16 @@ void modules::radar::run(::cache& cache)
 		if (cam.valid) active_yaw = cam.yaw;
 		radar_yaw = active_yaw;
 	}
-	catch (...) { platform::jni_context::clear_exception(); }
+	catch (...) { platform::jni_context::clear_exception(); clear_snapshot(); }
 }
 
 void modules::radar::render_overlay()
 {
     auto settings_snapshot = settings_.read();
+    if (!platform::jni_context::bind_current_thread()) { clear_snapshot(); return; }
+    jni::frame render_frame{64};
+    services::game::client_context context;
+    if (!services::game::capture_client_context(context, true, false)) { clear_snapshot(); return; }
 	const ImVec2 display = ImGui::GetIO().DisplaySize;
 	if (display.x < 10.0f || display.y < 10.0f) return;
 
@@ -153,6 +168,7 @@ void modules::radar::render_overlay()
 	float yaw = 0.0f;
 	{
 		std::lock_guard lock(radar_mutex);
+        if (session.observe({context.world, context.player})) { radar_players.clear(); radar_yaw = 0.f; return; }
 		players = radar_players;
 		yaw = radar_yaw;
 	}

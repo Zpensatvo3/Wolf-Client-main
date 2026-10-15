@@ -1598,6 +1598,12 @@
     <ClInclude Include="src\modules\core\settings_store.hpp">
       <Filter>Header Files\src\modules\core</Filter>
     </ClInclude>
+    <ClInclude Include="src\modules\core\snapshot_session.hpp">
+      <Filter>Header Files\src\modules\core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\services\game\overlay_context.hpp">
+      <Filter>Header Files\src\services\game</Filter>
+    </ClInclude>
     <ClInclude Include="src\modules\misc\settings\*.hpp">
       <Filter>Header Files\src\modules\misc\settings</Filter>
     </ClInclude>

@@ -1,8 +1,0 @@
-#include "resource.h"
-
-IDR_EMBEDDED_CLIENT RCDATA "..\\build\\Onestep.dll"
-IDR_LAUNCHER_BACKGROUND RCDATA "..\\assets\\backgrounds\\main-background.png"
-IDR_LAUNCHER_LOGO RCDATA "..\\assets\\icons\\helmet.png"
-IDR_LAUNCHER_FONT RCDATA "..\\assets\\fonts\\GoogleSans-SemiBold.ttf"
-IDR_LAUNCHER_FONT_BOLD RCDATA "..\\assets\\fonts\\GoogleSans-Bold.ttf"
-

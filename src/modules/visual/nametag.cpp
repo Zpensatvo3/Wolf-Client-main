@@ -2,6 +2,7 @@
 #include "../../ui/settings_renderer.hpp"
 #include "../../cache/cache.hpp"
 #include "../../platform/jni/jni_context.hpp"
+#include "../../services/game/overlay_context.hpp"
 #include "../../platform/adapter/game_adapter.hpp"
 #include "../ui_redirect.hpp"
 #include "../../gui/gui.hpp"
@@ -73,6 +74,7 @@ namespace
 	};
 
 	std::mutex tag_mutex;
+    services::game::overlay_session session;
 	std::vector<nametag_entry> tag_entries;
 	std::atomic_bool camera_valid{ false };
 	std::atomic<double> camera_x{ 0.0 };
@@ -81,6 +83,14 @@ namespace
 	std::atomic<float> camera_yaw{ 0.0f };
 	std::atomic<float> camera_pitch{ 0.0f };
 	std::atomic<float> camera_fov{ 70.0f };
+    void clear_tag_snapshot()
+    {
+        camera_valid.store(false, std::memory_order_release);
+        std::lock_guard lock(tag_mutex);
+        if (jni::get_env()) session.reset(); else session.invalidate();
+        tag_entries.clear();
+    }
+
 	std::unordered_map<std::string, std::string> original_team_by_player;
 	std::string hidden_team_name;
 	jobject scoreboard_identity = nullptr;
@@ -382,11 +392,16 @@ void modules::nametag::run(::cache& cache)
     auto settings_snapshot = settings_.read();
 	jni::frame frame{};
 	JNIEnv* env = jni::get_env();
-	if (!env || !cache.is_valid() || !cache.instance || !cache.world || !cache.player)
-		return;
+	if (!env || !cache.is_valid() || !cache.instance || !cache.world || !cache.player) { clear_tag_snapshot(); return; }
 
 	try
 	{
+        std::uint64_t generation;
+        {
+            std::lock_guard lock(tag_mutex);
+            if (session.observe({cache.world, cache.player})) tag_entries.clear();
+            generation = session.ticket();
+        }
 		float tick_delta = platform::adapter::get().get_tick_delta(cache.instance);
 		auto cam_data = platform::adapter::get().get_camera_data(cache.instance, cache.player, tick_delta);
 		if (cam_data.valid)
@@ -607,21 +622,19 @@ void modules::nametag::run(::cache& cache)
 		}
 
 		std::lock_guard lock(tag_mutex);
+        if (!session.accepts(generation)) return;
 		tag_entries = std::move(next_entries);
 	}
 	catch (...)
 	{
 		platform::jni_context::clear_exception();
+        clear_tag_snapshot();
 	}
 }
 
 void modules::nametag::on_disable(::cache& cache)
 {
-	camera_valid.store(false, std::memory_order_release);
-	{
-		std::lock_guard lock(tag_mutex);
-		tag_entries.clear();
-	}
+    clear_tag_snapshot();
 
 	jni::frame frame{};
 	JNIEnv* env = jni::get_env();
@@ -677,42 +690,32 @@ void modules::nametag::on_disable(::cache& cache)
 void modules::nametag::render_overlay()
 {
     auto settings_snapshot = settings_.read();
+    if (!platform::jni_context::bind_current_thread()) { clear_tag_snapshot(); return; }
+    jni::frame render_frame{96};
+    services::game::client_context context;
+    if (!services::game::capture_client_context(context, true, false)) { clear_tag_snapshot(); return; }
 	ImDrawList* draw_list = ImGui::GetForegroundDrawList();
 	ImFont* font = ImGui::GetFont();
 	const ImVec2 display = ImGui::GetIO().DisplaySize;
 	if (!draw_list || !font || display.x < 1.0f || display.y < 1.0f)
 		return;
 
-	float render_tick_delta = 1.0f;
-	// Update real-time camera data directly on render frame to prevent jitter when moving
-	if (platform::jni_context::bind_current_thread())
-	{
-		jni::frame frame{ 48 };
-		maps::MinecraftClient instance = maps::MinecraftClient{}.instance.get();
-		if (instance)
-		{
-			auto& adapter = platform::adapter::get();
-			render_tick_delta = adapter.get_tick_delta(instance);
-			auto cam_data = adapter.get_camera_data(instance, instance.player.get(), render_tick_delta);
-			if (cam_data.valid)
-			{
-				camera_x.store(cam_data.pos.x, std::memory_order_relaxed);
-				camera_y.store(cam_data.pos.y, std::memory_order_relaxed);
-				camera_z.store(cam_data.pos.z, std::memory_order_relaxed);
-				camera_yaw.store(cam_data.yaw, std::memory_order_relaxed);
-				camera_pitch.store(cam_data.pitch, std::memory_order_relaxed);
-				camera_fov.store(cam_data.fov, std::memory_order_relaxed);
-				camera_valid.store(true, std::memory_order_release);
-			}
-		}
-	}
-
-	if (!camera_valid.load(std::memory_order_acquire))
-		return;
+    auto& adapter = platform::adapter::get();
+    const float render_tick_delta = adapter.get_tick_delta(context.instance);
+    const auto cam_data = adapter.get_camera_data(context.instance, context.player, render_tick_delta);
+    if (platform::jni_context::clear_exception() || !cam_data.valid) { clear_tag_snapshot(); return; }
+    camera_x.store(cam_data.pos.x, std::memory_order_relaxed);
+    camera_y.store(cam_data.pos.y, std::memory_order_relaxed);
+    camera_z.store(cam_data.pos.z, std::memory_order_relaxed);
+    camera_yaw.store(cam_data.yaw, std::memory_order_relaxed);
+    camera_pitch.store(cam_data.pitch, std::memory_order_relaxed);
+    camera_fov.store(cam_data.fov, std::memory_order_relaxed);
+    camera_valid.store(true, std::memory_order_release);
 
 	std::vector<nametag_entry> entries;
 	{
 		std::lock_guard lock(tag_mutex);
+        if (session.observe({context.world, context.player})) { tag_entries.clear(); return; }
 		entries = tag_entries;
 	}
 

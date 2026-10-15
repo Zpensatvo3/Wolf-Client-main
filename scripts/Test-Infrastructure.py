@@ -100,6 +100,28 @@ def validate_settings():
                 errors.append(f"Untracked settings model: {model.relative_to(ROOT)}")
     return errors
 
+
+def validate_overlay_sessions():
+    errors = []
+    for name in ("block_esp", "storage_esp", "nametag", "radar"):
+        source = (ROOT / f"src/modules/visual/{name}.cpp").read_text(encoding="utf-8")
+        panel = source.split(f"void modules::{name}::render_overlay()", 1)[1].split("void modules::", 1)[0]
+        if "capture_client_context(context, true, false)" not in panel:
+            errors.append(f"Overlay must check the live world every frame: {name}")
+        if not re.search(r"session_?\.observe\(\{context.world, context.player\}\)", panel):
+            errors.append(f"Overlay snapshot must belong to the current world/player: {name}")
+        if not re.search(r"if \(!session_?\.accepts\(generation\)\) return;", source):
+            errors.append(f"Overlay worker must reject previous-session results: {name}")
+        if "clear_snapshot(); return;" not in panel and "clear_tag_snapshot(); return;" not in panel:
+            errors.append(f"Disconnected overlay must clear its snapshot: {name}")
+    player = (ROOT / "src/modules/visual/player_esp.cpp").read_text(encoding="utf-8")
+    panel = player.split("void modules::player_esp::render_overlay()", 1)[1].split("void modules::", 1)[0]
+    if "boxes = s_player_boxes" in panel or "capture_client_context(context, true, false)" not in panel:
+        errors.append("Player ESP must never fall back to boxes from a disconnected world")
+    if "!read_render_camera(context," not in panel or "!read_render_players(context, boxes)" not in panel:
+        errors.append("Player ESP must require a live camera and player list from the same context")
+    return errors
+
 def project_items(path):
     result = set()
     for node in ET.parse(path).iter():
@@ -111,7 +133,7 @@ def project_items(path):
 
 
 def validate():
-    errors = validate_sdk() + validate_settings()
+    errors = validate_sdk() + validate_settings() + validate_overlay_sessions()
     project = project_items(ROOT / "custom-base.vcxproj")
     filters = project_items(ROOT / "custom-base.vcxproj.filters")
     if project != filters:

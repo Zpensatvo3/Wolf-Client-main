@@ -577,6 +577,8 @@
     <ClInclude Include="src\modules\core\module.hpp" />
     <ClInclude Include="src\modules\core\setting_schema.hpp" />
     <ClInclude Include="src\modules\core\settings_store.hpp" />
+    <ClInclude Include="src\modules\core\snapshot_session.hpp" />
+    <ClInclude Include="src\services\game\overlay_context.hpp" />
     <ClInclude Include="src\modules\misc\settings\*.hpp" />
     <ClInclude Include="src\modules\combat\settings\*.hpp" />
     <ClInclude Include="src\modules\visual\settings\*.hpp" />
