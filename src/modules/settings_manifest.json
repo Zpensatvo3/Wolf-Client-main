@@ -23,6 +23,20 @@
       "panel": null
     },
     {
+      "id": "notifications",
+      "owner": "src/modules/client/notifications.hpp",
+      "model": "src/modules/client/settings/notifications_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/client/notifications.cpp"
+    },
+    {
+      "id": "anti_bot",
+      "owner": "src/modules/combat/anti_bot.hpp",
+      "model": "src/modules/combat/settings/anti_bot_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/combat/anti_bot.cpp"
+    },
+    {
       "id": "legit_click_aim_assist",
       "owner": "src/modules/combat/aimassist.hpp",
       "model": "src/modules/combat/legit_aim_config.hpp",
@@ -60,16 +74,9 @@
     {
       "id": "anchor_macro",
       "owner": "src/modules/combat/anchor_macro.hpp",
-      "model": "src/modules/combat/anchor_config.hpp",
-      "ownership": "client_thread_config",
-      "panel": "src/modules/combat/anchor_engine.cpp"
-    },
-    {
-      "id": "blatant_anchor_macro",
-      "owner": "src/modules/combat/anchor_macro.hpp",
-      "model": "src/modules/combat/anchor_config.hpp",
-      "ownership": "client_thread_config",
-      "panel": "src/modules/combat/anchor_engine.cpp"
+      "model": "src/modules/combat/settings/anchor_macro_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/combat/anchor_macro.cpp"
     },
     {
       "id": "safe_anchor",
@@ -84,6 +91,13 @@
       "model": "src/modules/combat/settings/hit_crystal_settings.hpp",
       "ownership": "snapshot_store",
       "panel": "src/modules/combat/hit_crystal.cpp"
+    },
+    {
+      "id": "crystal_aura",
+      "owner": "src/modules/combat/crystal_aura.hpp",
+      "model": "src/modules/combat/settings/crystal_aura_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/combat/crystal_aura.cpp"
     },
     {
       "id": "watermark",
@@ -119,6 +133,13 @@
       "model": "src/modules/visual/settings/player_esp_settings.hpp",
       "ownership": "snapshot_store",
       "panel": "src/modules/visual/player_esp.cpp"
+    },
+    {
+      "id": "item_esp",
+      "owner": "src/modules/visual/item_esp.hpp",
+      "model": "src/modules/visual/settings/item_esp_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/visual/item_esp.cpp"
     },
     {
       "id": "storage_esp",
@@ -224,6 +245,27 @@
       "model": "src/modules/misc/settings/auto_armor_settings.hpp",
       "ownership": "snapshot_store",
       "panel": "src/modules/misc/auto_armor.cpp"
+    },
+    {
+      "id": "no_jump_delay",
+      "owner": "src/modules/misc/no_jump_delay.hpp",
+      "model": null,
+      "ownership": "no_module_settings",
+      "panel": null
+    },
+    {
+      "id": "fast_stop",
+      "owner": "src/modules/misc/fast_stop.hpp",
+      "model": null,
+      "ownership": "no_module_settings",
+      "panel": null
+    },
+    {
+      "id": "inv_walk",
+      "owner": "src/modules/misc/inv_walk.hpp",
+      "model": "src/modules/misc/settings/inv_walk_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/misc/inv_walk.cpp"
     },
     {
       "id": "sprint",

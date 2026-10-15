@@ -1,6 +1,8 @@
 #include "widgets.hpp"
 #include "gui.hpp"
 #include "ui_state.hpp"
+#include "../services/notifications/notification_service.hpp"
+#include "../ui/notification_renderer.hpp"
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
@@ -43,14 +45,7 @@ namespace
             ImGui::GetColorU32(ImVec4(1.0f, 1.0f, 1.0f, 0.045f)));
     }
 
-    struct toast_state
-    {
-        std::string message;
-        bool success = true;
-        double created_at = 0.0;
-    };
-
-    toast_state workspace_toast;
+    gui::notification_ui::renderer notification_renderer;
 
     const char* visible_end(const char* label)
     {
@@ -357,41 +352,23 @@ bool gui::icon_action(const char* id, const char* glyph, const char* fallback, c
 
 void gui::push_workspace_toast(const std::string& message, bool success)
 {
-    workspace_toast.message = message;
-    workspace_toast.success = success;
-    workspace_toast.created_at = ImGui::GetTime();
+    services::notifications::operation_result(message, success);
 }
 
-void gui::render_workspace_toast(const ImVec2& window_min, const ImVec2& window_max)
+void gui::render_notifications()
 {
-    if (workspace_toast.message.empty()) return;
-    const float age = static_cast<float>(ImGui::GetTime() - workspace_toast.created_at);
-    if (age >= 3.4f)
+    if (gui::should_unload)
     {
-        workspace_toast.message.clear();
-        return;
+        services::notifications::clear(); notification_renderer.clear(); return;
     }
-    const float fade_in = std::clamp(age / 0.16f, 0.0f, 1.0f);
-    const float fade_out = std::clamp((3.4f - age) / 0.28f, 0.0f, 1.0f);
-    const float alpha = fade_in * fade_out;
-    const ImVec2 text_extent = ImGui::CalcTextSize(workspace_toast.message.c_str());
-    const ImVec2 size(std::min(360.0f, text_extent.x + 30.0f), 38.0f);
-    const ImVec2 minimum(window_max.x - size.x - 16.0f,
-        window_max.y - size.y - 16.0f + (1.0f - fade_in) * 8.0f);
-    ImDrawList* draw = ImGui::GetWindowDrawList();
-    draw->AddRectFilled(minimum, ImVec2(minimum.x + size.x, minimum.y + size.y),
-        IM_COL32(20, 23, 30, static_cast<int>(242.0f * alpha)), 9.0f);
-    const ImVec4 accent_color = ImGui::GetStyleColorVec4(ImGuiCol_CheckMark);
-    const ImU32 indicator = workspace_toast.success
-        ? with_alpha(accent_color, alpha)
-        : IM_COL32(244, 79, 99, static_cast<int>(255.0f * alpha));
-    draw->AddRectFilled(minimum, ImVec2(minimum.x + 3.0f, minimum.y + size.y), indicator, 9.0f,
-        ImDrawFlags_RoundCornersLeft);
-    const ImVec4 clip(minimum.x + 13.0f, minimum.y + 4.0f,
-        minimum.x + size.x - 10.0f, minimum.y + size.y - 4.0f);
-    draw->AddText(ImGui::GetFont(), 14.0f, ImVec2(minimum.x + 13.0f, minimum.y + 10.0f),
-        IM_COL32(232, 234, 240, static_cast<int>(255.0f * alpha)), workspace_toast.message.c_str(),
-        nullptr, 0.0f, &clip);
+    if (gui::loader_visible) { notification_renderer.clear(); return; }
+    gui::notification_ui::appearance style;
+    style.font = gui::ui_font;
+    style.accent = gui::get_dynamic_color().Value;
+    style.secondary = gui::get_dynamic_color(40).Value;
+    style.reduce_motion = gui::aegis::get_preferences().reduce_motion;
+    style.turkish = gui::is_turkish();
+    notification_renderer.render(services::notifications::collect(), *ImGui::GetMainViewport(), style);
 }
 
 void gui::status_badge(const char* label, bool accent)

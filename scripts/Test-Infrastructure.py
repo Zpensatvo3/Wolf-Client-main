@@ -47,7 +47,7 @@ def validate_settings():
     covered = [entry["id"] for entry in entries]
     if manifest.get("version") != 1 or len(covered) != len(set(covered)) or set(covered) != set(ids):
         errors.append("Settings manifest must cover each catalog ID exactly once")
-    no_config = {"friends_manager", "click_gui", "panic", "full_bright"}
+    no_config = {"friends_manager", "click_gui", "panic", "full_bright", "no_jump_delay", "fast_stop"}
     if {e["id"] for e in entries if e["model"] is None} != no_config:
         errors.append("Unexpected modules without settings models")
     allowed = {"no_module_settings", "snapshot_store", "existing_lock", "revisioned_lock",
@@ -94,7 +94,7 @@ def validate_settings():
         if any(term in pure for term in ("ImGui::", "gui::", "<Windows.h>", "<jni.h>", "mappings.hpp")):
             errors.append(f"Settings model depends on UI/game/platform: {entry['id']}")
     listed = {ROOT / e["model"] for e in entries if e["model"]}
-    for folder in ("misc", "combat", "visual", "render"):
+    for folder in ("misc", "combat", "visual", "render", "client"):
         for model in (ROOT / f"src/modules/{folder}/settings").glob("*_settings.hpp"):
             if model not in listed:
                 errors.append(f"Untracked settings model: {model.relative_to(ROOT)}")
@@ -122,6 +122,181 @@ def validate_overlay_sessions():
         errors.append("Player ESP must require a live camera and player list from the same context")
     return errors
 
+def validate_esp_ranges():
+    errors = []
+    for name in ("storage_esp", "block_esp", "chams", "nametag", "item_esp"):
+        model = (ROOT / f"src/modules/visual/settings/{name}_settings.hpp").read_text(encoding="utf-8")
+        if re.search(r'"(?:range|max_distance)"', model):
+            errors.append(f"ESP must not expose a draw-distance setting: {name}")
+    for name in ("storage_esp", "block_esp"):
+        source = (ROOT / f"src/modules/visual/{name}.cpp").read_text(encoding="utf-8")
+        if "capture_loaded_chunks(cache.world, chunks)" not in source or "cache.world.getBlockState" in source:
+            errors.append(f"ESP must scan loaded chunks, not a radius around the player: {name}")
+    item = (ROOT / "src/modules/visual/item_esp.cpp").read_text(encoding="utf-8")
+    if "capture_client_context(context, true, false)" not in item or "get_entities(context.world)" not in item:
+        errors.append("Item ESP must read the live world's entities every frame")
+    return errors
+
+
+def validate_inv_walk():
+    errors = []
+    header = (ROOT / "src/modules/misc/inv_walk.hpp").read_text(encoding="utf-8")
+    source = (ROOT / "src/modules/misc/inv_walk.cpp").read_text(encoding="utf-8")
+    gui = (ROOT / "src/gui/gui.cpp").read_text(encoding="utf-8")
+    if "void run(::cache&) override {}" not in header or "render_when_disabled() const override { return true; }" not in header:
+        errors.append("InvWalk must write input on client frames and clean up while disabled")
+    required = ("capture_client_context(context, true, false)", "is_instance_of<maps::HandledScreen>",
+                "screen_is_typing(context.screen)", "physical_binding(binding)", "release_owned(false)",
+                "is_same_object(context.world)", "is_same_object(context.player)")
+    if any(token not in source for token in required):
+        errors.append("InvWalk must guard screens, text input, bindings, session identity and cancellation")
+    if "options.attackKey" in source or "options.useKey" in source:
+        errors.append("InvWalk must not own attack/use bindings")
+    if gui.count("walk->cancel_on_client_thread();") != 3:
+        errors.append("InvWalk must cancel on focus loss, renderer shutdown and loader display")
+    return errors
+
+
+def validate_anti_bot():
+    errors = []
+    owner = (ROOT / "src/modules/combat/anti_bot.cpp").read_text(encoding="utf-8")
+    model = (ROOT / "src/modules/combat/settings/anti_bot_settings.hpp").read_text(encoding="utf-8")
+    if "anti_bot_default_enabled = true" not in model or "enabled = module_settings::anti_bot_default_enabled" not in owner:
+        errors.append("AntiBot must default on without overriding imported module state")
+    consumers = {
+        "modules/combat/legit_aim_engine.cpp": 1, "modules/combat/blatant_aim_engine.cpp": 2,
+        "modules/combat/trigger_adapter.cpp": 1, "modules/vape/vape_module.cpp": 1,
+        "modules/visual/player_esp.cpp": 2, "modules/visual/glow_esp.cpp": 1,
+        "modules/visual/chams.cpp": 1, "modules/visual/nametag.cpp": 1,
+        "modules/visual/radar.cpp": 1, "services/game/target_service.cpp": 1,
+        "services/game/attack_service.cpp": 1,
+    }
+    for filename, minimum in consumers.items():
+        text = (ROOT / "src" / filename).read_text(encoding="utf-8")
+        if text.count("services::anti_bot::is_bot(") < minimum:
+            errors.append(f"Missing shared AntiBot target filter: {filename}")
+    service = (ROOT / "src/services/game/anti_bot_service.cpp").read_text(encoding="utf-8")
+    for token in ("getPlayerListEntry.call(uuid)", "getPlayerListEntry.call(local_uuid)",
+                  "entity_world.is_same_object(context.world)", "session.observe({context.world, context.player})"):
+        if token not in service: errors.append(f"AntiBot must use reliable UUID/session data: {token}")
+    if "sendPacket" in service or "setGlowing" in service:
+        errors.append("AntiBot classification must remain read-only")
+    return errors
+
+
+def validate_notifications():
+    errors = []
+    widget = (ROOT / "src/gui/widgets.cpp").read_text(encoding="utf-8")
+    service = (ROOT / "src/services/notifications/notification_service.cpp").read_text(encoding="utf-8")
+    gui = (ROOT / "src/gui/gui.cpp").read_text(encoding="utf-8")
+    renderer = (ROOT / "src/ui/notification_renderer.cpp").read_text(encoding="utf-8")
+    loop = (ROOT / "src/app/module_loop.cpp").read_text(encoding="utf-8")
+    if "GetForegroundDrawList()" not in renderer or "gui::render_notifications();" not in gui:
+        errors.append("Notifications must draw globally, not only inside a menu window")
+    if "gui::get_dynamic_color()" not in widget or "get_preferences().reduce_motion" not in widget:
+        errors.append("Notifications must use the live theme and Reduce Motion preference")
+    if "notifications_initialized_" not in loop or "services::notifications::module_changed" not in loop:
+        errors.append("Module notifications must use lifecycle changes with a quiet startup baseline")
+    if "services::notifications::operation_result(message, success)" not in widget:
+        errors.append("Existing config toasts must use the shared notification queue")
+    if any(token in service for token in ("ImGui::", "Windows.h", "PlaySound", "sndPlaySound")):
+        errors.append("Notification producers must be UI-independent, thread-safe and silent")
+    if 'std::string_view(id) == "panic"' not in service or "if (gui::should_unload)" not in widget:
+        errors.append("Panic must not start or retain a notification animation")
+    return errors
+
+
+def validate_pot_refill():
+    errors = []
+    source = (ROOT / "src/modules/misc/pot_refill.cpp").read_text(encoding="utf-8")
+    header = (ROOT / "src/modules/misc/pot_refill.hpp").read_text(encoding="utf-8")
+    run = source.split("void modules::pot_refill::run(::cache&)", 1)[1].split(
+        "void modules::pot_refill::render_overlay()", 1)[0]
+    if "clickSlot.call" in run or source.count("clickSlot.call") != 1:
+        errors.append("PotRefill must submit at most one inventory action on the client/render thread")
+    for guard in ("capture_client_context(context)", "state.session.matches({context.world, player})",
+                  "state.screen.is_same_object(context.screen)", "state.handler.is_same_object(handler)",
+                  "state.sync_id == sync_id", "!enabled", "GetForegroundWindow()", "gui::draw",
+                  "CreativeInventoryScreen", "physical_button_down", "getCursorStack.call()",
+                  "target_stack.isEmpty.call()", "canInsert.call(source_stack)",
+                  "areItemsAndComponentsEqual.call", "state.engine.observe(now, observed)"):
+        if guard not in source:
+            errors.append(f"Missing PotRefill session/action guard: {guard}")
+    if "render_when_disabled() const override { return true; }" not in header:
+        errors.append("PotRefill must release pending state on the render thread when disabled")
+    return errors
+
+
+def validate_fast_stop():
+    errors = []
+    source = (ROOT / "src/modules/misc/fast_stop.cpp").read_text(encoding="utf-8")
+    header = (ROOT / "src/modules/misc/fast_stop.hpp").read_text(encoding="utf-8")
+    if "void run(::cache&) override {}" not in header or "render_when_disabled() const override { return true; }" not in header:
+        errors.append("FastStop must write on client frames and clear release history while disabled")
+    for guard in ("capture_client_context(context, true, false)", "context.screen", "GetForegroundWindow()",
+                  "gui::draw", "gui::should_unload", "state.session.observe({context.world, context.player})",
+                  "options.forwardKey.get()", "options.backKey.get()", "options.leftKey.get()", "options.rightKey.get()",
+                  "input.movementForward.get()", "input.movementSideways.get()", "player.hurtTime.get()",
+                  "player.isOnGround.call()", "player.isTouchingWater.call()", "player.isInLava.call()",
+                  "player.isClimbing.call()", "player.isFallFlying.call()", "player.hasVehicle.call()",
+                  "abilities.flying.get()", "input.jumping.get()", "jump.isPressed.call()"):
+        if guard not in source:
+            errors.append(f"Missing FastStop live input/session/environment guard: {guard}")
+    if source.count("setVelocity.call") != 1 or "setVelocity.call(stop->x, stop->y, stop->z)" not in source:
+        errors.append("FastStop must apply only the native release engine's velocity result")
+    return errors
+
+
+def validate_crystal_aura():
+    errors = []
+    source = (ROOT / "src/modules/combat/crystal_aura.cpp").read_text(encoding="utf-8")
+    header = (ROOT / "src/modules/combat/crystal_aura.hpp").read_text(encoding="utf-8")
+    engine = (ROOT / "src/modules/combat/crystal_aura_engine.hpp").read_text(encoding="utf-8")
+    if "void run(::cache&) override {}" not in header or "render_when_disabled() const override { return true; }" not in header:
+        errors.append("Crystal Aura must act and clean JNI state on client frames, not the worker")
+    for guard in ("capture_client_context(ctx)", "GetForegroundWindow()", "gui::should_unload", "ctx.screen",
+                  "ctx.player.isAlive.call()", "state.session.observe({ctx.world,ctx.player})", "getEntityById.call",
+                  "friends::is_friend(entity)", "services::anti_bot::is_bot(entity)", "entity.isSpectator.call()",
+                  "getEntityInteractionRange.call()", "getBlockInteractionRange.call()", "fresh_crosshair_entity",
+                  "read_cooldown", "clear_site(ctx", "hits_top(hit,clicked)", "restore_if_owned",
+                  "claim_crystal_aura", "release_crystal_aura", "try_crystal_aura_action", "config.switch_delay_ms"):
+        if guard not in source: errors.append(f"Missing Crystal Aura action/session guard: {guard}")
+    for guard in ("entity.is_instance_of<maps::MobEntity>()", "logic::supports_target(config.target_mode,target.kind)",
+                  "logic::target_allowed(config.target_mode,target)", "if (player)", "config.target_mode == 0",
+                  "find_target(ctx,eye", "state.engine.target(),config", "observed.target_is_mob"):
+        if guard not in source: errors.append(f"Missing Crystal Aura mob targeting guard: {guard}")
+    if "seen.target_is_mob && config.mob_ground_test" not in engine:
+        errors.append("Crystal Aura's optional grounded test must apply to mobs only")
+    if source.count("attack_entity(") != 1 or source.count("interactBlock.call(") != 1:
+        errors.append("Crystal Aura must centralize melee/crystal attacks and block interactions")
+    if any(token in source for token in ("sendPacket.call", "Sleep(", "setVelocity.call", "setPosition.call")):
+        errors.append("Crystal Aura must not fake knockback, teleport, block the client or forge packets")
+    if any(token in engine for token in ("Windows.h", "mappings.hpp", "ImGui::", "jni::")):
+        errors.append("Crystal Aura engine must remain offline-testable and platform-independent")
+    return errors
+
+
+def validate_anchor_macro():
+    errors = []
+    catalog = (ROOT / "src/modules/module_catalog.cpp").read_text(encoding="utf-8")
+    header = (ROOT / "src/modules/combat/anchor_macro.hpp").read_text(encoding="utf-8")
+    source = (ROOT / "src/modules/combat/anchor_macro.cpp").read_text(encoding="utf-8")
+    engine = (ROOT / "src/modules/combat/anchor_engine.cpp").read_text(encoding="utf-8")
+    if '"blatant_anchor_macro"' in catalog or catalog.count('"anchor_macro"') != 1:
+        errors.append("Anchor must have one catalog entry with Legit/Blatant settings, not two modules")
+    if "settings_.read()" not in source or "reset_requested_.store" not in source or "render_when_disabled() const override { return true; }" not in header:
+        errors.append("Unified Anchor must use settings snapshots and client-frame cancellation")
+    for guard in ("sequence_delay(settings,stage,random_engine)", "const int transition_budget = 1",
+                  "state.session.matches({world,player})", "state.session.observe({world,player})",
+                  "restore_if_owned", "selected != state.owned_slot", "charges >= 1 &&",
+                  "step_delay(timing_stage::place", "step_delay(timing_stage::charge",
+                  "step_delay(timing_stage::detonate", "step_delay(timing_stage::restore"):
+        if guard not in engine: errors.append(f"Missing Anchor timing/session guard: {guard}")
+    if "return mode == profile::blatant ? 0" in engine or "charges == -1 && elapsed" in engine:
+        errors.append("Anchor must honor Blatant timing and wait for a known charge")
+    return errors
+
+
 def project_items(path):
     result = set()
     for node in ET.parse(path).iter():
@@ -133,7 +308,9 @@ def project_items(path):
 
 
 def validate():
-    errors = validate_sdk() + validate_settings() + validate_overlay_sessions()
+    errors = (validate_sdk() + validate_settings() + validate_overlay_sessions() + validate_esp_ranges()
+              + validate_inv_walk() + validate_anti_bot() + validate_notifications() + validate_pot_refill()
+              + validate_fast_stop() + validate_crystal_aura() + validate_anchor_macro())
     project = project_items(ROOT / "custom-base.vcxproj")
     filters = project_items(ROOT / "custom-base.vcxproj.filters")
     if project != filters:

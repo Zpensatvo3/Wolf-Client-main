@@ -2,6 +2,7 @@
 #include "config_fields_test.cpp"
 #undef main
 #include "../src/modules/misc/sprint.hpp"
+#include "../src/modules/misc/settings/inv_walk_settings.hpp"
 #include "../src/modules/misc/fast_place.hpp"
 #include "../src/modules/misc/auto_armor.hpp"
 #include "../src/modules/misc/auto_tool.hpp"
@@ -61,6 +62,8 @@ int main()
 {
     using namespace module_settings;
     check_contract<sprint>({"stop_while_using_item"});
+    check_contract<inv_walk>({"allow_containers", "allow_jump", "allow_sneak"});
+    assert(inv_walk{}.allow_containers && inv_walk{}.allow_jump && !inv_walk{}.allow_sneak);
     check_contract<fast_place>({"delay"});
     check_contract<auto_armor>({"action_delay_ms", "protect_elytra"});
     check_contract<auto_tool>({"require_left_click", "prefer_hotbar_only"});
@@ -69,7 +72,7 @@ int main()
     check_contract<bridge_assist>({"edge_offset", "unsneak_delay", "require_block_item", "only_while_moving"});
     check_contract<chest_stealer>({"min_delay_ms", "max_delay_ms", "open_reaction_ms", "random_slot_order"});
     check_contract<elytra_swapper>({"target_mode", "swap_delay_ms", "use_hotbar"});
-    check_contract<pot_refill>({"delay_ms"});
+    check_contract<pot_refill>({"delay_ms", "random_delay", "max_delay_ms", "slot_order"});
 
     assert(sprint{}.stop_while_using_item && fast_place{}.delay == 0);
     assert(auto_armor{}.action_delay_ms == 120 && auto_armor{}.protect_elytra);
@@ -82,6 +85,17 @@ int main()
     assert(chest_stealer{}.open_reaction_ms == 95 && chest_stealer{}.random_slot_order);
     assert(elytra_swapper{}.target_mode == 0 && elytra_swapper{}.swap_delay_ms == 70 && elytra_swapper{}.use_hotbar);
     assert(pot_refill{}.delay_ms == 100);
+    assert(!pot_refill{}.random_delay && pot_refill{}.max_delay_ms == 160 && pot_refill{}.slot_order == 0);
+    settings_fixture<pot_refill> refill;
+    // Old configs retain their fixed speed, including delays above the new default maximum.
+    assert(refill.apply_config_settings(R"({"delay_ms":700})"));
+    assert(refill.settings.read().delay_ms == 700 && refill.settings.read().max_delay_ms == 700);
+    assert(!refill.settings.read().random_delay && refill.settings.read().slot_order == 0);
+    assert(refill.apply_config_settings(R"({"random_delay":true,"max_delay_ms":50,"slot_order":2})"));
+    assert(refill.settings.read().max_delay_ms == 700 && refill.settings.read().slot_order == 2);
+    const auto refill_before = refill.export_config_settings();
+    assert(!refill.apply_config_settings(R"({"delay_ms":100,"slot_order":3})"));
+    assert(refill.export_config_settings() == refill_before);
 
     settings_fixture<chest_stealer> chest;
     // Imported limits retain the old runtime allowance beyond UI slider limits.
@@ -117,5 +131,5 @@ int main()
     assert(!auto_tool::schema()[1].visible);
     assert(tool.apply_config_settings(R"({"prefer_hotbar_only":false})"));
     assert(!tool.settings.read().prefer_hotbar_only);
-    std::cout << "Ten utility schemas: defaults, stable keys, hidden fields, integer limits and atomic imports passed\n";
+    std::cout << "Eleven utility schemas: defaults, stable keys, hidden fields, integer limits and atomic imports passed\n";
 }

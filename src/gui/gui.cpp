@@ -2636,8 +2636,6 @@ namespace
 				else render_theme_page();
 			}
 			ImGui::EndChild();
-			gui::render_workspace_toast(window_position,
-				ImVec2(window_position.x + window_size.x, window_position.y + window_size.y));
 		}
 		ImGui::End();
 		ImGui::PopStyleColor(2);
@@ -2804,6 +2802,8 @@ static LRESULT CALLBACK detour_WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		services::input::reset_physical_buttons();
 		if (auto* jump = dynamic_cast<modules::jump_reset*>(modules::find_module_by_id("jump_reset")))
 			jump->cancel_on_client_thread();
+		if (auto* walk = dynamic_cast<modules::inv_walk*>(modules::find_module_by_id("inv_walk")))
+			walk->cancel_on_client_thread();
 		services::input::cancel_trigger_click();
 		modules::left_clicker::notify_manual_click(false);
 		modules::right_clicker::notify_manual_click(false);
@@ -2922,6 +2922,8 @@ static void uninit(HWND hWnd, HDC device)
 	// still available, before module destruction/unhooking on the worker.
 	if (auto* jump = dynamic_cast<modules::jump_reset*>(modules::find_module_by_id("jump_reset")))
 		jump->cancel_on_client_thread();
+	if (auto* walk = dynamic_cast<modules::inv_walk*>(modules::find_module_by_id("inv_walk")))
+		walk->cancel_on_client_thread();
 	// UI textures are owned by the injected OpenGL context. Release them while
 	// that context is still valid so repeated window recreation and unloads do
 	// not leak the embedded logo/background textures.
@@ -3278,8 +3280,13 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 				module->render_overlay();
 		}
 	}
-	else if (auto* jump = dynamic_cast<modules::jump_reset*>(modules::find_module_by_id("jump_reset")))
-		jump->cancel_on_client_thread();
+	else
+	{
+		if (auto* jump = dynamic_cast<modules::jump_reset*>(modules::find_module_by_id("jump_reset")))
+			jump->cancel_on_client_thread();
+		if (auto* walk = dynamic_cast<modules::inv_walk*>(modules::find_module_by_id("inv_walk")))
+			walk->cancel_on_client_thread();
+	}
 
 	if (gui::draw && !gui::loader_visible)
 	{
@@ -3292,6 +3299,7 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 
 
 	}
+	gui::render_notifications();
 	gui::aegis::flush_preferences();
 	ImGui::EndFrame();
 	ImGui::Render();

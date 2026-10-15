@@ -3,12 +3,14 @@
 #include "../../cache/cache.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../../platform/adapter/game_adapter.hpp"
+#include "../../services/game/loaded_chunks.hpp"
 #include "../ui_redirect.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <string>
 #include <vector>
+#include <unordered_set>
 
 #include <imgui/imgui.h>
 
@@ -17,12 +19,6 @@
 
 namespace
 {
-	struct scan_result
-	{
-		double x = 0.0, y = 0.0, z = 0.0;
-		std::string label;
-	};
-
 	bool camera_snapshot(const services::game::client_context& context, double& x, double& y, double& z,
 		float& yaw, float& pitch, float& fov)
 	{
@@ -89,80 +85,72 @@ namespace
 
 void modules::storage_esp::run(::cache& cache)
 {
-    auto settings_snapshot = settings_.read();
-	if (!cache.is_valid() || !cache.player || !cache.world || !jni::get_env()) { clear_snapshot(); return; }
-	try
-	{
-		jni::frame frame{ 768 };
+    if (!cache.is_valid() || !cache.player || !cache.world || !jni::get_env()) { clear_snapshot(); return; }
+    const auto now = std::chrono::steady_clock::now();
+    if (now < next_scan) return;
+    next_scan = now + std::chrono::milliseconds(50);
+    try
+    {
+        jni::frame frame{96};
         std::uint64_t generation;
+        std::size_t cursor;
         {
             std::scoped_lock lock(marker_mutex);
             if (session_.observe({cache.world, cache.player})) { markers.clear(); scan_index = 0; }
             generation = session_.ticket();
+            cursor = scan_index;
         }
-		const maths::vector3d player_pos = cache.player.get_position();
-		const int px = static_cast<int>(std::floor(player_pos.x));
-		const int py = static_cast<int>(std::floor(player_pos.y));
-		const int pz = static_cast<int>(std::floor(player_pos.z));
-		const int horizontal = std::clamp(settings_snapshot.range, 4, 24);
-		const int vertical_radius = std::min(horizontal, 12);
-		const int side = horizontal * 2 + 1;
-		const int vertical = vertical_radius * 2 + 1;
-		const int total = side * side * vertical;
-        int start = 0;
-		{
-			std::scoped_lock lock(marker_mutex);
-			if (px != origin_x || py != origin_y || pz != origin_z)
-			{
-				origin_x = px; origin_y = py; origin_z = pz; scan_index = 0;
-			}
-            start = scan_index;
-		}
-
-		const int end = std::min(total, start + 160);
-		std::vector<scan_result> scanned;
-		scanned.reserve(static_cast<std::size_t>(end - start));
-		for (int index = start; index < end; ++index)
-		{
-			const int x_offset = index % side - horizontal;
-			const int temporary = index / side;
-			const int z_offset = temporary % side - horizontal;
-			const int y_offset = temporary / side - vertical_radius;
-			const int x = px + x_offset, y = py + y_offset, z = pz + z_offset;
-			scan_result result{ static_cast<double>(x), static_cast<double>(y), static_cast<double>(z), {} };
-			maps::BlockPos pos = maps::BlockPos::new_object(&maps::BlockPos::constructor,
-				static_cast<jint>(x), static_cast<jint>(y), static_cast<jint>(z));
-			maps::BlockState state = pos ? cache.world.getBlockState.call(pos) : maps::BlockState{};
-			if (state && !platform::jni_context::clear_exception() && state.isAir.call() != JNI_TRUE && !platform::jni_context::clear_exception())
-			{
-				maps::Block block = state.getBlock.call();
-				maps::Item item = block ? block.asItem.call() : maps::Item{};
-				maps::String name = item && !platform::jni_context::clear_exception() ? item.getTranslationKey.call() : maps::String{};
-				const std::string key = name && !platform::jni_context::clear_exception() ? name.to_string() : std::string{};
-				platform::jni_context::clear_exception();
-				if (is_storage_key(key)) result.label = storage_label(key);
-			}
-			scanned.push_back(std::move(result));
-		}
-
-		std::scoped_lock lock(marker_mutex);
+        services::game::loaded_chunks chunks;
+        if (!services::game::capture_loaded_chunks(cache.world, chunks)) { clear_snapshot(); return; }
+        std::vector<marker> scanned;
+        std::unordered_set<std::uint64_t> refreshed;
+        const std::size_t count = chunks.slots.size();
+        const std::size_t batch = std::min<std::size_t>(count, 32);
+        for (std::size_t i = 0; i < batch; ++i)
+        {
+            jni::frame chunk_frame{48};
+            const auto& slot = chunks.slots[(cursor + i) % count];
+            refreshed.insert(services::game::chunk_key(slot.x, slot.z));
+            auto chunk = services::game::read_loaded_chunk(chunks, slot);
+            if (!chunk) continue;
+            auto entities = chunk.getBlockEntities.call();
+            auto values = entities ? entities.values.call() : maps::Collection{};
+            auto array = values ? values.toArray.call() : jni::array<maps::Object>{nullptr};
+            if (platform::jni_context::clear_exception() || !array) { clear_snapshot(); return; }
+            const int length = array.get_length();
+            if (platform::jni_context::clear_exception()) { clear_snapshot(); return; }
+            for (int index = 0; index < length; ++index)
+            {
+                jni::frame entity_frame{48};
+                maps::BlockEntity entity(jni::get_env()->GetObjectArrayElement(
+                    static_cast<jobjectArray>(array.object_instance), index), false);
+                if (!entity) continue;
+                const bool removed = entity.isRemoved.call() == JNI_TRUE;
+                auto pos = entity.getPos.call();
+                auto state = entity.getCachedState.call();
+                auto block = state ? state.getBlock.call() : maps::Block{};
+                auto item = block ? block.asItem.call() : maps::Item{};
+                auto name = item ? item.getTranslationKey.call() : maps::String{};
+                if (platform::jni_context::clear_exception() || removed || !pos || !name) continue;
+                const std::string key = name.to_string();
+                if (!is_storage_key(key)) continue;
+                const int x = pos.getX.call(), y = pos.getY.call(), z = pos.getZ.call();
+                if (platform::jni_context::clear_exception()) continue;
+                scanned.push_back({double(x), double(y), double(z), storage_label(key)});
+            }
+        }
+        std::scoped_lock lock(marker_mutex);
         if (!session_.accepts(generation)) return;
-		for (const scan_result& cell : scanned)
-		{
-			markers.erase(std::remove_if(markers.begin(), markers.end(), [&](const marker& old)
-			{
-				return old.x == cell.x && old.y == cell.y && old.z == cell.z;
-			}), markers.end());
-			if (!cell.label.empty()) markers.push_back({ cell.x, cell.y, cell.z, cell.label });
-		}
-		markers.erase(std::remove_if(markers.begin(), markers.end(), [&](const marker& old)
-		{
-			return std::abs(old.x - px) > horizontal || std::abs(old.y - py) > vertical_radius ||
-				std::abs(old.z - pz) > horizontal;
-		}), markers.end());
-		scan_index = end >= total ? 0 : end;
-	}
-	catch (...) { platform::jni_context::clear_exception(); clear_snapshot(); }
+        markers.erase(std::remove_if(markers.begin(), markers.end(), [&](const marker& old)
+        {
+            const auto key = services::game::chunk_key(
+                static_cast<int>(std::floor(old.x / 16.)), static_cast<int>(std::floor(old.z / 16.)));
+            return !chunks.keys.contains(key) || refreshed.contains(key);
+        }), markers.end());
+        markers.insert(markers.end(), scanned.begin(), scanned.end());
+        scan_index = count ? (cursor + batch) % count : 0;
+    }
+    catch (...) { platform::jni_context::clear_exception(); clear_snapshot(); }
 }
 
 void modules::storage_esp::render_overlay()

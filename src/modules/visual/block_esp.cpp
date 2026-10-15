@@ -3,6 +3,7 @@
 #include "../../cache/cache.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../../platform/adapter/game_adapter.hpp"
+#include "../../services/game/loaded_chunks.hpp"
 #include "../ui_redirect.hpp"
 #include <algorithm>
 #include <cctype>
@@ -10,6 +11,8 @@
 #include <limits>
 #include <unordered_set>
 #include <vector>
+#include <array>
+#include <unordered_map>
 
 #include <imgui/imgui.h>
 
@@ -32,6 +35,49 @@ namespace
 			(static_cast<std::uint64_t>(z) & 0x3FFFFFFULL) << 12 |
 			(static_cast<std::uint64_t>(y) & 0xFFFULL);
 	}
+
+    bool scan_section_blocks(const maps::ChunkSection& section, const maps::DefaultedRegistry& registry,
+        const std::unordered_set<std::string>& selected, int bx, int by, int bz,
+        std::vector<scanned_block>& matches)
+    {
+        auto container = section.getBlockStateContainer.call();
+        auto copy = container ? container.copy.call() : maps::PalettedContainer{};
+        auto data = copy ? copy.data.get() : maps::PaletteData{};
+        auto palette = data ? data.palette.call() : maps::Palette{};
+        auto storage = data ? data.storage.call() : maps::PaletteStorage{};
+        if (platform::jni_context::clear_exception() || !palette || !storage) return false;
+        jintArray ids = jni::get_env()->NewIntArray(4096);
+        if (platform::jni_context::clear_exception() || !ids) return false;
+        storage.writePaletteIndices.call(jni::array<jint>(ids, false));
+        if (platform::jni_context::clear_exception()) return false;
+        std::array<jint, 4096> cells{};
+        jni::get_env()->GetIntArrayRegion(ids, 0, 4096, cells.data());
+        if (platform::jni_context::clear_exception()) return false;
+        std::unordered_map<int, std::string> names;
+        for (int index = 0; index < 4096; ++index)
+        {
+            const int id = cells[index];
+            auto it = names.find(id);
+            if (it == names.end())
+            {
+                jni::frame cell_frame{16};
+                auto object = palette.get.call(id);
+                maps::BlockState state(object.object_instance, false);
+                auto block = state ? state.getBlock.call() : maps::Block{};
+                auto identifier = block ? registry.getId.call(maps::Object(block.object_instance, false)) : maps::Identifier{};
+                auto text = identifier ? identifier.toString.call() : maps::String{};
+                if (platform::jni_context::clear_exception() || !text) return false;
+                std::string name = text.to_string();
+                if (platform::jni_context::clear_exception()) return false;
+                if (!selected.contains(name)) name.clear();
+                it = names.emplace(id, std::move(name)).first;
+            }
+            if (!it->second.empty())
+                matches.push_back({double(bx + (index & 15)), double(by + (index >> 8)),
+                    double(bz + ((index >> 4) & 15)), it->second});
+        }
+        return true;
+    }
 
 	bool camera_snapshot(const services::game::client_context& context, double& x, double& y, double& z,
 		float& yaw, float& pitch, float& fov)
@@ -89,13 +135,16 @@ void modules::block_esp::run(::cache& cache)
 {
     auto settings_snapshot = settings_.read();
 	if (!cache.is_valid() || !cache.player || !cache.world || !jni::get_env()) { clear_snapshot(); return; }
+    const auto now = std::chrono::steady_clock::now();
+    if (now < next_scan) return;
+    next_scan = now + std::chrono::milliseconds(50);
 	try
 	{
 		jni::frame frame{ 4096 };
         std::uint64_t generation;
         {
             std::scoped_lock lock(marker_mutex);
-            if (session_.observe({cache.world, cache.player})) { markers.clear(); scan_index = 0; }
+            if (session_.observe({cache.world, cache.player})) { markers.clear(); scan_index = 0; scan_section = 0; }
             generation = session_.ticket();
         }
 		maps::DefaultedRegistry block_registry = maps::Registries{}.BLOCK.get();
@@ -127,75 +176,71 @@ void modules::block_esp::run(::cache& cache)
 			std::scoped_lock lock(marker_mutex);
 			selected_snapshot = settings_snapshot.selected_blocks;
 		}
-		const maths::vector3d player_pos = cache.player.get_position();
-		const int px = static_cast<int>(std::floor(player_pos.x));
-		const int py = static_cast<int>(std::floor(player_pos.y));
-		const int pz = static_cast<int>(std::floor(player_pos.z));
-		const int r = std::clamp(settings_snapshot.range, 3, 12);
-		const int side = r * 2 + 1;
-		const int vertical = r * 2 + 1;
-		const int total = side * side * vertical;
+        const std::unordered_set<std::string> selected(selected_snapshot.begin(), selected_snapshot.end());
+        services::game::loaded_chunks chunks;
+        if (!services::game::capture_loaded_chunks(cache.world, chunks)) { clear_snapshot(); return; }
+        std::size_t cursor, section_cursor;
+        {
+            std::scoped_lock lock(marker_mutex);
+            cursor = scan_index; section_cursor = scan_section;
+        }
+        std::vector<scanned_block> scanned;
+        std::unordered_set<std::uint64_t> refreshed;
+        const std::size_t count = chunks.slots.size();
+        // Time-slice work, not distance: every loaded chunk and all its vertical
+        // sections are eventually visited, even while the player is moving.
+        const auto scan_started = std::chrono::steady_clock::now();
+        for (int visited = 0, nonempty = 0; count && visited < 128 && nonempty < 16; ++visited)
+        {
+            if (visited && std::chrono::steady_clock::now() - scan_started >= std::chrono::milliseconds(4)) break;
+            jni::frame section_frame{64};
+            cursor %= count;
+            const auto& slot = chunks.slots[cursor];
+            auto chunk = services::game::read_loaded_chunk(chunks, slot);
+            if (!chunk) { cursor = (cursor + 1) % count; section_cursor = 0; continue; }
+            auto sections = chunk.getSectionArray.call();
+            const int bottom = chunk.getBottomY.call();
+            if (platform::jni_context::clear_exception() || !sections) { clear_snapshot(); return; }
+            const int length = sections.get_length();
+            if (platform::jni_context::clear_exception()) { clear_snapshot(); return; }
+            if (section_cursor >= static_cast<std::size_t>(length))
+            {
+                cursor = (cursor + 1) % count; section_cursor = 0; continue;
+            }
+            const int base_y = bottom + static_cast<int>(section_cursor) * 16;
+            maps::ChunkSection section(jni::get_env()->GetObjectArrayElement(
+                static_cast<jobjectArray>(sections.object_instance), static_cast<jsize>(section_cursor)), false);
+            ++section_cursor;
+            const auto section_key = block_key(slot.x * 16, base_y, slot.z * 16);
+            if (!section) { refreshed.insert(section_key); continue; }
+            const bool empty = section.isEmpty.call() == JNI_TRUE;
+            if (platform::jni_context::clear_exception()) { clear_snapshot(); return; }
+            if (empty || selected.empty()) { refreshed.insert(section_key); continue; }
+            ++nonempty;
+            std::vector<scanned_block> section_matches;
+            if (!scan_section_blocks(section, block_registry, selected, slot.x * 16, base_y,
+                slot.z * 16, section_matches)) { clear_snapshot(); return; }
+            refreshed.insert(section_key);
+            scanned.insert(scanned.end(), section_matches.begin(), section_matches.end());
+        }
 
-        int start = 0;
-		{
-			std::scoped_lock lock(marker_mutex);
-			if (px != origin_x || py != origin_y || pz != origin_z)
-			{
-				origin_x = px; origin_y = py; origin_z = pz; scan_index = 0;
-			}
-            start = scan_index;
-		}
-
-		std::vector<scanned_block> scanned;
-		const int end = std::min(total, start + 128);
-		scanned.reserve(static_cast<std::size_t>(end - start));
-		for (int index = start; index < end; ++index)
-		{
-			const int x_offset = index % side - r;
-			const int temporary = index / side;
-			const int z_offset = temporary % side - r;
-			const int y_offset = temporary / side - r;
-			const int x = px + x_offset;
-			const int y = py + y_offset;
-			const int z = pz + z_offset;
-			maps::BlockPos pos = maps::BlockPos::new_object(&maps::BlockPos::constructor,
-				static_cast<jint>(x), static_cast<jint>(y), static_cast<jint>(z));
-			maps::BlockState state = pos ? cache.world.getBlockState.call(pos) : maps::BlockState{};
-			std::string selected_key;
-			if (state && !platform::jni_context::clear_exception())
-			{
-				maps::Block block = state.getBlock.call();
-				maps::Object block_object(block.object_instance, false);
-				maps::Identifier identifier = block ? block_registry.getId.call(block_object) : maps::Identifier{};
-				maps::String text = identifier && !platform::jni_context::clear_exception() ? identifier.toString.call() : maps::String{};
-				const std::string key = text && !platform::jni_context::clear_exception() ? text.to_string() : std::string{};
-				platform::jni_context::clear_exception();
-				if (std::find(selected_snapshot.begin(), selected_snapshot.end(), key) != selected_snapshot.end())
-					selected_key = key;
-			}
-			scanned.push_back({ static_cast<double>(x), static_cast<double>(y), static_cast<double>(z), std::move(selected_key) });
-		}
-
-		std::unordered_set<std::uint64_t> scanned_keys;
-		scanned_keys.reserve(scanned.size() * 2);
-		for (const scanned_block& cell : scanned)
-			scanned_keys.insert(block_key(static_cast<int>(cell.x), static_cast<int>(cell.y), static_cast<int>(cell.z)));
-
-		std::scoped_lock lock(marker_mutex);
+        // Reject results for an obsolete selection as well as an obsolete world.
+        if (settings_.read().selected_blocks != selected_snapshot) return;
+        std::scoped_lock lock(marker_mutex);
         if (!session_.accepts(generation)) return;
-		markers.erase(std::remove_if(markers.begin(), markers.end(), [&](const marker& old)
-		{
-			return scanned_keys.contains(block_key(
-				static_cast<int>(old.x), static_cast<int>(old.y), static_cast<int>(old.z)));
-		}), markers.end());
-		for (const scanned_block& cell : scanned)
-			if (!cell.key.empty() && markers.size() < 10000)
-				markers.push_back({ cell.x, cell.y, cell.z, cell.key });
-		markers.erase(std::remove_if(markers.begin(), markers.end(), [&](const marker& old)
-		{
-			return std::abs(old.x - px) > r || std::abs(old.y - py) > r || std::abs(old.z - pz) > r;
-		}), markers.end());
-		scan_index = end >= total ? 0 : end;
+        markers.erase(std::remove_if(markers.begin(), markers.end(), [&](const marker& old)
+        {
+            const int x = static_cast<int>(std::floor(old.x / 16.));
+            const int z = static_cast<int>(std::floor(old.z / 16.));
+            const int y = static_cast<int>(std::floor(old.y / 16.)) * 16;
+            return !chunks.keys.contains(services::game::chunk_key(x, z)) ||
+                refreshed.contains(block_key(x * 16, y, z * 16)) || !selected.contains(old.key);
+        }), markers.end());
+        for (const scanned_block& cell : scanned)
+            if (markers.size() < 10000)
+                markers.push_back({cell.x, cell.y, cell.z, cell.key});
+        scan_index = count ? cursor % count : 0;
+        scan_section = count ? section_cursor : 0;
 	}
 	catch (...) { platform::jni_context::clear_exception(); clear_snapshot(); }
 }
@@ -218,7 +263,7 @@ void modules::block_esp::render_overlay()
 	{
 		std::scoped_lock lock(marker_mutex);
         if (session_.observe({context.world, context.player})) {
-            markers.clear(); scan_index = 0; return;
+            markers.clear(); scan_index = 0; scan_section = 0; return;
         }
 		draw_markers = markers;
 	}
@@ -229,11 +274,9 @@ void modules::block_esp::render_overlay()
 	ImDrawList* draw = ImGui::GetBackgroundDrawList();
 	for (const marker& entry : draw_markers)
 	{
-		const double dx = entry.x + 0.5 - cx;
-		const double dy = entry.y + 0.5 - cy;
-		const double dz = entry.z + 0.5 - cz;
-		const float distance = static_cast<float>(std::sqrt(dx * dx + dy * dy + dz * dz));
-		const float alpha = std::clamp(1.15f - distance / (std::clamp(settings_snapshot.range, 3, 12) * 1.55f), 0.12f, 0.92f);
+        if (std::find(settings_snapshot.selected_blocks.begin(), settings_snapshot.selected_blocks.end(),
+            entry.key) == settings_snapshot.selected_blocks.end()) continue;
+		const float alpha = 0.92f;
 		ImVec4 line_value = accent.Value;
 		line_value.w = alpha;
 		ImVec4 fill_value = accent.Value;
@@ -268,7 +311,7 @@ void modules::block_esp::clear_snapshot()
 {
     std::scoped_lock lock(marker_mutex);
     if (jni::get_env()) session_.reset(); else session_.invalidate();
-    markers.clear(); scan_index = 0;
+    markers.clear(); scan_index = 0; scan_section = 0;
 }
 
 void modules::block_esp::on_disable(::cache&)
@@ -312,7 +355,7 @@ void modules::block_esp::render_options()
 		catch (...) { platform::jni_context::clear_exception(); }
 	}
 
-    gui::settings::render(candidate, module_settings::block_esp::schema().first(3));
+    gui::settings::render(candidate, module_settings::block_esp::schema());
 
 	std::vector<std::string> catalog;
 	std::vector<std::string> selected;
@@ -327,7 +370,7 @@ void modules::block_esp::render_options()
 	if (ImGui::Button(gui::text("Clear", "Temizle")))
 	{
 		std::scoped_lock lock(marker_mutex);
-		candidate.selected_blocks.clear(); markers.clear(); scan_index = 0;
+		candidate.selected_blocks.clear(); markers.clear(); scan_index = 0; scan_section = 0;
 		selected.clear();
 	}
 	ImGui::TextDisabled("%zu / %zu", selected.size(), catalog.size());
@@ -349,7 +392,7 @@ void modules::block_esp::render_options()
 			auto found = std::find(candidate.selected_blocks.begin(), candidate.selected_blocks.end(), identifier);
 			if (found == candidate.selected_blocks.end()) candidate.selected_blocks.push_back(identifier);
 			else candidate.selected_blocks.erase(found);
-			markers.clear(); scan_index = 0;
+			markers.clear(); scan_index = 0; scan_section = 0;
 		}
 	}
 	ImGui::EndChild();

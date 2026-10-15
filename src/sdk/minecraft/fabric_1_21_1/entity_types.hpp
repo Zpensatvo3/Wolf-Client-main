@@ -46,7 +46,7 @@ namespace maps
         BEGIN_KLASS_DEF(OrderedText, "net/minecraft/class_5481")
         END_KLASS_DEF()
 
-        BEGIN_KLASS_DEF(Text, "net/minecraft/class_2561")
+        BEGIN_KLASS_MEMBERS(Text)
         jni::method<Text, "method_30163", jni::STATIC, String> of{ *this };
         jni::method<String, "getString"> getString{ *this };
         jni::method<String, "method_54160"> getLiteralString{ *this };

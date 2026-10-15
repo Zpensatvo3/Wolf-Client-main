@@ -1,4 +1,5 @@
 #include "../../ui/settings_renderer.hpp"
+#include "../../services/game/anti_bot_service.hpp"
 #include "chams.hpp"
 #include "chams_model.hpp"
 #include "../../platform/jni/jni_context.hpp"
@@ -298,9 +299,8 @@ void modules::chams::render_overlay()
         if (context.screen) return;
         settings_type config;
         { std::lock_guard lock(settings_mutex); config = settings; }
-        if (!std::isfinite(config.range) || !std::isfinite(config.opacity) ||
+        if (!std::isfinite(config.opacity) ||
             !std::isfinite(config.glow_strength) || !std::isfinite(config.glow_radius)) return;
-        const float range = std::clamp(config.range,8.f,96.f);
         const float opacity = std::clamp(config.opacity,0.f,1.f);
         const float glow_strength = config.glow ? std::clamp(config.glow_strength,0.f,1.f) : 0.f;
         const float glow_radius = std::clamp(config.glow_radius,2.f,20.f);
@@ -338,6 +338,7 @@ void modules::chams::render_overlay()
                 (config.ignore_friends && friends::is_friend(entity)) || platform::jni_context::clear_exception()) {
                 platform::jni_context::clear_exception(); continue;
             }
+            if (services::anti_bot::is_bot(entity)) continue;
             maps::LivingEntity living(entity.object_instance,false);
             // Special root transforms are excluded rather than drawing an
             // upright model over a player who is flying, swimming or in bed.
@@ -347,8 +348,7 @@ void modules::chams::render_overlay()
             if (!lerped || platform::jni_context::clear_exception()) continue;
             const auto p = lerped.to_vector3d();
             point position{p.x,p.y,p.z};
-            const point distance = position-camera.position;
-            if (!finite(position) || dot(distance,distance) > range*range) continue;
+            if (!finite(position)) continue;
             chams_model::Living local(context.player.object_instance,false);
             if (!local.canSee.is_valid()) continue;
             const bool visible = local.canSee.call(entity) == JNI_TRUE;

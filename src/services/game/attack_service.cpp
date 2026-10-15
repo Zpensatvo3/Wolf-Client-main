@@ -1,4 +1,5 @@
 #include "attack_service.hpp"
+#include "anti_bot_service.hpp"
 #include "client_context.hpp"
 
 #include "../../platform/jni/jni_context.hpp"
@@ -56,6 +57,7 @@ bool services::attack::attack_entity(const maps::ClientPlayerInteractionManager&
 {
     if (!manager || !player || !target)
         return false;
+    if (services::anti_bot::is_bot(target)) return false;
     manager.attackEntity.call(player.toPlayerEntity(), target);
     if (platform::jni_context::clear_exception())
         return false;

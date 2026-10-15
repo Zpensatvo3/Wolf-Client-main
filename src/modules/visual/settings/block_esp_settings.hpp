@@ -5,7 +5,6 @@ namespace module_settings
 {
     struct block_esp
     {
-        int range = 8;
         float line_thickness = 1.6f;
         float fill_opacity = 0.08f;
         std::vector<std::string> selected_blocks = {
@@ -18,7 +17,6 @@ namespace module_settings
             using model = block_esp;
             using setting = modules::settings::descriptor<model>;
             static const setting fields[]{
-                setting::integer("range", {"Range", "Menzil"}, &model::range, 3, 12, "%d blocks"),
                 setting::number("line_thickness", {"Line Thickness", "Cizgi Kalinligi"}, &model::line_thickness, 0.5f, 3.0f, "%.1f"),
                 setting::number("fill_opacity", {"Fill Opacity", "Dolgu Saydamligi"}, &model::fill_opacity, 0.0f, 0.35f, "%.2f"),
                 setting::string_list("selected_blocks", {"selected_blocks", "selected_blocks"}, &model::selected_blocks).hidden(),

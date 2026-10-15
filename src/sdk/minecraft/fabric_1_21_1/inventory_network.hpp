@@ -9,6 +9,7 @@ namespace maps
 
         BEGIN_KLASS_DEF(GameProfile, "com/mojang/authlib/GameProfile")
         jni::method<String, "getName", jni::NOT_STATIC> getName{ *this };
+        jni::method<UUID, "getId"> getId{ *this };
     END_KLASS_DEF()
 
         BEGIN_KLASS_DEF(PlayerListEntry, "net/minecraft/class_640")
@@ -20,6 +21,7 @@ namespace maps
         jni::method<void, "method_2883", jni::NOT_STATIC, Packet> sendPacket{ *this };
         jni::method<Collection, "method_2880"> getPlayerList{ *this };
         jni::method<PlayerListEntry, "method_2874", jni::NOT_STATIC, String> getPlayerListEntryByName{ *this };
+        jni::method<PlayerListEntry, "method_2871", jni::NOT_STATIC, UUID> getPlayerListEntry{ *this };
     END_KLASS_DEF()
 
         BEGIN_KLASS_DEF(PlayerActionC2SPacket$Action, "net/minecraft/class_2846$class_2847")
@@ -57,6 +59,7 @@ namespace maps
         jni::method<jboolean, "method_31574", jni::NOT_STATIC, Item> isOf{ *this };
         jni::method<ItemStack, "method_7972", jni::NOT_STATIC> copy{ *this };
         jni::method<jint, "method_7947"> getCount{ *this };
+        jni::method<Text, "method_7964"> getName{ *this };
         jni::method<jint, "method_7914"> getMaxCount{ *this };
 		jni::method<jfloat, "method_7924", jni::NOT_STATIC, BlockState> getMiningSpeedMultiplier{ *this };
 		jni::method<jboolean, "method_7951", jni::NOT_STATIC, BlockState> isSuitableFor{ *this };
@@ -83,6 +86,28 @@ namespace maps
 		jni::field<ComponentType, "field_50075", jni::STATIC> FOOD{ *this };
 		jni::field<ComponentType, "field_49651", jni::STATIC> POTION_CONTENTS{ *this };
 		jni::field<ComponentType, "field_49649", jni::STATIC> CHARGED_PROJECTILES{ *this };
+    END_KLASS_DEF()
+
+    BEGIN_KLASS_DEF(Element, "net/minecraft/class_364")
+        jni::method<jboolean, "method_25370"> isFocused{ *this };
+    END_KLASS_DEF()
+
+    BEGIN_KLASS_DEF_EX(ParentElement, "net/minecraft/class_4069", Element)
+        jni::method<List, "method_25396"> children{ *this };
+    END_KLASS_DEF()
+
+    BEGIN_KLASS_DEF_EX(TextFieldWidget, "net/minecraft/class_342", Element)
+        jni::method<jboolean, "method_1885"> isVisible{ *this };
+        jni::method<jboolean, "method_20315"> isActive{ *this };
+    END_KLASS_DEF()
+
+    BEGIN_KLASS_DEF(RecipeBookWidget, "net/minecraft/class_507")
+        jni::field<TextFieldWidget, "field_3089"> searchField{ *this };
+        jni::method<jboolean, "method_2605"> isOpen{ *this };
+    END_KLASS_DEF()
+
+    BEGIN_KLASS_DEF(RecipeBookProvider, "net/minecraft/class_518")
+        jni::method<RecipeBookWidget, "method_2659"> getRecipeBookWidget{ *this };
     END_KLASS_DEF()
 
         BEGIN_KLASS_DEF(Screen, "net/minecraft/class_437")
@@ -118,6 +143,7 @@ namespace maps
 	END_KLASS_DEF()
 
         BEGIN_KLASS_DEF_EX(CreativeInventoryScreen, "net/minecraft/class_481", Screen)
+        jni::field<TextFieldWidget, "field_2894"> searchBox{ *this };
         END_KLASS_DEF()
 
         BEGIN_KLASS_DEF(Potion, "net/minecraft/class_1842")

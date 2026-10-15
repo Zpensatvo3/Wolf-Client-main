@@ -143,6 +143,37 @@ static_assert(std::string_view(maps::Session::get_name()) == "net/minecraft/clas
 static_assert(std::string_view(maps::MinecraftClient::get_name()) == "net/minecraft/class_310");
 
 using eye_y = decltype(maps::Entity_members::getEyeY);
+static_assert(std::string_view(decltype(maps::Entity_members::isSpectator)::get_name()) == "method_7325");
+static_assert(std::string_view(decltype(maps::ClientWorld_members::getEntityById)::get_name()) == "method_8469");
+static_assert(std::string_view(decltype(maps::ClientWorld_members::getEntityById)::get_signature()) == "(I)Lnet/minecraft/class_1297;");
+static_assert(std::string_view(decltype(maps::Blocks_members::BEDROCK)::get_name()) == "field_9987");
+static_assert(std::string_view(decltype(maps::BlockState_members::isOpaque)::get_name()) == "method_26225");
+static_assert(std::string_view(decltype(maps::ActionResult_members::isAccepted)::get_name()) == "method_23665");
+static_assert(std::string_view(decltype(maps::ActionResult_members::isAccepted)::get_signature()) == "()Z");
+static_assert(std::string_view(decltype(maps::Input_members::movementForward)::get_name()) == "field_3905");
+static_assert(std::string_view(decltype(maps::Input_members::movementForward)::get_signature()) == "F");
+static_assert(std::string_view(decltype(maps::Input_members::movementSideways)::get_name()) == "field_3907");
+static_assert(std::string_view(decltype(maps::Input_members::movementSideways)::get_signature()) == "F");
+static_assert(std::string_view(decltype(maps::Entity_members::isInLava)::get_name()) == "method_5771");
+static_assert(std::string_view(decltype(maps::Entity_members::isInLava)::get_signature()) == "()Z");
+static_assert(std::string_view(decltype(maps::Entity_members::setVelocity)::get_signature()) == "(DDD)V");
+static_assert(std::string_view(decltype(maps::GameProfile_members::getId)::get_signature()) == "()Ljava/util/UUID;");
+static_assert(std::string_view(decltype(maps::ClientPlayNetworkHandler_members::getPlayerListEntry)::get_signature()) == "(Ljava/util/UUID;)Lnet/minecraft/class_640;");
+static_assert(std::string_view(decltype(maps::ClientPlayNetworkHandler_members::getPlayerListEntry)::get_name()) == "method_2871");
+static_assert(std::string_view(decltype(maps::Entity_members::getWorld)::get_name()) == "method_37908");
+static_assert(std::string_view(maps::TextFieldWidget::get_name()) == "net/minecraft/class_342");
+static_assert(std::string_view(maps::ParentElement::get_name()) == "net/minecraft/class_4069");
+static_assert(std::string_view(decltype(maps::ParentElement_members::children)::get_signature()) == "()Ljava/util/List;");
+static_assert(std::string_view(decltype(maps::Element_members::isFocused)::get_name()) == "method_25370");
+static_assert(std::string_view(decltype(maps::RecipeBookProvider_members::getRecipeBookWidget)::get_signature()) == "()Lnet/minecraft/class_507;");
+static_assert(std::string_view(decltype(maps::CreativeInventoryScreen_members::searchBox)::get_name()) == "field_2894");
+static_assert(std::string_view(maps::ItemEntity::get_name()) == "net/minecraft/class_1542");
+static_assert(std::string_view(maps::ClientChunkManager::get_name()) == "net/minecraft/class_631");
+static_assert(std::string_view(decltype(maps::ItemEntity_members::getStack)::get_signature()) == "()Lnet/minecraft/class_1799;");
+static_assert(std::string_view(decltype(maps::ItemStack_members::getName)::get_signature()) == "()Lnet/minecraft/class_2561;");
+static_assert(std::string_view(decltype(maps::Chunk_members::getSectionArray)::get_signature()) == "()[Lnet/minecraft/class_2826;");
+static_assert(std::string_view(decltype(maps::WorldChunk_members::getBlockEntities)::get_name()) == "method_12214");
+static_assert(std::string_view(decltype(maps::PaletteStorage_members::writePaletteIndices)::get_signature()) == "([I)V");
 using standing_eye = decltype(maps::Entity_members::getStandingEyeHeight);
 using selected_slot = decltype(maps::PlayerInventory_members::selectedSlot);
 using attack = decltype(maps::MinecraftClient_members::doAttack);
@@ -155,5 +186,5 @@ static_assert(std::string_view(attack::get_signature()) == "()Z");
 
 int main()
 {
-    std::cout << "Fabric 1.21.1 SDK: 127 class names, JNI signatures and umbrella compatibility passed\n";
+    std::cout << "Fabric 1.21.1 SDK: class names, item/chunk JNI signatures and umbrella compatibility passed\n";
 }

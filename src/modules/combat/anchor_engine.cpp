@@ -1,5 +1,6 @@
 #include "../../ui/settings_renderer.hpp"
 #include "anchor_engine.hpp"
+#include "anchor_timing.hpp"
 #include "../../cache/cache.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../../platform/adapter/game_adapter.hpp"
@@ -25,6 +26,8 @@ namespace
 
 	void reset_runtime(anchor_engine::runtime& state)
 	{
+		state.session.reset();
+		state.owned_slot = -1;
 		state.current = anchor_engine::runtime::phase::idle;
 		state.old_slot = -1;
 		state.anchor_slot = -1;
@@ -38,6 +41,7 @@ namespace
 		state.anchor_x = state.anchor_y = state.anchor_z = 0;
 		state.retries = 0;
 		state.confirmation_timeout_ms = 0;
+		state.retry_interval_ms = 65;
 		state.next_action = {};
 		state.phase_started = {};
 		state.last_attempt = {};
@@ -267,8 +271,9 @@ namespace
 		maps::Hand hand = maps::Hand{}.MAIN_HAND.get();
 		if (!player || !manager || !hit || !hand || platform::jni_context::clear_exception())
 			return false;
-		manager.interactBlock.call(player, hand, hit);
-		if (platform::jni_context::clear_exception())
+		auto result = manager.interactBlock.call(player, hand, hit);
+		if (!result || platform::jni_context::clear_exception() ||
+			result.isAccepted.call() != JNI_TRUE || platform::jni_context::clear_exception())
 			return false;
 		player.swingHand.call(hand);
 		return !platform::jni_context::clear_exception();
@@ -358,8 +363,8 @@ namespace
 		anchor_engine::config& settings,
 		anchor_engine::runtime& state)
 	{
-		return state.old_slot < 0 ||
-			select_hotbar_slot(player, manager, state.old_slot, settings.hybrid_slot_input);
+		(void)settings;
+		return state.old_slot < 0 || services::hotbar::restore_if_owned(player,manager,state.old_slot,state.owned_slot);
 	}
 }
 
@@ -370,11 +375,14 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 	std::lock_guard lock(state.mutex);
 	jni::frame frame{ 256 };
 
-	settings.switch_delay = std::clamp(settings.switch_delay, 0, 180);
+	settings.switch_delay = std::clamp(settings.switch_delay, 0, settings.separate_delays ? 500 : 180);
 	settings.action_delay = std::clamp(settings.action_delay, 0, 200);
 	settings.shield_delay = std::clamp(settings.shield_delay, 0, 220);
-	settings.return_delay = std::clamp(settings.return_delay, 0, 160);
-	settings.timing_variance = std::clamp(settings.timing_variance, 0, 80);
+	settings.return_delay = std::clamp(settings.return_delay, 0, settings.separate_delays ? 500 : 160);
+	settings.timing_variance = std::clamp(settings.timing_variance, 0, settings.separate_delays ? 150 : 80);
+	settings.place_delay = std::clamp(settings.place_delay,0,500);
+	settings.charge_delay = std::clamp(settings.charge_delay,0,500);
+	settings.detonate_delay = std::clamp(settings.detonate_delay,0,500);
 	settings.camera_strength = std::clamp(settings.camera_strength, 0.0f, 1.2f);
 
 	maps::MinecraftClient instance = maps::MinecraftClient{}.instance.get();
@@ -387,7 +395,7 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 
 	auto finish = [&]()
 	{
-		if (player && manager)
+		if (player && manager && world && state.session.matches({world,player}))
 			restore_slot(player, manager, settings, state);
 		reset_runtime(state);
 		platform::jni_context::clear_exception();
@@ -396,9 +404,17 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 
 	// If game or window is not ready, do not crash or abort permanently; stay ready
 	if (!instance || !world || !player || !manager || platform::jni_context::clear_exception())
-		return true;
+	{
+		const bool active = state.current != runtime::phase::idle;
+		reset_runtime(state);
+		return !active;
+	}
+	if (state.current != runtime::phase::idle && !state.session.matches({world,player}))
+	{ reset_runtime(state); return false; }
+	state.session.observe({world,player});
 
-	if (!window || GetForegroundWindow() != window || gui::draw || gui::loader_visible || instance.currentScreen.get())
+	if (!window || GetForegroundWindow() != window || gui::draw || gui::loader_visible || gui::should_unload ||
+		instance.currentScreen.get() || player.isAlive.call() != JNI_TRUE || platform::jni_context::clear_exception())
 	{
 		return finish();
 	}
@@ -407,14 +423,42 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 
 	auto delay = [&](int base, int maximum)
 	{
-		return mode == profile::blatant ? 0 : sample_delay(base, settings.timing_variance, maximum);
+		return sample_delay(base, settings.timing_variance, maximum);
+	};
+	auto step_delay = [&](timing_stage stage, int legacy, int maximum)
+	{
+		return settings.separate_delays ? sequence_delay(settings,stage,random_engine) : delay(legacy,maximum);
+	};
+	auto retry_delay = [&](runtime::phase waiting)
+	{
+		const int minimum = mode == profile::blatant ? 35 : 65;
+		if (!settings.separate_delays) return minimum;
+		const auto stage = waiting == runtime::phase::wait_anchor ? timing_stage::place :
+			waiting == runtime::phase::wait_charge ? timing_stage::charge : timing_stage::detonate;
+		return std::max(minimum,sequence_delay(settings,stage,random_engine));
 	};
 	auto select = [&](int slot)
 	{
-		return select_hotbar_slot(player, manager, slot, settings.hybrid_slot_input);
+		if (!select_hotbar_slot(player, manager, slot, settings.hybrid_slot_input)) return false;
+		state.owned_slot = slot;
+		return true;
 	};
+	if (state.current != runtime::phase::idle && state.owned_slot >= 0)
+	{
+		auto inventory = player.getInventory.call();
+		const int selected = services::hotbar::selected_slot(inventory);
+		if (selected != state.owned_slot) return finish();
+	}
 	auto anchor_hit = [&]()
 	{
+		auto inventory = player.getInventory.call();
+		auto items = inventory ? inventory.main.get() : maps::DefaultedList{};
+		auto glowstone = maps::Items{}.GLOWSTONE.get();
+		if (!items || !glowstone || platform::jni_context::clear_exception()) return false;
+		const bool charging = state.current == runtime::phase::charge_anchor || state.current == runtime::phase::wait_charge;
+		const int selected = services::hotbar::selected_slot(inventory);
+		const bool holding_glowstone = stack_is_item(items,selected,glowstone,"glowstone");
+		if (platform::jni_context::clear_exception() || charging != holding_glowstone) return false;
 		const maths::vector3d player_position = player.get_position();
 		const double x_distance = player_position.x - (state.anchor_x + 0.5);
 		const double z_distance = player_position.z - (state.anchor_z + 0.5);
@@ -428,6 +472,11 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 	};
 	auto initial_place = [&]()
 	{
+		auto inventory = player.getInventory.call();
+		auto items = inventory ? inventory.main.get() : maps::DefaultedList{};
+		auto anchor = maps::Items{}.RESPAWN_ANCHOR.get();
+		if (!items || !anchor || platform::jni_context::clear_exception() ||
+			!stack_is_item(items,state.anchor_slot,anchor,"anchor")) return false;
 		maps::BlockHitResult hit{};
 		return make_hit(state.support_x, state.support_y, state.support_z,
 			state.face_x, state.face_y, state.face_z, hit) && interact(player, manager, hit);
@@ -445,6 +494,7 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 		state.last_attempt = now;
 		state.retries = 0;
 		state.confirmation_timeout_ms = timeout;
+		state.retry_interval_ms = retry_delay(next);
 		state.next_action = now;
 	};
 
@@ -472,6 +522,7 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 			return finish();
 
 		state.old_slot = inventory.selectedSlot.get();
+		if (!services::hotbar::valid_slot(state.old_slot) || platform::jni_context::clear_exception()) return finish();
 		state.anchor_slot = find_item_slot(items, anchor, "anchor");
 		state.glowstone_slot = find_item_slot(items, glowstone, "glowstone");
 		state.totem_slot = find_item_slot(items, totem, "totem");
@@ -504,21 +555,23 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 			int charges = anchor_charges(world, state.anchor_x, state.anchor_y, state.anchor_z);
 			if (charges >= 1)
 			{
+				if (!select(state.totem_slot)) return finish();
 				state.current = runtime::phase::detonate;
-				state.next_action = now + std::chrono::milliseconds(delay(settings.action_delay, 200));
+				state.next_action = now + std::chrono::milliseconds(step_delay(timing_stage::detonate,settings.action_delay,200));
 			}
 			else
 			{
+				if (!select(state.glowstone_slot)) return finish();
 				state.current = runtime::phase::charge_anchor;
-				state.next_action = now + std::chrono::milliseconds(delay(settings.switch_delay, 180));
+				state.next_action = now + std::chrono::milliseconds(step_delay(timing_stage::charge,settings.switch_delay,180));
 			}
 		}
 		else
 		{
-			if (!select_hotbar_slot(player, manager, state.anchor_slot, settings.hybrid_slot_input))
+			if (!select(state.anchor_slot))
 				return finish();
 			state.current = runtime::phase::place_anchor;
-			state.next_action = now + std::chrono::milliseconds(delay(settings.switch_delay, 180));
+			state.next_action = now + std::chrono::milliseconds(step_delay(timing_stage::place,settings.switch_delay,180));
 		}
 
 		if (mode != profile::blatant)
@@ -528,7 +581,7 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 	if (!movement_allowed(player, mode))
 		return true; // Wait for grounded
 
-	if (mode != profile::blatant && settings.camera_movement &&
+	if (settings.camera_movement &&
 		state.current != runtime::phase::idle && now >= state.next_camera_move)
 	{
 		camera_move(settings.camera_strength);
@@ -539,14 +592,14 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 	if (now < state.next_action)
 		return true;
 
-	const int transition_budget = mode == profile::blatant ? 12 : 1;
+	const int transition_budget = 1; // Even zero-delay Blatant never bursts several interactions in one frame.
 	const int minimum_confirmation = mode == profile::blatant ? 0 : (mode == profile::safe ? 45 : 25);
-	const int retry_interval = mode == profile::blatant ? 35 : 65;
 	const int maximum_retries = mode == profile::blatant ? 4 : 3;
 	const int timeout = mode == profile::blatant ? 350 : 650;
 
 	for (int transition = 0; transition < transition_budget; ++transition)
 	{
+		if (now < state.next_action) return true;
 		switch (state.current)
 		{
 		case runtime::phase::place_anchor:
@@ -562,15 +615,16 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 			{
 				if (!select(state.glowstone_slot)) return finish();
 				state.current = runtime::phase::charge_anchor;
-				state.next_action = now + std::chrono::milliseconds(delay(settings.switch_delay, 180));
+				state.next_action = now + std::chrono::milliseconds(step_delay(timing_stage::charge,settings.switch_delay,180));
 				if (mode == profile::blatant) continue;
 				return true;
 			}
-			if (state.retries < maximum_retries && elapsed(state.last_attempt, now, retry_interval))
+			if (state.retries < maximum_retries && elapsed(state.last_attempt, now, state.retry_interval_ms))
 			{
 				if (!select(state.anchor_slot) || !initial_place()) return finish();
 				++state.retries;
 				state.last_attempt = now;
+				state.retry_interval_ms = retry_delay(state.current);
 			}
 			if (elapsed(state.phase_started, now, state.confirmation_timeout_ms)) return finish();
 			return true;
@@ -585,7 +639,7 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 		case runtime::phase::wait_charge:
 			{
 				int charges = anchor_charges(world, state.anchor_x, state.anchor_y, state.anchor_z);
-				if ((charges >= 1 || (charges == -1 && elapsed(state.last_attempt, now, (std::max)(minimum_confirmation, 35)))) &&
+				if (charges >= 1 &&
 					elapsed(state.phase_started, now, minimum_confirmation))
 				{
 					if (mode == profile::safe && state.shield_slot >= 0)
@@ -598,16 +652,17 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 					{
 						if (!select(state.totem_slot)) return finish();
 						state.current = runtime::phase::detonate;
-						state.next_action = now + std::chrono::milliseconds(delay(settings.action_delay, 200));
+						state.next_action = now + std::chrono::milliseconds(step_delay(timing_stage::detonate,settings.action_delay,200));
 					}
 					if (mode == profile::blatant) continue;
 					return true;
 				}
-				if (state.retries < maximum_retries && elapsed(state.last_attempt, now, retry_interval))
+				if (state.retries < maximum_retries && elapsed(state.last_attempt, now, state.retry_interval_ms))
 				{
 					if (!select(state.glowstone_slot) || !anchor_hit()) return finish();
 					++state.retries;
 					state.last_attempt = now;
+					state.retry_interval_ms = retry_delay(state.current);
 				}
 				if (elapsed(state.phase_started, now, state.confirmation_timeout_ms)) return finish();
 				return true;
@@ -625,14 +680,15 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 			{
 				if (!select(state.totem_slot)) return finish();
 				state.current = runtime::phase::detonate;
-				state.next_action = now + std::chrono::milliseconds(delay(settings.action_delay, 200));
+				state.next_action = now + std::chrono::milliseconds(step_delay(timing_stage::detonate,settings.action_delay,200));
 				return true;
 			}
-			if (state.retries < maximum_retries && elapsed(state.last_attempt, now, retry_interval))
+			if (state.retries < maximum_retries && elapsed(state.last_attempt, now, state.retry_interval_ms))
 			{
 				if (!select(state.shield_slot) || !shield_place()) return finish();
 				++state.retries;
 				state.last_attempt = now;
+				state.retry_interval_ms = retry_delay(state.current);
 			}
 			if (elapsed(state.phase_started, now, state.confirmation_timeout_ms)) return finish();
 			return true;
@@ -648,15 +704,16 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 			if (!is_anchor(world, state.anchor_x, state.anchor_y, state.anchor_z))
 			{
 				state.current = runtime::phase::restore;
-				state.next_action = now + std::chrono::milliseconds(delay(settings.return_delay, 160));
+				state.next_action = now + std::chrono::milliseconds(step_delay(timing_stage::restore,settings.return_delay,160));
 				if (mode == profile::blatant) continue;
 				return true;
 			}
-			if (state.retries < maximum_retries && elapsed(state.last_attempt, now, retry_interval))
+			if (state.retries < maximum_retries && elapsed(state.last_attempt, now, state.retry_interval_ms))
 			{
 				if (!select(state.totem_slot) || !anchor_hit()) return finish();
 				++state.retries;
 				state.last_attempt = now;
+				state.retry_interval_ms = retry_delay(state.current);
 			}
 			if (elapsed(state.phase_started, now, state.confirmation_timeout_ms)) return finish();
 			return true;
@@ -675,15 +732,22 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 
 void anchor_engine::stop(::cache& cache, runtime& state)
 {
+	(void)cache;
+	cancel_on_client_thread(state);
+}
+
+void anchor_engine::cancel_on_client_thread(runtime& state)
+{
+	if (!platform::jni_context::bind_current_thread()) return;
 	std::lock_guard lock(state.mutex);
-	if (platform::jni_context::bind_current_thread() && state.old_slot >= 0 && cache.instance && cache.player)
+	jni::frame frame{48};
+	services::game::client_context context;
+	if (state.old_slot >= 0 && services::game::capture_client_context(context) &&
+		state.session.matches({context.world,context.player}))
 	{
-		jni::frame frame{ 48 };
-		maps::ClientPlayerInteractionManager manager = cache.instance.interactionManager.get();
-		if (manager && !platform::jni_context::clear_exception())
-			select_hotbar_slot(cache.player, manager, state.old_slot, true);
-		platform::jni_context::clear_exception();
+		services::hotbar::restore_if_owned(context.player,context.interaction,state.old_slot,state.owned_slot);
 	}
+	platform::jni_context::clear_exception();
 	reset_runtime(state);
 }
 

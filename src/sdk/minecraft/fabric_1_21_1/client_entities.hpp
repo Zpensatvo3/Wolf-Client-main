@@ -5,6 +5,8 @@
 namespace maps
 {
 		BEGIN_KLASS_DEF(Input, "net/minecraft/class_744")
+		jni::field<jfloat, "field_3905"> movementForward{ *this };
+		jni::field<jfloat, "field_3907"> movementSideways{ *this };
 		jni::field<jboolean, "field_3904"> jumping{ *this };
 	END_KLASS_DEF()
 
@@ -65,6 +67,8 @@ namespace maps
     jni::method<List, "method_18456"> getPlayers{ *this };
     jni::field<WorldProperties, "field_24430"> clientWorldProperties{ *this };
     jni::method<Iterable, "method_18112"> getEntities{ *this };
+    jni::method<Entity, "method_8469", jni::NOT_STATIC, jint> getEntityById{ *this };
+    jni::method<ClientChunkManager, "method_2935"> getChunkManager{ *this };
     END_KLASS_DEF()
 
 		BEGIN_KLASS_DEF_EX(OtherClientPlayerEntity, "net/minecraft/class_745", AbstractClientPlayerEntity)

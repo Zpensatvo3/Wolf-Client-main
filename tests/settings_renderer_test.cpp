@@ -4,6 +4,9 @@
 #include "../src/modules/visual/settings/chams_settings.hpp"
 #include "../src/modules/misc/settings/fast_exp_settings.hpp"
 #include "../src/modules/visual/settings/radar_settings.hpp"
+#include "../src/modules/misc/settings/pot_refill_settings.hpp"
+#include "../src/modules/combat/settings/crystal_aura_settings.hpp"
+#include "../src/modules/combat/settings/anchor_macro_settings.hpp"
 #include <cassert>
 #include <set>
 #include <string>
@@ -77,4 +80,43 @@ int main()
     gui::settings::render(radar, module_settings::radar::schema().subspan(2, 1));
     assert(float_low == 4 && float_high == 1200 && radar.position_x == 2100);
     assert(modules::settings::normalize(radar, module_settings::radar::schema()) && radar.position_x == 2100);
+
+    module_settings::pot_refill refill;
+    drawn.clear();
+    gui::settings::render(refill, module_settings::pot_refill::schema());
+    assert(drawn.contains("delay_ms") && drawn.contains("random_delay") && drawn.contains("slot_order"));
+    assert(!drawn.contains("max_delay_ms") && refill.slot_order == 2);
+    refill.random_delay = true;
+    refill.delay_ms = 700;
+    drawn.clear();
+    gui::settings::render(refill, module_settings::pot_refill::schema());
+    assert(drawn.contains("max_delay_ms") && int_low == 700 && int_high == 1000);
+    module_settings::crystal_aura aura;
+    drawn.clear();
+    gui::settings::render(aura,module_settings::crystal_aura::schema().subspan(1,1));
+    assert(!drawn.contains("mob_ground_test"));
+    drawn.clear();
+    gui::settings::render(aura,module_settings::crystal_aura::schema());
+    assert(aura.target_mode == 2); // Combo stub selects Mobs Only.
+    assert(drawn == (std::set<std::string>{"target_mode","mob_ground_test","action_delay_ms","switch_delay_ms","launch_timeout_ms","confirm_timeout_ms"}));
+    module_settings::anchor_macro anchor;
+    const auto anchor_fields = module_settings::anchor_macro::schema();
+    drawn.clear();
+    gui::settings::render(anchor,anchor_fields.subspan(1));
+    assert(drawn.contains("legit_place_delay") && drawn.contains("legit_variance") && drawn.contains("legit_camera_strength"));
+    assert(!drawn.contains("blatant_place_delay") && !drawn.contains("blatant_randomize"));
+    anchor.legit_randomize = false;
+    drawn.clear();
+    gui::settings::render(anchor,anchor_fields.subspan(1));
+    assert(!drawn.contains("legit_variance"));
+    anchor.mode = 1;
+    drawn.clear();
+    gui::settings::render(anchor,anchor_fields.subspan(1));
+    assert(drawn.contains("blatant_place_delay") && !drawn.contains("legit_place_delay"));
+    assert(!drawn.contains("blatant_variance") && !drawn.contains("blatant_camera_strength"));
+    anchor.blatant_randomize = anchor.blatant_camera_movement = true;
+    drawn.clear();
+    gui::settings::render(anchor,anchor_fields.subspan(1));
+    assert(drawn.contains("blatant_variance") && drawn.contains("blatant_camera_strength"));
+    assert(anchor.legit_place_delay == 38 && anchor.blatant_place_delay == 0);
 }

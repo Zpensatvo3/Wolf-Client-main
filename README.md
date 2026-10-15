@@ -11,7 +11,75 @@ istemcisi içerir.
 - Public config bağlantısı lisans girişinden ayrı çalışacak şekilde korunuyor.
   Uzak servisin bu ortamda erişilebilirliği doğrulanmadı.
 - Vape sayfasında yalnızca Aim Assist (Simple/Adaptive), Left Clicker ve Right Clicker var.
+- Anchor Macro artık tek modüldür: Legit ve Blatant arasında seçim yapılır; Safe Anchor
+  ayrı kalır. İki modun slot geçişi, anchor koyma, glowstone basma, patlatma, geri dönüş,
+  rastgeleleştirme ve kamera tercihleri ayrı saklanır. Slot ve işlem gecikmeleri toplanır.
+  Rastgeleleştirme kapalıyken sabit gecikme; açıkken ayarlanan ± sapma kullanılır.
+  Her gecikme bileşeni 0–500 ms ile sınırlıdır; Blatant da ayarlanan süreleri uygular.
+  Sıfır gecikmede bile kare başına en fazla bir etkileşim gönderilir. Makro her açılışta
+  tek döngü yapar; dolum gözlenmeden patlatma aşamasına geçmez. Dünya/oyuncu değişimi,
+  odak/menü engeli ve elle slot değişimi bekleyen işi iptal eder; slot yalnızca hâlâ
+  modülün seçtiği slotta kalmışsa geri alınır. Rastgeleleştirme sunucu kabulü garantisi değildir.
+  Blok/dolum kontrolleri güncel istemci durumunu okur; tek başına sunucu onayı değildir.
+  Eski `anchor_macro` ve `blatant_anchor_macro` configleri tek kayda aktarılır; iki
+  profilin ayarları korunur. İkisi de açıksa Legit, yalnızca Blatant açıksa Blatant
+  seçilir; seçilen eski modülün tuşu alınır. Yeni birleşik kayıt varsa önceliklidir.
+- Anti Bot yeni kullanımda varsayılan açıktır; config'teki açık/kapalı tercihi korunur.
+  UUID tabanlı sunucu oyuncu kaydını kontrol eder. Varsayılan olarak ilk 40 tick'i
+  bekler, ardından 40 tick boyunca kayıtsız kalan oyuncu nesnelerini aim/trigger,
+  otomatik hedef yardımcıları ve oyuncu görsellerinden süzer. Görünmezlik, isim
+  biçimi veya hareketsizlik tek başına bot ölçütü değildir. Liste güvenilir değilse
+  oyuncuyu elemez; sunucu/dünya değişiminde karar geçmişi temizlenir.
+- Combat > Crystal Aura, en yakın uygun oyuncuya kilitlenir; arkadaşları, izleyicileri
+  ve Anti Bot'un elediği nesneleri hedeflemez. Kılıçla vurur, hedef havalanınca uygun
+  noktada obsidyen/kristal yerleştirip kristali kırar. Mevcut obsidyen/bedrock zemini
+  yeniden kullanabilir; hedef ölünce veya geçersizleşince sıradakini seçer.
+  Hedefler menüsünde Oyuncular (varsayılan), Oyuncular + Moblar ve Yalnızca Moblar
+  (Test) seçilebilir. Golem, hayvan ve diğer MobEntity türleri desteklenir; zırh
+  askıları ve eşyalar hedef değildir. Moblarda Havalanma Bekleme varsayılan açıktır:
+  golem gibi geri tepmeye dirençli moblarda kılıç vuruşundan sonra yerdeyken de
+  kristal döngüsü denenebilir. Bu seçenek oyuncuların havalanma şartını değiştirmez.
+  Kılıç, obsidyen ve kristal hotbar'dan otomatik seçilir. Normal oyun erişimi, görüş,
+  saldırı cooldown'u ve yerleştirme boşluğu kontrol edilir. Kamera görünür şekilde
+  döner; otomatik yürüme, havaya blok koyma veya erişim artırma uygulanmaz.
+  **Kendine hasar/ölüm koruması yoktur.** Arkadaşlar hedeflenmese de patlama alanında
+  zarar görebilirler. Menü, odak/oturum kaybı ve kapatma işlemleri döngüyü iptal eder.
+  Eşyalar bitince bekler; son yerleştirilen kristali kırma aşaması tamamlanabilir.
+  Blok durumu istemciden yeniden okunur, bu tek başına sunucu onayı değildir;
+  kristal oluşması/kaybolması ayrıca izlenir. Sonuç gelmezse zaman aşımı ve gecikmeyle
+  kılıç aşamasına döner; sınırsız paket serisi göndermez. Oyun içi doğrulama yapılmadı.
+  Native/Vape clicker'ların araya saldırı sokması ortak sahiplikle engellenir;
+  Triggerbot önceliklidir. Diğer blok/slot makrolarıyla birlikte kullanım doğrulanmadı.
 - Eski UI/Qt kaynakları ve arayüz ses sistemi kaldırıldı.
+- Client > Notifications, modül açma/kapatma ve işlem sonuçlarını menü kapalıyken
+  de gösterir. Kartlar aktif temanın geçişli renklerini, giriş/çıkış ve dizilme
+  animasyonlarını kullanır; Azaltılmış Hareket tercihini izler ve ses üretmez.
+  Konum, süre, kart sayısı ve bildirim türleri config'e kaydedilir. Hızlı tekrarlar
+  aynı kartı günceller; başlangıçta bildirim yağmuru ve Panic animasyonu oluşturulmaz.
+- Movement kategorisindeki No Jump Delay, tekrar zıplama beklemesini kaldırır;
+  otomatik zıplama girdisi üretmez. Menü açıkken veya oyun odakta değilken çalışmaz.
+- Movement > Fast Stop, yerde hareket girdisi kesildiğinde yatay kaymayı tek seferde
+  durdurur; düşey hızı değiştirmez ve tuş basmaz. Havadayken, zıplarken, su/lavda,
+  tırmanırken, uçarken, binekte ve `hurtTime` etkinken çalışmaz. Sürekli hız sıfırlama
+  yapmaz; dururken gelen dış itmelere müdahale etmez. Güncel oyun tuş atamalarını
+  izler; menü, odak kaybı, kapatma ve dünya/oyuncu değişiminde hareket geçmişi silinir.
+- Inv Walk, envanter ve isteğe bağlı sandık/eşya ekranlarında gerçek hareket tuşlarını
+  izler. Zıplama açık, eğilme varsayılan olarak kapalıdır. Sohbet, kitap, tabela,
+  duraklatma ve odaktaki arama/yazı alanlarında çalışmaz. Tuş atamalarını izler;
+  kapatma, odak kaybı ve dünya değişiminde yalnızca kendi bastığı tuşları temizler.
+- Player > Pot Refill, yalnızca boş hotbar slotlarına Can I/II iksirlerini taşır.
+  Sabit veya aralıklı gecikme ile soldan sağa, sağdan sola ya da rastgele slot sırası
+  seçilebilir; eski `delay_ms` config alanı korunur. Creative envanterinde çalışmaz.
+  Her taşımanın ardından eşya türü/bileşenleri ve adet yeniden okunur; bu kontrol
+  sunucu onayı değildir. Sonuç 1,5 saniyede gözlenmezse tekrar tıklamak yerine durur.
+  Envanter yeniden açıldığında sıfırlanır; dünya/oyuncu/ekran değişimi, odak kaybı,
+  modülün kapanması veya elle envanter işlemi bekleyen işi iptal eder.
+- Item ESP, yere düşmüş yüklenmiş eşyaları kutu, isim, adet ve mesafe etiketiyle gösterir.
+  Her karede güncel dünyayı okur; sunucudan çıkıldığında eski eşya görüntüsü tutulmaz.
+- ESP/Chams için ayrı bir çizim mesafesi seçilmez. Storage ESP yüklenmiş chunk'lardaki
+  depolama nesnelerini, Block ESP ise yüklenmiş chunk bölümlerini parça parça tarar.
+  Chams ve Nametag de mesafe filtresi uygulamaz. Oyunun/sunucunun göndermediği
+  nesneler gösterilemez; Block ESP'deki mevcut 10.000 işaret kaynak sınırı korunur.
 
 ## Gereksinimler
 
@@ -71,7 +139,7 @@ src/
     combat/settings/      Combat modüllerinin bağımsız ayar modelleri
     visual/settings/      Görsel modüllerin bağımsız ayar modelleri
     render/settings/      Watermark ve Arraylist tercihleri
-    settings_manifest.json  45 stable ID için model ve panel sahipliği
+    settings_manifest.json  Modül stable ID'leri için model ve panel sahipliği
   sdk/minecraft/
     fabric_1_21_1/        Alanlara bölünmüş JNI mapping'leri ve sürüm manifesti
   mappings.hpp            Eski include yolları için ince uyumluluk başlığı
@@ -96,7 +164,7 @@ python .\scripts\Test-JumpResetSources.py
 python .\scripts\Refresh-ProjectFilters.py
 ```
 
-18 offline testi tek komutla derleyip çalıştırmak için:
+Offline testleri tek komutla derleyip çalıştırmak için:
 
 ```sh
 python scripts/Test-Offline.py
@@ -110,7 +178,13 @@ kullanır; farklı derleyici yolu `--compiler` ile verilebilir. Testler assertio
 kontrolleri açık şekilde geçici klasörde derlenir. Modül tuş/lifecycle akışı,
 Vape motorları, Wolf aim matematiği, Triggerbot ve Jump Reset karar/input
 modelleri, ortak config serileştirme ve dört modül grubunun config testleri
-çalışır. Ek utility testi on modülün eski config alanlarını, varsayılanlarını,
+çalışır. PotRefill testi gerçek handler slot kimlikleriyle sıralamayı, dolu hotbar
+korumasını, tek bekleyen işlem kuralını, zaman aşımını ve iptal modelini sınar.
+FastStop testi tuş bırakma geçişini, zıt yön tuşlarını, düşey hızın korunmasını,
+ortam/hasar engellerini, geçersiz sayıları ve hareket geçmişinin sıfırlanmasını sınar.
+Crystal Aura testleri hedef kilidi/değişimini, havalanma sonrası aşamaları, gecikmeleri,
+zaman aşımını, oturum iptalini ve clicker/Triggerbot saldırı sahipliğini doğrular.
+Ek utility testi on bir modülün eski config alanlarını, varsayılanlarını,
 tamsayı sınırlarını ve gizli alanlarını doğrular. Ayar deposu testi iki eşzamanlı
 yazıcı ve bir okuyucuyla tutarlı snapshot ve işlem geri alma davranışını sınar.
 Kalan ayar modellerinin testi eski alan adlarını, renk/dizi/liste türlerini,

@@ -1,4 +1,5 @@
 #include "vape_module.hpp"
+#include "../../services/game/anti_bot_service.hpp"
 #include "game_bindings.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../../platform/adapter/game_adapter.hpp"
@@ -128,7 +129,7 @@ namespace vape_bridge
     {
         return entity && entity.is_instance_of<maps::PlayerEntity>() && !entity.is_same_object(player) &&
             entity.isAlive.call() == JNI_TRUE && entity.isInvisible.call() != JNI_TRUE &&
-            !friends::is_friend(entity);
+            !friends::is_friend(entity) && !services::anti_bot::is_bot(entity);
     }
     struct target_snapshot
     {
@@ -214,7 +215,7 @@ const char* modules::vape_module::conflict() const
     }
     if (kind == vape_kind::left) {
         if (active("triggerbot") || active("left_clicker") || active("shield_breaker") ||
-            active("mace_swap") || active("hit_crystal") || active("anchor_macro") || active("blatant_anchor_macro"))
+            active("mace_swap") || active("hit_crystal") || active("anchor_macro"))
             return gui::text("Pause: Wolf attack module is enabled", "Bekliyor: Wolf saldırı modülü açık");
     }
     if (kind == vape_kind::right && (active("right_clicker") || active("fast_exp")))

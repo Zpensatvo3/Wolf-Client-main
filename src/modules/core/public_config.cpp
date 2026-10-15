@@ -1,6 +1,7 @@
 #include "public_config.hpp"
 #include "module_registry.hpp"
 #include "config_json.hpp"
+#include "anchor_config_migration.hpp"
 #include <set>
 #include <vector>
 
@@ -43,6 +44,8 @@ bool modules::apply_public_config(const std::string& payload, std::string& messa
     };
     std::vector<pending_module> pending;
     std::set<std::string> seen;
+    const config_json::value* old_anchor = nullptr;
+    const config_json::value* old_blatant = nullptr;
     for (const auto& entry : list->items) {
         if (entry.type != kind::object) { message = "Config module entry must be an object."; return false; }
         const auto* id = entry.find("id");
@@ -59,13 +62,34 @@ bool modules::apply_public_config(const std::string& payload, std::string& messa
             message = id->text + ": expected enabled (bool), keybind (0-255) and settings (object).";
             return false;
         }
-        module* current = find_module_by_id(id->text);
+        const bool anchor_alias = id->text == "anchor_macro" || id->text == "blatant_anchor_macro";
+        module* current = find_module_by_id(anchor_alias ? "anchor_macro" : id->text);
         if (!current) continue; // Removed/unavailable modules do not block compatible ones.
+        if (anchor_alias)
+        {
+            const bool blatant = id->text == "blatant_anchor_macro";
+            const auto converted = config_migration::encode(config_migration::anchor_fields(*settings,blatant,
+                !blatant && config_migration::unified_anchor(*settings)));
+            if (!current->validate_config_settings(converted)) {
+                message = id->text + ": " + config_validation_error(*current,converted); return false;
+            }
+            (blatant ? old_blatant : old_anchor) = &entry;
+            continue;
+        }
         const std::string fields(settings->raw);
         if (!current->validate_config_settings(fields)) {
             message = id->text + ": " + config_validation_error(*current, fields); return false;
         }
         pending.push_back({current, enabled->boolean, *binding, fields, current->export_config_settings()});
+    }
+    if (old_anchor || old_blatant)
+    {
+        auto* target = find_module_by_id("anchor_macro");
+        const auto merged = config_migration::merge_anchor(old_anchor,old_blatant);
+        if (!target->validate_config_settings(merged.settings)) {
+            message = "anchor_macro: " + config_validation_error(*target,merged.settings); return false;
+        }
+        pending.push_back({target,merged.enabled,merged.keybind,merged.settings,target->export_config_settings()});
     }
     if (pending.empty()) { message = "This config has no compatible modules."; return false; }
     // Every entry is checked before any mutation. Restore earlier settings if an

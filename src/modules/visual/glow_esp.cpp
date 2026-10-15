@@ -1,4 +1,5 @@
 #include "glow_esp.hpp"
+#include "../../services/game/anti_bot_service.hpp"
 #include "../../ui/settings_renderer.hpp"
 #include "../../cache/cache.hpp"
 #include "../../platform/adapter/game_adapter.hpp"
@@ -31,16 +32,17 @@ void modules::glow_esp::run(::cache& cache)
                         if (!entity.is_instance_of<maps::PlayerEntity>()) continue;
                         
                         if (entity.isAlive.call() == JNI_FALSE) continue;
+                        const jboolean glow = services::anti_bot::is_bot(entity) ? JNI_FALSE : JNI_TRUE;
 
                         // Call native setGlowing function on the entity
                         try {
-                            entity.setGlowing(JNI_TRUE);
+                            entity.setGlowing(glow);
                         } catch (...) {
                             if (env->ExceptionCheck()) env->ExceptionClear();
                         }
                         
                         try {
-                            entity.setFlag(6, JNI_TRUE);
+                            entity.setFlag(6, glow);
                         } catch (...) {
                             if (env->ExceptionCheck()) env->ExceptionClear();
                         }

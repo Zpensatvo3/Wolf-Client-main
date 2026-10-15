@@ -1,6 +1,9 @@
 #include "../src/modules/core/public_config.hpp"
 #include "../src/modules/core/module_registry.hpp"
 #include "../src/modules/core/config_json.hpp"
+#include "../src/modules/combat/settings/anti_bot_settings.hpp"
+#include "../src/modules/combat/settings/anchor_macro_settings.hpp"
+#include "../src/modules/core/settings_store.hpp"
 #include <cassert>
 #include <iostream>
 #include <locale>
@@ -39,6 +42,15 @@ public:
         v.field("strength", strength); v.field("range", range);
         if (v.reading() && fail_apply && count == 13) v.reject("Simulated application failure.");
     }
+};
+
+class anchor_fixture final : public modules::module
+{
+public:
+    anchor_fixture() : module("anchor macro","Combat","anchor_macro") {}
+    modules::settings::store<module_settings::anchor_macro> settings;
+    void visit_config(modules::config_visitor& visitor) override
+    { settings.visit(visitor,module_settings::anchor_macro::schema()); }
 };
 
 int main()
@@ -100,6 +112,52 @@ int main()
     sample escaped("quoted\"id\n");
     registry = {&escaped};
     assert(modules::apply_public_config(modules::export_public_config(), message));
+    // An old config that omits a new module preserves its default-on state.
+    // An explicit saved false remains false; defaults never override imports.
+    sample anti_bot("anti_bot");
+    anti_bot.enabled = module_settings::anti_bot_default_enabled;
+    registry = {&a, &anti_bot};
+    assert(modules::apply_public_config(R"({"modules":[{"id":"sample","enabled":true,"keybind":0,"settings":{}}]})", message));
+    assert(anti_bot.enabled);
+    assert(modules::apply_public_config(R"({"modules":[{"id":"anti_bot","enabled":false,"keybind":0,"settings":{}}]})", message));
+    assert(!anti_bot.enabled);
+    const auto disabled_anti_bot = modules::export_public_config();
+    anti_bot.enabled = true;
+    assert(modules::apply_public_config(disabled_anti_bot, message) && !anti_bot.enabled);
+    anchor_fixture anchor;
+    registry = {&anchor,&a};
+    const std::string old_legit = R"({"id":"anchor_macro","enabled":false,"keybind":65,"settings":{"switch_delay":31,"action_delay":42,"jitter_ms":12,"camera_jitter":false}})";
+    const std::string old_blatant = R"({"id":"blatant_anchor_macro","enabled":true,"keybind":66,"settings":{"switch_delay":7,"action_delay":9,"return_delay":4,"jitter_ms":0}})";
+    const auto document = [](const std::string& first,const std::string& second) {
+        return "{\"modules\":["+first+","+second+"]}";
+    };
+    assert(modules::apply_public_config(document(old_legit,old_blatant),message));
+    auto merged = anchor.settings.read();
+    assert(anchor.enabled && anchor.get_keybind() == 66 && merged.mode == 1);
+    assert(merged.legit_switch_delay == 31 && merged.legit_place_delay == 42 && merged.legit_charge_delay == 42 && merged.legit_detonate_delay == 42);
+    assert(merged.legit_variance == 12 && merged.legit_randomize && !merged.legit_camera_movement);
+    assert(merged.blatant_switch_delay == 7 && merged.blatant_place_delay == 9 && merged.blatant_return_delay == 4 && !merged.blatant_randomize);
+    const auto migrated = modules::export_public_config();
+    assert(migrated.find("blatant_anchor_macro") == std::string::npos);
+    assert(modules::apply_public_config(document(old_blatant,old_legit),message));
+    assert(modules::export_public_config() == migrated); // Merge is independent of document order.
+    assert(modules::apply_public_config(migrated,message));
+    assert(modules::export_public_config() == migrated);
+    // Both enabled: prefer Legit to avoid unexpectedly selecting the faster mode.
+    const std::string both_legit = R"({"id":"anchor_macro","enabled":true,"keybind":70,"settings":{"switch_delay":50}})";
+    assert(modules::apply_public_config(document(both_legit,old_blatant),message));
+    assert(anchor.enabled && anchor.get_keybind() == 70 && anchor.settings.read().mode == 0);
+    const std::string modern = R"({"id":"anchor_macro","enabled":false,"keybind":71,"settings":{"mode":1,"blatant_place_delay":123}})";
+    assert(modules::apply_public_config(document(old_blatant,modern),message));
+    assert(!anchor.enabled && anchor.get_keybind() == 71 && anchor.settings.read().blatant_place_delay == 123);
+    const auto before_bad_anchor = modules::export_public_config();
+    assert(!modules::apply_public_config(R"({"modules":[
+        {"id":"sample","enabled":true,"keybind":1,"settings":{"count":99}},
+        {"id":"blatant_anchor_macro","enabled":true,"keybind":2,"settings":{"switch_delay":"bad"}}
+    ]})",message));
+    assert(modules::export_public_config() == before_bad_anchor);
+    assert(modules::apply_public_config("{\"modules\":["+old_blatant+"]}",message));
+    assert(anchor.settings.read().mode == 1 && anchor.get_keybind() == 66);
     std::locale::global(original_locale);
     std::cout << "Plain configs: legacy reads, strict JSON, Unicode, stable IDs, validation and failure rollback passed\n";
 }

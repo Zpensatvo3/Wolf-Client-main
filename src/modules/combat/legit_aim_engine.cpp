@@ -1,4 +1,5 @@
 #include "../../ui/settings_renderer.hpp"
+#include "../../services/game/anti_bot_service.hpp"
 #include "legit_aim_engine.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../../platform/adapter/game_adapter.hpp"
@@ -103,7 +104,7 @@ namespace
         const bool alive = entity.isAlive.call() == JNI_TRUE;
         const bool invisible = entity.isInvisible.call() == JNI_TRUE;
         if (platform::jni_context::clear_exception() || !is_player || self || !alive || invisible ||
-            friends::is_friend(entity) || platform::jni_context::clear_exception()) return result;
+            friends::is_friend(entity) || services::anti_bot::is_bot(entity) || platform::jni_context::clear_exception()) return result;
         geometry::bounds box;
         if (!read_bounds(entity, box)) return result;
         const double distance = geometry::distance_to_box(eye, box);

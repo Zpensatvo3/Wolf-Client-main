@@ -23,8 +23,8 @@ class storage_esp : public module
 	private:
         modules::settings::store<module_settings::storage_esp> settings_;
 		struct marker { double x, y, z; std::string label; };
-		int scan_index = 0;
-		int origin_x = 0, origin_y = 0, origin_z = 0;
+		std::size_t scan_index = 0;
+        std::chrono::steady_clock::time_point next_scan{}; // Worker-owned throttle.
 		std::vector<marker> markers{};
 		std::mutex marker_mutex{};
         services::game::overlay_session session_;

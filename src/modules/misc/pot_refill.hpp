@@ -3,24 +3,28 @@
 #include "../module_support.hpp"
 #include "../core/settings_store.hpp"
 #include "settings/pot_refill_settings.hpp"
+#include <memory>
 
 namespace modules
 {
 class pot_refill : public module
 	{
 	public:
-		pot_refill() : module("pot refill", "Player") {}
+		pot_refill();
+		~pot_refill() override;
 
 		void run(::cache& cache) override;
 		void render_overlay() override;
 		void render_options() override;
 		void on_disable(::cache& cache) override;
-		float get_options_height() override { return 54.0f; }
+		bool render_when_disabled() const override { return true; }
+		float get_options_height() override { return 240.0f; }
 		void visit_config(config_visitor& v) override { settings_.visit(v, module_settings::pot_refill::schema()); }
 
 	private:
 		modules::settings::store<module_settings::pot_refill> settings_;
-		std::chrono::steady_clock::time_point next_refill{};
+		struct runtime;
+		std::unique_ptr<runtime> runtime_;
 		std::atomic_bool reset_requested{ true };
 		int live_status = 0;
 		int live_health_potions = 0;

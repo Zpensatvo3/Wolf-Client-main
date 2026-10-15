@@ -3,6 +3,7 @@
 #endif
 
 #include <algorithm>
+#include "../../services/game/anti_bot_service.hpp"
 #include "../../cache/cache.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../../services/game/overlay_context.hpp"
@@ -90,6 +91,7 @@ void modules::radar::run(::cache& cache)
 				!entity.is_instance_of<maps::PlayerEntity>() ||
 				entity.isAlive.call() != JNI_TRUE || platform::jni_context::clear_exception())
 				return;
+			if (services::anti_bot::is_bot(entity)) return;
 			const maths::vector3d position = platform::adapter::get().get_position(entity);
 			const double delta_x = position.x - local_position.x;
 			const double delta_z = position.z - local_position.z;

@@ -1,4 +1,5 @@
 #include "nametag.hpp"
+#include "../../services/game/anti_bot_service.hpp"
 #include "../../ui/settings_renderer.hpp"
 #include "../../cache/cache.hpp"
 #include "../../platform/jni/jni_context.hpp"
@@ -389,7 +390,6 @@ std::string text_to_string(const maps::Text& text)
 
 void modules::nametag::run(::cache& cache)
 {
-    auto settings_snapshot = settings_.read();
 	jni::frame frame{};
 	JNIEnv* env = jni::get_env();
 	if (!env || !cache.is_valid() || !cache.instance || !cache.world || !cache.player) { clear_tag_snapshot(); return; }
@@ -490,6 +490,7 @@ void modules::nametag::run(::cache& cache)
 
 			if (entity.is_same_object(cache.player) || entity.isAlive.call() == JNI_FALSE)
 				continue;
+			if (services::anti_bot::is_bot(entity)) continue;
 
 			maps::PlayerEntity player(entity.object_instance);
 			maps::LivingEntity living(entity.object_instance);
@@ -523,8 +524,6 @@ void modules::nametag::run(::cache& cache)
 			const double dy = entry.y - local_position.y;
 			const double dz = entry.z - local_position.z;
 			entry.distance = static_cast<float>(std::sqrt(dx * dx + dy * dy + dz * dz));
-			if (entry.distance > settings_snapshot.max_distance)
-				continue;
 
 			try
 			{

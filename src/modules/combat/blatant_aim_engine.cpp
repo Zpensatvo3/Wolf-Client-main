@@ -1,4 +1,5 @@
 #include "../../ui/settings_renderer.hpp"
+#include "../../services/game/anti_bot_service.hpp"
 #include "blatant_aim_engine.hpp"
 #include "../../cache/cache.hpp"
 #include "../../platform/jni/jni_context.hpp"
@@ -164,7 +165,7 @@ void deactivate(blatant_aim_engine::runtime& state)
 		maps::Entity entity = maps::EntityHitResult(hit).entity.get();
 		if (!entity || !entity.is_instance_of<maps::PlayerEntity>() ||
 			entity.isAlive.call() != JNI_TRUE || platform::jni_context::clear_exception() ||
-			friends::is_friend(entity))
+			friends::is_friend(entity) || services::anti_bot::is_bot(entity))
 			return false;
 
 		state.locked_target_id = entity.getId.call();
@@ -327,7 +328,7 @@ void blatant_aim_engine::run(::cache& cache, config& settings, runtime& state)
 				!entity.is_instance_of<maps::PlayerEntity>() ||
 				entity.isAlive.call() != JNI_TRUE || platform::jni_context::clear_exception() ||
 				entity.isInvisible.call() == JNI_TRUE || platform::jni_context::clear_exception() ||
-				friends::is_friend(entity))
+				friends::is_friend(entity) || services::anti_bot::is_bot(entity))
 				continue;
 
 			const int id = entity.getId.call();

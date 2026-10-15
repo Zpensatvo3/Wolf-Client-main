@@ -11,6 +11,11 @@
 #include "../ui_redirect.hpp"
 #include "../../gui/gui.hpp"
 #include "../../mappings.hpp"
+#include "pot_refill_engine.hpp"
+#include "../../services/game/overlay_context.hpp"
+#include "../../services/input/input_service.hpp"
+#include "../../services/notifications/notification_service.hpp"
+#include <vector>
 
 
 namespace
@@ -47,15 +52,20 @@ bool is_instant_health_potion(const maps::ItemStack& stack)
 		return !platform::jni_context::clear_exception() && (healing_one || healing_two);
 	}
 
+	struct observed_slot
+	{
+		modules::pot_refill_logic::slot data;
+		maps::Slot slot;
+		maps::ItemStack stack;
+	};
+
 	bool find_player_slots(const maps::ScreenHandler& handler,
 		const maps::PlayerInventory& player_inventory,
-		int& empty_hotbar_index,
-		int& health_source_screen_slot,
+		std::vector<observed_slot>& output,
 		int& empty_count,
 		int& potion_count)
 	{
-		empty_hotbar_index = -1;
-		health_source_screen_slot = -1;
+		output.clear();
 		empty_count = 0;
 		potion_count = 0;
 
@@ -77,6 +87,9 @@ bool is_instant_health_potion(const maps::ItemStack& stack)
 
 			const int inventory_index = slot.index.get();
 			const int screen_slot = slot.id.get();
+			if (inventory_index < 0 || inventory_index >= 36 || screen_slot < 0 ||
+				slot.isEnabled.call() != JNI_TRUE || platform::jni_context::clear_exception())
+				continue;
 			maps::ItemStack stack = slot.getStack.call();
 			if (!stack || platform::jni_context::clear_exception())
 				continue;
@@ -85,29 +98,40 @@ bool is_instant_health_potion(const maps::ItemStack& stack)
 			if (platform::jni_context::clear_exception())
 				continue;
 
-			if (inventory_index >= 0 && inventory_index < 9)
-			{
-				if (empty)
-				{
-					++empty_count;
-					if (empty_hotbar_index < 0)
-						empty_hotbar_index = inventory_index;
-				}
-				continue;
-			}
-
-			if (inventory_index >= 9 && inventory_index < 36 &&
-				!empty && is_instant_health_potion(stack))
-			{
-				++potion_count;
-				if (health_source_screen_slot < 0)
-					health_source_screen_slot = screen_slot;
-			}
+			const bool healing = !empty && is_instant_health_potion(stack);
+			const int count = empty ? 0 : stack.getCount.call();
+			if (platform::jni_context::clear_exception()) return false;
+			if (inventory_index < 9 && empty) ++empty_count;
+			if (inventory_index >= 9 && healing) ++potion_count;
+			output.push_back({{inventory_index, screen_slot, empty, healing, count}, slot, stack});
 		}
 
 		return true;
 	}
 }
+
+struct modules::pot_refill::runtime
+{
+	pot_refill_logic::engine engine;
+	services::game::overlay_session session;
+	maps::Screen screen{nullptr, true};
+	maps::ScreenHandler handler{nullptr, true};
+	maps::ItemStack expected{nullptr, true};
+	int sync_id = -1;
+	std::optional<module_settings::pot_refill> settings;
+	void reset()
+	{
+		engine.reset();
+		session.reset();
+		screen = maps::Screen{};
+		handler = maps::ScreenHandler{};
+		expected = maps::ItemStack{};
+		sync_id = -1;
+	}
+};
+
+modules::pot_refill::pot_refill() : module("pot refill", "Player"), runtime_(std::make_unique<runtime>()) {}
+modules::pot_refill::~pot_refill() = default;
 
 void modules::pot_refill::run(::cache&)
 {
@@ -119,47 +143,82 @@ void modules::pot_refill::render_overlay()
 {
 	const auto settings_snapshot = settings_.read();
 	if (!platform::jni_context::bind_current_thread())
-		return;
-
-	jni::frame frame{ 96 };
-	if (reset_requested.exchange(false, std::memory_order_acq_rel))
 	{
-		next_refill = {};
-		live_status = 0;
-		live_health_potions = 0;
-		live_empty_hotbar = 0;
+		reset_requested.store(true, std::memory_order_release);
+		return;
+	}
+
+	jni::frame frame{ 512 };
+	auto& state = *runtime_;
+	const auto reset = [&] {
+		state.reset();
+		live_status = live_health_potions = live_empty_hotbar = 0;
+	};
+	if (reset_requested.exchange(false, std::memory_order_acq_rel) ||
+		!state.settings || *state.settings != settings_snapshot)
+	{
+		reset();
+		state.settings = settings_snapshot;
 	}
 
 	const HWND game_window = gui::get_window();
-	if (!game_window || GetForegroundWindow() != game_window || gui::draw || gui::loader_visible)
+	if (!enabled || !game_window || GetForegroundWindow() != game_window || gui::loader_visible)
+	{
+		reset();
 		return;
+	}
+	if (gui::draw)
+	{
+		// Keep explicitly labelled last-scan diagnostics visible in the menu,
+		// but discard every pending game action while the menu has focus.
+		state.reset();
+		live_status = 9;
+		return;
+	}
 
-	maps::MinecraftClient instance = maps::MinecraftClient{}.instance.get();
-	maps::ClientPlayerEntity player = instance ? instance.player.get() : maps::ClientPlayerEntity{};
-	maps::Screen current_screen = instance ? instance.currentScreen.get() : maps::Screen{};
-	if (!instance || !player || !current_screen || platform::jni_context::clear_exception() ||
-		!current_screen.is_instance_of<maps::HandledScreen>() || platform::jni_context::clear_exception())
+	services::game::client_context context;
+	if (!services::game::capture_client_context(context) || !context.screen ||
+		!context.screen.is_instance_of<maps::HandledScreen>() || platform::jni_context::clear_exception() ||
+		context.screen.is_instance_of<maps::CreativeInventoryScreen>() || platform::jni_context::clear_exception())
+	{
+		reset();
 		return;
+	}
+	auto& player = context.player;
 
 	const steady_clock::time_point now = steady_clock::now();
-	if (next_refill != steady_clock::time_point{} && now < next_refill)
-		return;
-
-	maps::HandledScreen inventory_screen(current_screen.object_instance, false);
+	maps::HandledScreen inventory_screen(context.screen.object_instance, false);
 	maps::ScreenHandler handler = inventory_screen.handler.get();
 	maps::ScreenHandler player_handler = player.currentScreenHandler.get();
 	if (!handler || !player_handler || platform::jni_context::clear_exception() ||
 		!handler.is_same_object(player_handler))
 	{
+		reset();
 		live_status = 1;
 		return;
+	}
+	const int sync_id = handler.syncId.get();
+	if (platform::jni_context::clear_exception()) { reset(); live_status = 1; return; }
+	const bool same_session = state.session.matches({context.world, player}) &&
+		state.screen.is_same_object(context.screen) && state.handler.is_same_object(handler) && state.sync_id == sync_id;
+	if (!same_session || platform::jni_context::clear_exception())
+	{
+		reset();
+		state.session.observe({context.world, player});
+		state.screen = context.screen;
+		state.handler = handler;
+		state.sync_id = sync_id;
+		state.engine.arm(now, pot_refill_logic::delay(settings_snapshot, gen));
 	}
 
 	// Never disturb an item the user is already holding with the cursor.
 	maps::ItemStack cursor_stack = handler.getCursorStack.call();
 	if (!cursor_stack || platform::jni_context::clear_exception() ||
-		cursor_stack.isEmpty.call() != JNI_TRUE || platform::jni_context::clear_exception())
+		cursor_stack.isEmpty.call() != JNI_TRUE || platform::jni_context::clear_exception() ||
+		services::input::physical_button_down(services::input::mouse_button::left) ||
+		services::input::physical_button_down(services::input::mouse_button::right))
 	{
+		reset();
 		live_status = 2;
 		return;
 	}
@@ -167,32 +226,92 @@ void modules::pot_refill::render_overlay()
 	maps::PlayerInventory inventory = player.getInventory.call();
 	if (!inventory || platform::jni_context::clear_exception())
 	{
+		reset();
 		live_status = 1;
 		return;
 	}
 
-	int hotbar_slot = -1;
-	int source_screen_slot = -1;
-	if (!find_player_slots(handler, inventory, hotbar_slot, source_screen_slot,
+	std::vector<observed_slot> slots;
+	if (!find_player_slots(handler, inventory, slots,
 		live_empty_hotbar, live_health_potions))
 	{
+		reset();
 		live_status = 1;
 		return;
 	}
-	if (hotbar_slot < 0)
+	const auto find = [&](int index, int id) -> const observed_slot* {
+		const observed_slot* result = nullptr;
+		for (const auto& slot : slots)
+			if (slot.data.inventory_index == index && slot.data.screen_id == id)
+			{
+				if (result) return nullptr;
+				result = &slot;
+			}
+		return result;
+	};
+	if (state.engine.pending())
+	{
+		const auto action = *state.engine.pending();
+		const auto* source = find(action.source_index, action.source_screen_id);
+		const auto* target = find(action.target_index, action.target_screen_id);
+		bool observed = source && target && source->data.empty && !target->data.empty && state.expected;
+		if (observed)
+		{
+			observed = maps::ItemStack{}.areItemsAndComponentsEqual.call(target->stack, state.expected) == JNI_TRUE &&
+				target->data.count == state.expected.getCount.call();
+			if (platform::jni_context::clear_exception()) observed = false;
+		}
+		// This validates fresh client inventory state, not a server ACK. Vanilla
+		// predicts clicks locally; every subsequent action still rescans all slots.
+		const auto result = state.engine.observe(now, observed);
+		if (result == pot_refill_logic::observation::completed)
+		{
+			state.expected = maps::ItemStack{};
+			state.engine.arm(now, pot_refill_logic::delay(settings_snapshot, gen));
+			live_status = 6;
+		}
+		else if (result == pot_refill_logic::observation::timed_out)
+		{
+			state.expected = maps::ItemStack{};
+			live_status = 7;
+			services::notifications::operation_result(gui::text(
+				"PotRefill stopped: reopen inventory to retry.", "PotRefill durdu: tekrar denemek icin envanteri ac."), false);
+		}
+		else live_status = 8;
+		return;
+	}
+	if (state.engine.blocked()) { live_status = 7; return; }
+	if (live_empty_hotbar == 0)
 	{
 		live_status = 3;
 		return;
 	}
-	if (source_screen_slot < 0)
+	if (live_health_potions == 0)
 	{
 		live_status = 4;
 		return;
 	}
 
-	maps::ClientPlayerInteractionManager interaction_manager = instance.interactionManager.get();
+	if (!state.engine.ready(now)) return;
+	std::vector<pot_refill_logic::slot> candidates;
+	for (const auto& slot : slots) candidates.push_back(slot.data);
+	const auto action = pot_refill_logic::select(candidates, settings_snapshot.slot_order, gen);
+	if (!action) { live_status = 1; return; }
+	const auto* source = find(action->source_index, action->source_screen_id);
+	const auto* target = find(action->target_index, action->target_screen_id);
+	if (!source || !target) { live_status = 1; return; }
+	// Re-read immediately before SWAP. Never replace any occupied hotbar slot.
+	auto source_stack = source->slot.getStack.call();
+	auto target_stack = target->slot.getStack.call();
+	if (!source_stack || !target_stack || platform::jni_context::clear_exception() ||
+		target_stack.isEmpty.call() != JNI_TRUE || !is_instant_health_potion(source_stack) ||
+		target->slot.canInsert.call(source_stack) != JNI_TRUE || platform::jni_context::clear_exception())
+	{ live_status = 2; return; }
+	state.expected = source_stack.copy.call();
+	if (!state.expected || platform::jni_context::clear_exception()) { live_status = 5; return; }
+
 	maps::SlotActionType swap_action = maps::SlotActionType{}.SWAP.get();
-	if (!interaction_manager || !swap_action || platform::jni_context::clear_exception())
+	if (!swap_action || platform::jni_context::clear_exception())
 	{
 		live_status = 5;
 		return;
@@ -201,20 +320,22 @@ void modules::pot_refill::render_overlay()
 	// SWAP's button is the destination hotbar inventory index (0..8). The source
 	// ID comes from the active handler's real Slot object, so custom layouts and
 	// remapped clients do not depend on PlayerScreenHandler's visual slot order.
-	interaction_manager.clickSlot.call(
-		handler.syncId.get(),
-		static_cast<jint>(source_screen_slot),
-		static_cast<jint>(hotbar_slot),
+	if (!state.engine.submitted(*action, now)) return;
+	context.interaction.clickSlot.call(
+		sync_id,
+		static_cast<jint>(action->source_screen_id),
+		static_cast<jint>(action->target_index),
 		swap_action,
 		player.toPlayerEntity());
 
 	if (!platform::jni_context::clear_exception())
 	{
-		live_status = 6;
-		next_refill = now + std::chrono::milliseconds(std::clamp(settings_snapshot.delay_ms, 50, 1000));
+		live_status = 8;
 	}
 	else
 	{
+		state.engine.stop();
+		state.expected = maps::ItemStack{};
 		live_status = 5;
 	}
 }
@@ -227,4 +348,20 @@ void modules::pot_refill::on_disable(::cache&)
 void modules::pot_refill::render_options()
 {
 	gui::settings::render(settings_, module_settings::pot_refill::schema());
+	ImGui::TextDisabled("%s", gui::text("Last inventory scan:", "Son envanter taramasi:"));
+	ImGui::TextDisabled("%s: %d | %s: %d", gui::text("Health Potions", "Can Iksiri"), live_health_potions,
+		gui::text("Empty Hotbar", "Bos Hotbar"), live_empty_hotbar);
+	const char* status = gui::text("Open inventory to refill", "Doldurmak icin envanteri ac");
+	switch (live_status)
+	{
+	case 1: status = gui::text("Waiting for inventory", "Envanter bekleniyor"); break;
+	case 2: status = gui::text("Paused for manual interaction", "Elle islem icin bekliyor"); break;
+	case 3: status = gui::text("Hotbar is full", "Hotbar dolu"); break;
+	case 4: status = gui::text("No health potions in inventory", "Envanterde can iksiri yok"); break;
+	case 5: case 7: status = gui::text("Stopped: reopen inventory", "Durdu: envanteri yeniden ac"); break;
+	case 6: status = gui::text("Refilling", "Dolduruluyor"); break;
+	case 8: status = gui::text("Checking inventory change", "Envanter degisimi kontrol ediliyor"); break;
+	case 9: status = gui::text("Paused while menu is open", "Menu acikken duraklatildi"); break;
+	}
+	ImGui::TextDisabled("%s", status);
 }

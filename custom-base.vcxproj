@@ -194,6 +194,8 @@
     <ClCompile Include="src\ui\grim_ui.cpp" />
     <ClCompile Include="src\ui\hud_editor.cpp" />
     <ClCompile Include="src\ui\config_page.cpp" />
+    <ClCompile Include="src\ui\notification_renderer.cpp" />
+    <ClCompile Include="src\services\notifications\notification_service.cpp" />
     <ClCompile Include="src\jvmti\jvmti.cpp" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\app\runtime.cpp" />
@@ -206,6 +208,7 @@
     <ClCompile Include="src\services\game\client_context.cpp" />
     <ClCompile Include="src\services\game\inventory_service.cpp" />
     <ClCompile Include="src\services\game\target_service.cpp" />
+    <ClCompile Include="src\services\game\anti_bot_service.cpp" />
     <ClCompile Include="src\services\game\attack_service.cpp" />
     <ClCompile Include="src\services\game\attack_coordinator.cpp" />
     <ClCompile Include="src\services\input\input_service.cpp" />
@@ -592,12 +595,16 @@
     <ClInclude Include="src\modules\core\module_runtime_state.hpp" />
     <ClInclude Include="src\modules\core\config_fields.hpp" />
     <ClInclude Include="src\modules\core\config_json.hpp" />
+    <ClInclude Include="src\modules\core\anchor_config_migration.hpp" />
     <ClInclude Include="src\modules\core\module_registry.hpp" />
     <ClInclude Include="src\modules\core\public_config.hpp" />
     <ClInclude Include="src\modules\modules.hpp" />
     <ClInclude Include="src\modules\module_*.hpp" />
     <ClInclude Include="src\modules\ui_redirect.hpp" />
     <ClInclude Include="src\modules\client\*.hpp" />
+    <ClInclude Include="src\modules\client\settings\*.hpp" />
+    <ClInclude Include="src\ui\notification_renderer.hpp" />
+    <ClInclude Include="src\services\notifications\*.hpp" />
     <ClInclude Include="src\modules\combat\*.hpp" />
     <ClInclude Include="src\modules\misc\*.hpp" />
     <ClInclude Include="src\modules\render\*.hpp" />

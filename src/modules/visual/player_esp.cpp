@@ -1,4 +1,5 @@
 #include "../modules.hpp"
+#include "../../services/game/anti_bot_service.hpp"
 #include "../../ui/settings_renderer.hpp"
 #include "../../gui/gui.hpp"
 #include "../../platform/adapter/game_adapter.hpp"
@@ -86,6 +87,7 @@ static bool read_render_players(const services::game::client_context& context, s
 			!entity.is_instance_of<maps::PlayerEntity>() ||
 			entity.isAlive.call() != JNI_TRUE || clear_render_exception())
 			continue;
+		if (services::anti_bot::is_bot(entity)) continue;
 		maps::Box bounds = entity.boundingBox.get();
 		maps::Vec3d current = entity.pos.get();
 		maps::Vec3d lerped = entity.getLerpedPos.call(tick_delta);
@@ -420,6 +422,7 @@ void modules::player_esp::run(::cache& cache)
                             
                             // Check if it's a player
                             if (!entity.is_instance_of<maps::PlayerEntity>()) continue;
+                            if (services::anti_bot::is_bot(entity)) continue;
 
                             // Cast to LivingEntity for health
                             maps::LivingEntity player(entity.object_instance);

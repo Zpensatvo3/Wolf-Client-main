@@ -5,6 +5,7 @@
 
 #include "../../cache/cache.hpp"
 #include "anchor_config.hpp"
+#include "../../services/game/overlay_context.hpp"
 
 namespace anchor_engine
 {
@@ -25,6 +26,8 @@ namespace anchor_engine
 		};
 
 		std::mutex mutex{};
+		services::game::overlay_session session;
+		int owned_slot = -1;
 		phase current = phase::idle;
 		int old_slot = -1;
 		int anchor_slot = -1;
@@ -42,6 +45,7 @@ namespace anchor_engine
 		int anchor_z = 0;
 		int retries = 0;
 		int confirmation_timeout_ms = 0;
+		int retry_interval_ms = 65;
 		std::chrono::steady_clock::time_point next_action{};
 		std::chrono::steady_clock::time_point phase_started{};
 		std::chrono::steady_clock::time_point last_attempt{};
@@ -52,5 +56,6 @@ namespace anchor_engine
 	// wrapper then turns itself off.
 	bool run_overlay(config& settings, runtime& state, profile mode);
 	void stop(::cache& cache, runtime& state);
+	void cancel_on_client_thread(runtime& state);
 	void render_options(config& settings, profile mode, const char* id_suffix);
 }

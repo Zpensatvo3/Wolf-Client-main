@@ -2,6 +2,7 @@
 #define NOMINMAX
 #endif
 #include "trigger_adapter.hpp"
+#include "../../services/game/anti_bot_service.hpp"
 #include "mace_swap.hpp"
 #include "shield_breaker.hpp"
 #include "../../gui/gui.hpp"
@@ -68,6 +69,7 @@ namespace
         const bool mob = target.is_instance_of<maps::MobEntity>();
         if (platform::jni_context::clear_exception()) return false;
         if (player && friends::is_friend(target)) return false;
+        if (player && services::anti_bot::is_bot(target)) return false;
         return mode == target_mode::players ? player : mode == target_mode::players_and_mobs
             ? player || (mob && !animal) : player || mob || animal;
     }

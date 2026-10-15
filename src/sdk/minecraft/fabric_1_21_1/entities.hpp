@@ -7,6 +7,7 @@ namespace maps
 		BEGIN_KLASS_DEF(Entity, "net/minecraft/class_1297")
 		jni::method<jfloat, "method_5739", jni::NOT_STATIC, Entity> distanceTo{ *this };
 		jni::method<jint, "method_5628"> getId{ *this };
+        jni::method<World, "method_37908"> getWorld{ *this };
     jni::field<jint, "field_6012"> age{ *this };
     jni::field<Vec3d, "field_22467"> pos{ *this };
     jni::field<jfloat, "field_6031"> yaw{ *this };
@@ -23,6 +24,7 @@ namespace maps
     jni::method<jboolean, "method_24828"> isOnGround{ *this };
     jni::method<jboolean, "method_5809"> isOnFire{ *this };
     jni::method<jboolean, "method_5799"> isTouchingWater{ *this };
+    jni::method<jboolean, "method_5771"> isInLava{ *this };
     jni::method<jboolean, "method_5757"> isInsideWall{ *this };
     jni::field<jdouble, "field_6038"> lastRenderX{ *this };
     jni::field<jdouble, "field_5971"> lastRenderY{ *this };
@@ -79,6 +81,7 @@ namespace maps
     jni::method<Text, "method_23315"> getDefaultName{ *this };
     jni::method<String, "method_5820"> getEntityName{ *this };
     jni::method<jboolean, "method_5805"> isAlive{ *this };
+    jni::method<jboolean, "method_7325"> isSpectator{ *this };
     jni::method<HitResult, "method_5745", jni::NOT_STATIC, jdouble, jfloat, jboolean> raycast{ *this };
 		jni::method<jboolean, "method_5624", jni::NOT_STATIC> isSprinting{ *this };
 		jni::method<jboolean, "method_5765", jni::NOT_STATIC> hasVehicle{ *this };
@@ -97,6 +100,10 @@ namespace maps
     jni::method<jboolean, "method_5807"> isCustomNameVisible{ *this };
     jni::method<void, "method_5880", jni::NOT_STATIC, jboolean> setCustomNameVisible{ *this };
         jni::method<Vec3d, "method_30950", jni::NOT_STATIC, jfloat> getLerpedPos{ *this };
+    END_KLASS_DEF()
+
+    BEGIN_KLASS_DEF_EX(ItemEntity, "net/minecraft/class_1542", Entity)
+        jni::method<ItemStack, "method_6983"> getStack{ *this };
     END_KLASS_DEF()
 
 	BEGIN_KLASS_MEMBERS(RaycastContext)

@@ -5,6 +5,7 @@
 namespace maps
 {
 	BEGIN_KLASS_DEF(ActionResult, "net/minecraft/class_1269")
+        jni::method<jboolean, "method_23665"> isAccepted{ *this };
 	END_KLASS_DEF()
 
         BEGIN_KLASS_DEF_EX(EntityHitResult, "net/minecraft/class_3966", HitResult)
@@ -64,10 +65,6 @@ namespace maps
 
         BEGIN_KLASS_DEF(ServerInfo, "net/minecraft/class_642")
         END_KLASS_DEF()
-
-        BEGIN_KLASS_DEF(UUID, "java/util/UUID")
-        jni::method<String, "toString", jni::NOT_STATIC> toString{ *this };
-    END_KLASS_DEF()
 
         BEGIN_KLASS_DEF(Session, "net/minecraft/class_320")
         jni::method<String, "method_1676", jni::NOT_STATIC> getUsername{ *this };

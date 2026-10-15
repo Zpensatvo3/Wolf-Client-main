@@ -4,6 +4,7 @@
 #include "../modules/core/module_registry.hpp"
 #include "../platform/jni/jni_context.hpp"
 #include "../services/input/input_service.hpp"
+#include "../services/notifications/notification_service.hpp"
 #include <Windows.h>
 
 namespace
@@ -40,6 +41,10 @@ void app::module_loop::tick(::cache& game)
             pressed = binding != gui::menu_key && services::input::physical_key_down(VK_SPACE);
         if (keys_[entry].sample(binding, pressed, allow_input))
             entry->enabled = !entry->enabled;
+        const bool before = entry->prev_enabled;
         modules::tick_module(*entry, game);
+        if (notifications_initialized_ && before != entry->prev_enabled && !gui::should_unload)
+            services::notifications::module_changed(entry->get_id(), entry->get_name(), entry->prev_enabled);
     }
+    notifications_initialized_ = true; // Startup/defaults are a baseline, not a popup burst.
 }

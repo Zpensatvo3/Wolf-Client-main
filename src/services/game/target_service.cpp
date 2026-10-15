@@ -1,4 +1,5 @@
 #include "target_service.hpp"
+#include "anti_bot_service.hpp"
 
 #include "../../friends/friends.hpp"
 #include "../../platform/jni/jni_context.hpp"
@@ -53,6 +54,7 @@ maps::Entity services::target::living_crosshair_target(
         return {};
     if (ignore_friends && entity.is_instance_of<maps::PlayerEntity>() && friends::is_friend(entity))
         return {};
+    if (services::anti_bot::is_bot(entity)) return {};
     return entity;
 }
 

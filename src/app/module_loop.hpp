@@ -14,5 +14,6 @@ namespace app
         void tick(::cache& game);
     private:
         std::unordered_map<modules::module*, modules::key_edge> keys_;
+        bool notifications_initialized_ = false;
     };
 }

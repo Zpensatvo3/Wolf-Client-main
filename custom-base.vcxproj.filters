@@ -151,6 +151,9 @@
     <Filter Include="Header Files\src\services\input">
       <UniqueIdentifier>{656BFDCA-3AA1-5601-A8C9-D3D0AD133FDD}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\src\services\notifications">
+      <UniqueIdentifier>{E018729F-6922-5796-96C2-9E55C87BDD51}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Source Files\src\modules\client">
       <UniqueIdentifier>{5DB07FBC-3C12-5B6E-8795-5305C0A0A077}</UniqueIdentifier>
     </Filter>
@@ -183,6 +186,9 @@
     </Filter>
     <Filter Include="Source Files\src\services\input">
       <UniqueIdentifier>{C8626C03-3CDA-59B7-AF60-290F25F507FE}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\src\services\notifications">
+      <UniqueIdentifier>{45E5B4DD-CE39-5162-A5A7-782F680FDE85}</UniqueIdentifier>
     </Filter>
     <Filter Include="Third Party\include\glm\common.hpp">
       <UniqueIdentifier>{64528086-6B75-559F-B4B7-E9754E04C4A8}</UniqueIdentifier>
@@ -364,6 +370,9 @@
     <Filter Include="Third Party\include\minhook\trampoline.h">
       <UniqueIdentifier>{FD6ECE63-9F43-5B1F-9AED-840C38917DC1}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\src\modules\client\settings">
+      <UniqueIdentifier>{E90F41F9-A504-5FBF-8241-0B47F0AEE012}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Header Files\src\modules\combat\settings">
       <UniqueIdentifier>{B9CB8704-C38D-5BF5-B9FA-35735C6332C0}</UniqueIdentifier>
     </Filter>
@@ -453,6 +462,12 @@
     <ClCompile Include="src\ui\config_page.cpp">
       <Filter>Source Files\src\ui</Filter>
     </ClCompile>
+    <ClCompile Include="src\ui\notification_renderer.cpp">
+      <Filter>Source Files\src\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\services\notifications\notification_service.cpp">
+      <Filter>Source Files\src\services\notifications</Filter>
+    </ClCompile>
     <ClCompile Include="src\jvmti\jvmti.cpp">
       <Filter>Source Files\src\jvmti</Filter>
     </ClCompile>
@@ -487,6 +502,9 @@
       <Filter>Source Files\src\services\game</Filter>
     </ClCompile>
     <ClCompile Include="src\services\game\target_service.cpp">
+      <Filter>Source Files\src\services\game</Filter>
+    </ClCompile>
+    <ClCompile Include="src\services\game\anti_bot_service.cpp">
       <Filter>Source Files\src\services\game</Filter>
     </ClCompile>
     <ClCompile Include="src\services\game\attack_service.cpp">
@@ -1640,6 +1658,9 @@
     <ClInclude Include="src\modules\core\config_json.hpp">
       <Filter>Header Files\src\modules\core</Filter>
     </ClInclude>
+    <ClInclude Include="src\modules\core\anchor_config_migration.hpp">
+      <Filter>Header Files\src\modules\core</Filter>
+    </ClInclude>
     <ClInclude Include="src\modules\core\module_registry.hpp">
       <Filter>Header Files\src\modules\core</Filter>
     </ClInclude>
@@ -1657,6 +1678,15 @@
     </ClInclude>
     <ClInclude Include="src\modules\client\*.hpp">
       <Filter>Header Files\src\modules\client</Filter>
+    </ClInclude>
+    <ClInclude Include="src\modules\client\settings\*.hpp">
+      <Filter>Header Files\src\modules\client\settings</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ui\notification_renderer.hpp">
+      <Filter>Header Files\src\ui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\services\notifications\*.hpp">
+      <Filter>Header Files\src\services\notifications</Filter>
     </ClInclude>
     <ClInclude Include="src\modules\combat\*.hpp">
       <Filter>Header Files\src\modules\combat</Filter>

@@ -15,7 +15,19 @@ TESTS = {
     "aimassist_math": ["tests/aimassist_math_test.cpp"],
     "trigger_engine": ["tests/trigger_engine_test.cpp", "src/modules/combat/trigger_engine.cpp"],
     "trigger_input": ["tests/trigger_input_test.cpp", "src/services/game/attack_coordinator.cpp"],
+    "crystal_aura_engine": ["tests/crystal_aura_engine_test.cpp"],
+    "anchor_timing": ["tests/anchor_timing_test.cpp"],
+    "crystal_aura_ownership": ["tests/crystal_aura_ownership_test.cpp", "src/services/game/attack_coordinator.cpp"],
     "jump_reset_engine": ["tests/jump_reset_engine_test.cpp"],
+    "no_jump_delay": ["tests/no_jump_delay_test.cpp"],
+    "fast_stop_engine": ["tests/fast_stop_engine_test.cpp"],
+    "inv_walk_engine": ["tests/inv_walk_engine_test.cpp"],
+    "pot_refill_engine": ["tests/pot_refill_engine_test.cpp"],
+    "anti_bot_engine": ["tests/anti_bot_engine_test.cpp"],
+    "notification_model": ["tests/notification_model_test.cpp", "src/services/notifications/notification_service.cpp"],
+    "notification_renderer": ["tests/notification_renderer_test.cpp", "src/ui/notification_renderer.cpp",
+                              "include/imgui/imgui.cpp", "include/imgui/imgui_draw.cpp", "include/imgui/imgui_widgets.cpp", "include/imgui/imgui_tables.cpp"],
+    "item_esp_geometry": ["tests/item_esp_geometry_test.cpp"],
     "config_fields": ["tests/config_fields_test.cpp", "src/modules/core/config_fields.cpp"],
     "aimassist_config": ["tests/aimassist_config_test.cpp", "src/modules/core/config_fields.cpp"],
     "jump_reset_config": ["tests/jump_reset_config_test.cpp", "src/modules/core/config_fields.cpp"],
@@ -54,7 +66,7 @@ def main():
                 command += ["/nologo", "/std:c++20", "/EHsc", "/UNDEBUG", "/W4", f"/Fe:{output}"]
             else:
                 command += ["-std=c++20", "-UNDEBUG", "-Wall", "-Wextra", "-pedantic", "-pthread", "-o", str(output)]
-            if name == "settings_renderer":
+            if name in ("settings_renderer", "notification_renderer"):
                 command += [f"/I{ROOT / 'include'}"] if msvc else ["-I", str(ROOT / "include")]
             if name == "sdk_mappings":
                 platform = "win32" if os.name == "nt" else "linux"
@@ -65,6 +77,9 @@ def main():
                 headers = [sdk / name for name in json.loads((sdk / "manifest.json").read_text(encoding="utf-8"))["headers"]]
                 headers += [ROOT / name for name in (
                     "src/services/game/overlay_context.hpp",
+                    "src/services/game/loaded_chunks.hpp", "src/modules/visual/item_esp.hpp",
+                    "src/modules/misc/inv_walk.hpp",
+                    "src/services/game/anti_bot_service.hpp", "src/modules/combat/anti_bot.hpp",
                     "src/modules/visual/storage_esp.hpp", "src/modules/visual/block_esp.hpp")]
                 # Each domain must compile without a later umbrella completing it.
                 for header in headers:

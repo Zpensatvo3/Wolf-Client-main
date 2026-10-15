@@ -11,6 +11,8 @@ namespace anchor_engine
         int switch_delay = 28, action_delay = 38, shield_delay = 45;
         int return_delay = 24, timing_variance = 14;
         float camera_strength = .28f;
+        bool separate_delays = false;
+        int place_delay = 0, charge_delay = 0, detonate_delay = 0;
         bool operator==(const config&) const = default;
     };
     inline std::span<const modules::settings::descriptor<config>> schema(profile mode)

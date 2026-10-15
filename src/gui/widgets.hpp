@@ -24,7 +24,7 @@ namespace gui
     void status_badge(const char* label, bool accent = false);
     void list_row_background(const ImVec2& minimum, const ImVec2& maximum, bool hovered, bool selected = false);
     void push_workspace_toast(const std::string& message, bool success = true);
-    void render_workspace_toast(const ImVec2& window_min, const ImVec2& window_max);
+    void render_notifications();
 
     bool option_toggle(const char* label, bool* value);
     bool option_slider(const char* label, float* value, float minimum, float maximum,

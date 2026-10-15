@@ -13,8 +13,6 @@ namespace
         return new Module();
     }
 
-    modules::module* create_anchor() { return new modules::anchor_macro(); }
-    modules::module* create_blatant_anchor() { return new modules::anchor_macro(true); }
 
     struct descriptor
     {
@@ -26,20 +24,23 @@ namespace
         { "friends_manager", &create_module<modules::friend_manager> },
         { "click_gui", &create_module<modules::click_gui> },
         { "panic", &create_module<modules::panic> },
+        { "notifications", &create_module<modules::notifications> },
+        { "anti_bot", &create_module<modules::anti_bot> },
         { "legit_click_aim_assist", &create_module<modules::aimassist> },
         { "blatant_click_aim_assist", &create_module<modules::blatant_clickaimassist> },
         { "aim_assist", &create_module<modules::clickaimassist> },
         { "triggerbot", &create_module<modules::triggerbot> },
         { "mace_swap", &create_module<modules::mace_swap> },
-        { "anchor_macro", &create_anchor },
-        { "blatant_anchor_macro", &create_blatant_anchor },
+        { "anchor_macro", &create_module<modules::anchor_macro> },
         { "safe_anchor", &create_module<modules::safe_anchor> },
         { "hit_crystal", &create_module<modules::hit_crystal> },
+        { "crystal_aura", &create_module<modules::crystal_aura> },
         { "watermark", &create_module<modules::hud> },
         { "arraylist", &create_module<modules::arraylist> },
         { "glow_esp", &create_module<modules::glow_esp> },
         { "chams", &create_module<modules::chams> },
         { "player_esp", &create_module<modules::player_esp> },
+        { "item_esp", &create_module<modules::item_esp> },
         { "storage_esp", &create_module<modules::storage_esp> },
         { "block_esp", &create_module<modules::block_esp> },
         { "radar", &create_module<modules::radar> },
@@ -56,6 +57,9 @@ namespace
         { "auto_tool", &create_module<modules::auto_tool> },
         { "auto_armor", &create_module<modules::auto_armor> },
         { "sprint", &create_module<modules::sprint> },
+        { "no_jump_delay", &create_module<modules::no_jump_delay> },
+        { "fast_stop", &create_module<modules::fast_stop> },
+        { "inv_walk", &create_module<modules::inv_walk> },
         { "trajectories", &create_module<modules::trajectories> },
         { "bridge_assist", &create_module<modules::bridge_assist> },
         { "right_clicker", &create_module<modules::right_clicker> },

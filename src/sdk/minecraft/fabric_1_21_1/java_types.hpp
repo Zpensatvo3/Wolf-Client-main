@@ -46,6 +46,10 @@ namespace maps
     }
     END_KLASS_DEF()
 
+    BEGIN_KLASS_DEF(UUID, "java/util/UUID")
+        jni::method<String, "toString"> toString{ *this };
+    END_KLASS_DEF()
+
         BEGIN_KLASS_DEF(Collection, "java/util/Collection")
         jni::method<jni::array<Object>, "toArray"> toArray{ *this };
     END_KLASS_DEF()
@@ -65,6 +69,15 @@ namespace maps
 	BEGIN_KLASS_DEF(Iterable, "java/lang/Iterable")
 		jni::method<Iterator, "iterator"> iterator{ *this };
 	END_KLASS_DEF()
+
+    BEGIN_KLASS_DEF(Map, "java/util/Map")
+        jni::method<Collection, "values"> values{ *this };
+    END_KLASS_DEF()
+
+    BEGIN_KLASS_DEF(AtomicReferenceArray, "java/util/concurrent/atomic/AtomicReferenceArray")
+        jni::method<jint, "length"> length{ *this };
+        jni::method<Object, "get", jni::NOT_STATIC, jint> get{ *this };
+    END_KLASS_DEF()
 
         BEGIN_KLASS_DEF(URL, "java/net/URL")
         jni::constructor<String> constructor{ *this };
