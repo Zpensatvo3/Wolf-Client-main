@@ -1,4 +1,5 @@
 #include "chest_stealer.hpp"
+#include "../../ui/settings_renderer.hpp"
 #include "../../cache/cache.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../ui_redirect.hpp"
@@ -11,7 +12,7 @@
 
 #include <imgui/imgui.h>
 
-#include "../gui/gui.hpp"
+#include "../../gui/gui.hpp"
 
 
 namespace
@@ -35,6 +36,7 @@ void modules::chest_stealer::run(::cache&)
 
 void modules::chest_stealer::render_overlay()
 {
+	const auto settings_snapshot = settings_.read();
 	if (!platform::jni_context::bind_current_thread())
 		return;
 
@@ -71,7 +73,7 @@ void modules::chest_stealer::render_overlay()
 		{
 			chest_seen = true;
 			next_action_time = now + std::chrono::milliseconds(
-				std::clamp(open_reaction_ms, 25, 800));
+				std::clamp(settings_snapshot.open_reaction_ms, 25, 800));
 			return;
 		}
 		if (next_action_time != steady_clock::time_point{} && now < next_action_time)
@@ -112,7 +114,7 @@ void modules::chest_stealer::render_overlay()
 			return;
 
 		int selected_slot = candidates.front();
-		if (random_slot_order && candidates.size() > 1)
+		if (settings_snapshot.random_slot_order && candidates.size() > 1)
 		{
 			std::uniform_int_distribution<std::size_t> pick(0, candidates.size() - 1);
 			selected_slot = candidates[pick(chest_random)];
@@ -127,7 +129,7 @@ void modules::chest_stealer::render_overlay()
 			player.toPlayerEntity());
 		if (!platform::jni_context::clear_exception())
 			next_action_time = now + std::chrono::milliseconds(
-				next_delay(min_delay_ms, max_delay_ms));
+				next_delay(settings_snapshot.min_delay_ms, settings_snapshot.max_delay_ms));
 	}
 	catch (...)
 	{
@@ -144,13 +146,5 @@ void modules::chest_stealer::on_disable(::cache&)
 
 void modules::chest_stealer::render_options()
 {
-	ImGui::SliderInt(gui::text("Open Reaction", "Acilis Tepkisi"),
-		&open_reaction_ms, 25, 500, "%d ms");
-	ImGui::SliderInt(gui::text("Minimum Delay", "Minimum Gecikme"),
-		&min_delay_ms, 25, 500, "%d ms");
-	ImGui::SliderInt(gui::text("Maximum Delay", "Maksimum Gecikme"),
-		&max_delay_ms, min_delay_ms, 800, "%d ms");
-	ImGui::Checkbox(gui::text("Random Slot Order", "Rastgele Slot Sirasi"), &random_slot_order);
-	min_delay_ms = std::clamp(min_delay_ms, 25, 500);
-	max_delay_ms = std::clamp(max_delay_ms, min_delay_ms, 800);
+	gui::settings::render(settings_, module_settings::chest_stealer::schema());
 }

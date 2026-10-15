@@ -111,7 +111,6 @@ namespace
         if (!std::isfinite(value.window_position.y)) value.window_position.y = 0.0f;
         if (!std::isfinite(value.window_size.x)) value.window_size.x = 1280.0f;
         if (!std::isfinite(value.window_size.y)) value.window_size.y = 620.0f;
-        if (!std::isfinite(value.sound_volume)) value.sound_volume = 0.70f;
         value.version = 1;
         value.layout = static_cast<gui::aegis::layout_mode>(
             std::clamp(static_cast<int>(value.layout), 0, 1));
@@ -119,7 +118,6 @@ namespace
             std::clamp(static_cast<int>(value.energy), 0, 2));
         value.window_size.x = std::clamp(value.window_size.x, 980.0f, 1800.0f);
         value.window_size.y = std::clamp(value.window_size.y, 520.0f, 1100.0f);
-        value.sound_volume = std::clamp(value.sound_volume, 0.0f, 1.0f);
         for (auto& item : value.hud_layout)
         {
             item.x = std::isfinite(item.x) ? std::clamp(item.x, 0.f, 32768.f) : 10.f;
@@ -154,8 +152,6 @@ void gui::aegis::load_preferences()
     float x = 0.0f, y = 0.0f, width = 1280.0f, height = 620.0f;
     bool has_geometry = false;
     bool reduce_motion = false;
-    bool sound_effects = true;
-    float sound_volume = 0.70f;
     if (!read_integer(source, "version", version) || version != 1) return;
     read_integer(source, "layout", layout);
     read_integer(source, "energy", energy);
@@ -165,10 +161,6 @@ void gui::aegis::load_preferences()
     read_number(source, "window_y", y);
     read_number(source, "window_width", width);
     read_number(source, "window_height", height);
-    if (read_boolean(source, "sound_effects", sound_effects))
-        state.sound_effects = sound_effects;
-    if (read_number(source, "sound_volume", sound_volume))
-        state.sound_volume = sound_volume;
 
     int theme = 0;
     int language = 0;
@@ -229,10 +221,7 @@ void gui::aegis::flush_preferences(bool force)
             << "  \"language\": " << gui::active_language << ",\n"
             << "  \"reduce_motion\": " << (state.reduce_motion ? "true" : "false") << ",\n"
             << "  \"has_geometry\": " << (state.has_geometry ? "true" : "false") << ",\n"
-            << "  \"sound_effects\": " << (state.sound_effects ? "true" : "false") << ",\n"
-            << std::fixed << std::setprecision(2)
-            << "  \"sound_volume\": " << state.sound_volume << ",\n"
-            << std::setprecision(1)
+            << std::fixed << std::setprecision(1)
             << "  \"window_x\": " << state.window_position.x << ",\n"
             << "  \"window_y\": " << state.window_position.y << ",\n"
             << "  \"window_width\": " << state.window_size.x << ",\n"

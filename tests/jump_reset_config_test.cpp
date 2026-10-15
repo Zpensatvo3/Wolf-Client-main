@@ -55,5 +55,5 @@ int main()
     }
     config defaults;
     assert(defaults.mode == 0 && defaults.chance == 100 && defaults.jump_delay_ms == 0 && defaults.only_combat);
-    std::cout << "Jump settings v3 compatibility, presets, input-route preservation and atomic import passed.\n";
+    std::cout << "Jump settings compatibility, presets, input-route preservation and atomic import passed.\n";
 }

@@ -1,4 +1,5 @@
 #include "auto_armor.hpp"
+#include "../../ui/settings_renderer.hpp"
 #include "../../cache/cache.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../ui_redirect.hpp"
@@ -8,7 +9,7 @@
 
 #include <imgui/imgui.h>
 
-#include "../gui/gui.hpp"
+#include "../../gui/gui.hpp"
 
 namespace
 {
@@ -86,6 +87,7 @@ void modules::auto_armor::reset_runtime()
 
 void modules::auto_armor::run(::cache& cache)
 {
+	const auto settings_snapshot = settings_.read();
 	if (gui::draw || !cache.is_valid() || !cache.instance || !cache.player || !jni::get_env())
 	{
 		reset_runtime();
@@ -128,7 +130,7 @@ void modules::auto_armor::run(::cache& cache)
 
 				maps::Object worn_object = armor.get.call(type);
 				maps::ItemStack worn(worn_object.object_instance, false);
-				if (protect_elytra && type == 2 && is_elytra(worn)) continue;
+				if (settings_snapshot.protect_elytra && type == 2 && is_elytra(worn)) continue;
 				const int worn_score = armor_score(worn);
 				const int gain = candidate_score - worn_score;
 				if (gain > highest_gain)
@@ -148,7 +150,7 @@ void modules::auto_armor::run(::cache& cache)
 				return;
 			}
 			current_state = state::pickup_source;
-			next_action = steady_clock::now() + std::chrono::milliseconds(std::clamp(action_delay_ms, 40, 500));
+			next_action = steady_clock::now() + std::chrono::milliseconds(std::clamp(settings_snapshot.action_delay_ms, 40, 500));
 			return;
 		}
 
@@ -157,7 +159,7 @@ void modules::auto_armor::run(::cache& cache)
 		{
 			if (!click_slot(cache, handler, armor_screen_slot)) { reset_runtime(); return; }
 			current_state = state::pickup_armor;
-			next_action = steady_clock::now() + std::chrono::milliseconds(std::clamp(action_delay_ms, 40, 500));
+			next_action = steady_clock::now() + std::chrono::milliseconds(std::clamp(settings_snapshot.action_delay_ms, 40, 500));
 			return;
 		}
 		if (current_state == state::pickup_armor)
@@ -179,8 +181,7 @@ void modules::auto_armor::on_disable(::cache&)
 
 void modules::auto_armor::render_options()
 {
-	ImGui::Checkbox(gui::text("Protect Elytra", "Elytra'yi Koru"), &protect_elytra);
-	ImGui::SliderInt(gui::text("Click Delay", "Tik Gecikmesi"), &action_delay_ms, 40, 500, "%d ms");
+	gui::settings::render(settings_, module_settings::auto_armor::schema());
 	ImGui::TextDisabled("%s", gui::text(
 		"Only works in your open inventory and equips one better armor piece at a time.",
 		"Yalnizca acik envanterde calisir, bir seferde tek daha iyi zirh takar."));

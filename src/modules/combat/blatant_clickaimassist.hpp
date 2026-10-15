@@ -16,10 +16,8 @@ class blatant_clickaimassist : public module
 		float get_options_height() override { return 370.0f; }
 		void visit_config(config_visitor& v) override
 		{
-			v.field("fov", settings.fov); v.field("max_distance", settings.max_distance);
-			v.field("strength", settings.strength); v.enum_field("aim_point", settings.point);
-			v.field("only_weapon", settings.only_weapon); v.field("last_target", settings.last_target);
-		}
+			blatant_aim_engine::visit_config(v, settings);
+}
 
 	private:
 		blatant_aim_engine::config settings{};

@@ -7,9 +7,10 @@
 #include <imgui/imgui.h>
 
 #include "pot_refill.hpp"
+#include "../../ui/settings_renderer.hpp"
 #include "../ui_redirect.hpp"
-#include "../gui/gui.hpp"
-#include "../mappings.hpp"
+#include "../../gui/gui.hpp"
+#include "../../mappings.hpp"
 
 
 namespace
@@ -116,6 +117,7 @@ void modules::pot_refill::run(::cache&)
 
 void modules::pot_refill::render_overlay()
 {
+	const auto settings_snapshot = settings_.read();
 	if (!platform::jni_context::bind_current_thread())
 		return;
 
@@ -209,7 +211,7 @@ void modules::pot_refill::render_overlay()
 	if (!platform::jni_context::clear_exception())
 	{
 		live_status = 6;
-		next_refill = now + std::chrono::milliseconds(std::clamp(delay_ms, 50, 1000));
+		next_refill = now + std::chrono::milliseconds(std::clamp(settings_snapshot.delay_ms, 50, 1000));
 	}
 	else
 	{
@@ -224,20 +226,5 @@ void modules::pot_refill::on_disable(::cache&)
 
 void modules::pot_refill::render_options()
 {
-	ImGui::SliderInt(gui::text("Refill Delay", "Doldurma Gecikmesi"), &delay_ms, 50, 1000, "%d ms");
-	return; // Runtime diagnostics are intentionally not part of the settings UI.
-	static const char* english_status[] = {
-		"Open an inventory", "Unsupported inventory", "Release cursor item",
-		"Hotbar is full", "No Instant Health found", "Inventory action failed", "Refilling"
-	};
-	static const char* turkish_status[] = {
-		"Bir envanter aÃ§", "Desteklenmeyen envanter", "Ä°mleÃ§teki eÅŸyayÄ± bÄ±rak",
-		"Hotbar dolu", "Instant Health bulunamadÄ±", "Envanter iÅŸlemi baÅŸarÄ±sÄ±z", "Dolduruluyor"
-	};
-	const int status = std::clamp(live_status, 0, 6);
-	ImGui::Separator();
-	ImGui::Text("%s: %s", gui::text("Status", "Durum"),
-		gui::is_turkish() ? turkish_status[status] : english_status[status]);
-	ImGui::Text("%s: %d", gui::text("Instant Health", "Instant Health"), live_health_potions);
-	ImGui::Text("%s: %d", gui::text("Empty hotbar slots", "BoÅŸ hotbar yuvasÄ±"), live_empty_hotbar);
+	gui::settings::render(settings_, module_settings::pot_refill::schema());
 }

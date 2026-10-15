@@ -15,6 +15,7 @@
 #include <imgui/imgui.h>
 
 #include "shield_breaker.hpp"
+#include "../../ui/settings_renderer.hpp"
 #include "../ui_redirect.hpp"
 #include "../../gui/gui.hpp"
 #include "../../gui/widgets.hpp"
@@ -27,6 +28,7 @@ namespace
 
 bool modules::shield_breaker::prepare_current_thread()
 {
+    auto settings_snapshot = settings_.read();
 	if (gui::draw || gui::loader_visible)
 		return false;
 
@@ -61,7 +63,7 @@ bool modules::shield_breaker::prepare_current_thread()
 	if (!inventory || !items || selected_slot < 0 || selected_slot > 8 || platform::jni_context::clear_exception())
 		return false;
 
-	const int selected_axe_slot = services::inventory::find_hotbar_slot(items, services::inventory::hotbar_item_kind::axe, config_axe_slot - 1);
+	const int selected_axe_slot = services::inventory::find_hotbar_slot(items, services::inventory::hotbar_item_kind::axe, settings_snapshot.config_axe_slot - 1);
 	if (selected_axe_slot < 0 || platform::jni_context::clear_exception())
 		return false;
 
@@ -278,13 +280,14 @@ void modules::shield_breaker::restore(::cache& cache)
 
 void modules::shield_breaker::run(::cache& cache)
 {
+    auto settings_snapshot = settings_.read();
 	std::lock_guard lock(state_mutex);
 	if (trigger_prepared) return; // Client-thread Triggerbot owns cancellation/commit.
 	if (!waiting_to_restore)
 		return;
 
 	const auto now = std::chrono::steady_clock::now();
-	const int safe_delay = std::clamp(return_delay, 75, 500);
+	const int safe_delay = std::clamp(settings_snapshot.return_delay, 75, 500);
 	const HWND window = gui::get_window();
 	if (!cache.is_valid() || !cache.player || !cache.instance || !window ||
 		GetForegroundWindow() != window || gui::draw || gui::loader_visible ||
@@ -323,8 +326,5 @@ void modules::shield_breaker::on_disable(::cache& cache)
 
 void modules::shield_breaker::render_options()
 {
-	gui::option_slider(gui::text("Preferred Axe Slot", "Tercih Edilen Balta Slotu"),
-		&config_axe_slot, 1, 9, "Slot %d");
-	gui::option_slider(gui::text("Return Delay", "Geri Donus Gecikmesi"),
-		&return_delay, 75, 500, "%d ms");
+    gui::settings::render(settings_, module_settings::shield_breaker::schema());
 }

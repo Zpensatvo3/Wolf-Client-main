@@ -40,20 +40,13 @@ namespace modules
 		float get_options_height() override { return 270.0f; }
 		void visit_config(config_visitor& v) override
 		{
-			v.field("scale", gui::arraylist_scale);
-			v.field("position_x", gui::arraylist_pos_x);
-			v.field("position_y", gui::arraylist_pos_y);
-			v.field("bar_glow", bar_glow);
-			v.field("text_shadow", text_shadow);
-			v.field("bg_opacity", bg_opacity);
-			v.field("bar_width", bar_width);
-			v.field("show_keybinds", show_keybinds);
-		}
+            modules::settings::visit(v, gui::arraylist_settings, module_settings::arraylist::schema());
+}
 
-		inline static bool bar_glow = true;
-		inline static bool text_shadow = true;
-		inline static bool show_keybinds = true;
-		inline static float bg_opacity = 0.72f;
-		inline static float bar_width = 2.0f;
+		inline static bool& bar_glow = gui::arraylist_settings.bar_glow;
+		inline static bool& text_shadow = gui::arraylist_settings.text_shadow;
+		inline static bool& show_keybinds = gui::arraylist_settings.show_keybinds;
+		inline static float& bg_opacity = gui::arraylist_settings.bg_opacity;
+		inline static float& bar_width = gui::arraylist_settings.bar_width;
 	};
 }

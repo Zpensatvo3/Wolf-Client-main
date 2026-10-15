@@ -1,6 +1,8 @@
 #pragma once
 
 #include "../module_support.hpp"
+#include "../core/settings_store.hpp"
+#include "settings/auto_tool_settings.hpp"
 
 namespace modules
 {
@@ -13,13 +15,10 @@ class auto_tool : public module
 		void render_options() override;
 		float get_options_height() override { return 120.0f; }
 		void visit_config(config_visitor& v) override
-		{
-			v.field("require_left_click", require_left_click); v.field("prefer_hotbar_only", prefer_hotbar_only);
-		}
+		{ settings_.visit(v, module_settings::auto_tool::schema()); }
 
 	private:
-		bool require_left_click = true;
-		bool prefer_hotbar_only = true;
+		modules::settings::store<module_settings::auto_tool> settings_;
 		int last_selected_slot = -1;
 	};
 }

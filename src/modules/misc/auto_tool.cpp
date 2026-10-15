@@ -1,4 +1,5 @@
 #include "auto_tool.hpp"
+#include "../../ui/settings_renderer.hpp"
 #include "../../cache/cache.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../../services/game/hotbar_service.hpp"
@@ -9,7 +10,7 @@
 
 #include <imgui/imgui.h>
 
-#include "../gui/gui.hpp"
+#include "../../gui/gui.hpp"
 
 namespace
 {
@@ -43,8 +44,9 @@ struct mining_score
 
 void modules::auto_tool::run(::cache& cache)
 {
+	const auto settings_snapshot = settings_.read();
 	if (gui::draw || !cache.is_valid() || !cache.instance || !cache.player || !cache.world || !jni::get_env() ||
-		(require_left_click && (GetAsyncKeyState(VK_LBUTTON) & 0x8000) == 0))
+		(settings_snapshot.require_left_click && (GetAsyncKeyState(VK_LBUTTON) & 0x8000) == 0))
 		return;
 
 	try
@@ -104,7 +106,7 @@ void modules::auto_tool::run(::cache& cache)
 
 void modules::auto_tool::render_options()
 {
-	ImGui::Checkbox(gui::text("Require Left Click", "Sol Tik Gerekli"), &require_left_click);
+	gui::settings::render(settings_, module_settings::auto_tool::schema());
 	ImGui::TextDisabled("%s", gui::text(
 		"Chooses the strongest matching pickaxe, axe, or shovel from your hotbar.",
 		"Hotbardaki en güçlü uygun kazma, balta veya küreği seçer."));

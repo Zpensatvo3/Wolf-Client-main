@@ -14,10 +14,11 @@
 #include <imgui/imgui.h>
 
 #include "radar.hpp"
+#include "../../ui/settings_renderer.hpp"
 #include "../../platform/adapter/game_adapter.hpp"
 #include "../ui_redirect.hpp"
-#include "../friends/friends.hpp"
-#include "../gui/gui.hpp"
+#include "../../friends/friends.hpp"
+#include "../../gui/gui.hpp"
 
 namespace
 {
@@ -144,6 +145,7 @@ void modules::radar::run(::cache& cache)
 
 void modules::radar::render_overlay()
 {
+    auto settings_snapshot = settings_.read();
 	const ImVec2 display = ImGui::GetIO().DisplaySize;
 	if (display.x < 10.0f || display.y < 10.0f) return;
 
@@ -155,16 +157,16 @@ void modules::radar::render_overlay()
 		yaw = radar_yaw;
 	}
 
-	const float diameter = std::clamp(radar_size, 120.0f, 260.0f);
+	const float diameter = std::clamp(settings_snapshot.radar_size, 120.0f, 260.0f);
 	const float radius = diameter * 0.5f;
-	const float x = std::clamp(position_x, 6.0f,
+	const float x = std::clamp(settings_snapshot.position_x, 6.0f,
 		std::max(6.0f, display.x - diameter - 6.0f));
-	const float y = std::clamp(position_y, 6.0f,
+	const float y = std::clamp(settings_snapshot.position_y, 6.0f,
 		std::max(6.0f, display.y - diameter - 6.0f));
 	const ImVec2 center(x + radius, y + radius);
-	const float range = std::clamp(radar_range, 8.0f, 128.0f);
+	const float range = std::clamp(settings_snapshot.radar_range, 8.0f, 128.0f);
 	const float usable_radius = radius - 12.0f;
-	const float opacity = std::clamp(background_opacity, 0.20f, 1.0f);
+	const float opacity = std::clamp(settings_snapshot.background_opacity, 0.20f, 1.0f);
 	ImDrawList* draw = ImGui::GetBackgroundDrawList();
 	if (!draw) return;
 
@@ -182,7 +184,7 @@ void modules::radar::render_overlay()
 	draw->AddCircle(center, radius - 0.5f, IM_COL32(112, 118, 136, 80), 0, 1.0f);
 	draw->AddCircle(center, radius - 2.0f, accent_soft, 0, 1.0f);
 
-	if (show_distance_rings)
+	if (settings_snapshot.show_distance_rings)
 	{
 		draw->AddCircle(center, usable_radius * 0.5f, IM_COL32(132, 137, 155, 32), 0, 1.0f);
 		draw->AddCircle(center, usable_radius * 0.76f, IM_COL32(132, 137, 155, 22), 0, 1.0f);
@@ -192,7 +194,7 @@ void modules::radar::render_overlay()
 	draw->AddLine(ImVec2(center.x, center.y - usable_radius),
 		ImVec2(center.x, center.y + usable_radius), IM_COL32(132, 137, 155, 27), 1.0f);
 
-	if (show_cardinals)
+	if (settings_snapshot.show_cardinals)
 	{
 		const ImU32 quiet = IM_COL32(145, 150, 168, 175);
 		draw->AddText(ImVec2(center.x - 4.0f, center.y - usable_radius + 3.0f), accent_color, "N");
@@ -204,7 +206,7 @@ void modules::radar::render_overlay()
 	std::size_t visible_count = 0;
 	for (const radar_player& player : players)
 	{
-		const ImVec2 local = rotate_point(player.relative_x, player.relative_z, yaw, rotate_with_player);
+		const ImVec2 local = rotate_point(player.relative_x, player.relative_z, yaw, settings_snapshot.rotate_with_player);
 		const float length = std::sqrt(local.x * local.x + local.y * local.y);
 		const bool outside = length > range;
 		const float scale = usable_radius / std::max(range, 0.001f);
@@ -231,7 +233,7 @@ void modules::radar::render_overlay()
 		draw->AddCircleFilled(point, 5.0f, player.friend_player
 			? IM_COL32(75, 226, 155, 28) : accent_soft, 0);
 		draw->AddCircleFilled(point, 2.4f, color, 0);
-		if (show_names && !player.name.empty())
+		if (settings_snapshot.show_names && !player.name.empty())
 		{
 			const ImVec2 text_size = ImGui::CalcTextSize(player.name.c_str());
 			draw->AddText(ImVec2(point.x - text_size.x * 0.5f, point.y + 5.0f),
@@ -245,7 +247,7 @@ void modules::radar::render_overlay()
 		ImVec2(center.x - 3.3f, center.y + 3.0f),
 		ImVec2(center.x + 3.3f, center.y + 3.0f), IM_COL32(240, 242, 248, 250));
 
-	if (show_player_count)
+	if (settings_snapshot.show_player_count)
 	{
 		char count[24]{};
 		sprintf_s(count, "%zu", visible_count);
@@ -259,16 +261,7 @@ void modules::radar::render_overlay()
 
 void modules::radar::render_options()
 {
-	ImGui::SliderFloat(gui::text("Radar Size", "Radar Boyutu"), &radar_size, 120.0f, 260.0f, "%.0f px");
-	ImGui::SliderFloat(gui::text("Range", "Mesafe"), &radar_range, 8.0f, 128.0f, "%.0f blocks");
-	ImGui::SliderFloat(gui::text("Position X", "Konum X"), &position_x, 4.0f, 1200.0f, "%.0f px");
-	ImGui::SliderFloat(gui::text("Position Y", "Konum Y"), &position_y, 4.0f, 800.0f, "%.0f px");
-	ImGui::SliderFloat(gui::text("Background", "Arka Plan"), &background_opacity, 0.20f, 1.0f, "%.2f");
-	ImGui::Checkbox(gui::text("Rotate with Player", "Oyuncuyla Birlikte Dondur"), &rotate_with_player);
-	ImGui::Checkbox(gui::text("Show Names", "Isimleri Goster"), &show_names);
-	ImGui::Checkbox(gui::text("Distance Rings", "Mesafe Halkalari"), &show_distance_rings);
-	ImGui::Checkbox(gui::text("Cardinal Directions", "Yon Harfleri"), &show_cardinals);
-	ImGui::Checkbox(gui::text("Player Count", "Oyuncu Sayisi"), &show_player_count);
+    gui::settings::render(settings_, module_settings::radar::schema());
 }
 
 void modules::radar::on_disable(::cache&)

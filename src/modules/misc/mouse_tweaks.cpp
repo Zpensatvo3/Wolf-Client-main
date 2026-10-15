@@ -9,8 +9,9 @@
 #include <imgui/imgui.h>
 
 #include "mouse_tweaks.hpp"
+#include "../../ui/settings_renderer.hpp"
 #include "../ui_redirect.hpp"
-#include "../gui/gui.hpp"
+#include "../../gui/gui.hpp"
 
 namespace
 {
@@ -217,6 +218,7 @@ void reset_state(bool release_screen)
 
 void modules::mouse_tweaks::run(::cache& cache)
 {
+	const auto settings_snapshot = settings_.read();
 	if (gui::draw || !cache.is_valid() || !cache.player || !cache.instance || !jni::get_env())
 	{
 		reset_state(true);
@@ -283,7 +285,7 @@ void modules::mouse_tweaks::run(::cache& cache)
 
 		// RMB tweak only starts if an item was already held before pressing RMB.
 		// This preserves vanilla's half-stack pickup when RMB starts on an item.
-		if (!right_click_tweak || !rmb_down)
+		if (!settings_snapshot.right_click_tweak || !rmb_down)
 		{
 			state.rmb_drag_active = false;
 			state.rmb_slot = -1;
@@ -298,7 +300,7 @@ void modules::mouse_tweaks::run(::cache& cache)
 
 		// LMB tweak starts only when the cursor was empty before the initial click.
 		// Once vanilla picks that stack up, dragging can collect compatible stacks.
-		if ((!left_click_with_item && !left_click_without_item) || !lmb_down)
+		if ((!settings_snapshot.left_click_with_item && !settings_snapshot.left_click_without_item) || !lmb_down)
 		{
 			state.lmb_drag_active = false;
 			state.lmb_slot = -1;
@@ -356,14 +358,14 @@ void modules::mouse_tweaks::run(::cache& cache)
 			{
 				if (cursor_empty)
 				{
-					if (shift_down && left_click_without_item)
+					if (shift_down && settings_snapshot.left_click_without_item)
 					{
 						maps::SlotActionType quick_move = action_types.QUICK_MOVE.get();
 						click_slot(interaction_manager, handler, player,
 							focused_slot_id, 0, quick_move);
 					}
 				}
-				else if (left_click_with_item)
+				else if (settings_snapshot.left_click_with_item)
 				{
 					maps::ItemStack target_stack = focused_slot.getStack.call();
 					if (target_stack && !platform::jni_context::clear_exception() &&
@@ -412,9 +414,7 @@ void modules::mouse_tweaks::on_disable(::cache& cache)
 
 void modules::mouse_tweaks::render_options()
 {
-	ImGui::Checkbox(gui::text("RMB Drag Distribution", "Sağ Tıkla Sürükleyerek Dağıt"), &right_click_tweak);
-	ImGui::Checkbox(gui::text("LMB Collect Matching Stacks", "Sol Tıkla Benzer Yığınları Topla"), &left_click_with_item);
-	ImGui::Checkbox(gui::text("Shift + LMB Quick Move", "Shift + Sol Tık Hızlı Taşı"), &left_click_without_item);
+	gui::settings::render(settings_, module_settings::mouse_tweaks::schema());
 	ImGui::TextDisabled("%s", gui::text("RMB revisits a slot; LMB collects matching stacks.", "Sağ tık slotu yeniden işler; sol tık benzer stackleri toplar."));
 	ImGui::TextDisabled("%s", gui::text("Hold Shift while dragging to quick-move hovered stacks.", "Üzerindeki yığınları hızlı taşımak için sürüklerken Shift basılı tut."));
 }

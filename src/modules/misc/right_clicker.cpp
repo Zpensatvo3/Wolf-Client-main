@@ -12,9 +12,10 @@
 #include <imgui/imgui.h>
 
 #include "right_clicker.hpp"
+#include "../../ui/settings_renderer.hpp"
 #include "../ui_redirect.hpp"
-#include "../gui/gui.hpp"
-#include "../mappings.hpp"
+#include "../../gui/gui.hpp"
+#include "../../mappings.hpp"
 
 namespace
 {
@@ -59,19 +60,20 @@ void modules::right_clicker::notify_manual_click(bool pressed)
 
 void modules::right_clicker::schedule_next_click(steady_clock::time_point now)
 {
-	const int low = std::clamp((std::min)(min_cps, max_cps), 4, 30);
-	const int high = std::clamp((std::max)(min_cps, max_cps), low, 30);
+    auto settings_snapshot = settings_.read();
+	const int low = std::clamp((std::min)(settings_snapshot.min_cps, settings_snapshot.max_cps), 4, 30);
+	const int high = std::clamp((std::max)(settings_snapshot.min_cps, settings_snapshot.max_cps), low, 30);
 	std::uniform_int_distribution<int> cps_distribution(low, high);
 	double selected_cps = static_cast<double>(cps_distribution(gen));
 
-	if (fatigue_enabled && hold_start != steady_clock::time_point{})
+	if (settings_snapshot.fatigue_enabled && hold_start != steady_clock::time_point{})
 	{
 		const double seconds_held = std::chrono::duration_cast<std::chrono::milliseconds>(now - hold_start).count() / 1000.0;
-		const double fatigue_decay = (std::min)(0.35, seconds_held * 0.035 * static_cast<double>(fatigue_factor));
+		const double fatigue_decay = (std::min)(0.35, seconds_held * 0.035 * static_cast<double>(settings_snapshot.fatigue_factor));
 		selected_cps = (std::max)(4.0, selected_cps * (1.0 - fatigue_decay));
 	}
 
-	const double jitter = static_cast<double>(std::clamp(jitter_percent, 0, 35)) / 100.0;
+	const double jitter = static_cast<double>(std::clamp(settings_snapshot.jitter_percent, 0, 35)) / 100.0;
 	std::uniform_real_distribution<double> jitter_distribution(-jitter, jitter);
 	const double interval = (1000.0 / selected_cps) * (1.0 + jitter_distribution(gen));
 
@@ -85,6 +87,7 @@ void modules::right_clicker::run(::cache&)
 
 void modules::right_clicker::render_overlay()
 {
+    auto settings_snapshot = settings_.read();
 	if (reset_timing.exchange(false) || !enabled) {
 		was_held = false; next_click = {}; hold_start = {};
 	}
@@ -107,7 +110,7 @@ void modules::right_clicker::render_overlay()
 		services::game::client_context context;
 		if (!services::game::capture_client_context(context, true, false) || context.screen ||
 			context.player.isAlive.call() != JNI_TRUE || context.player.isUsingItem.call() == JNI_TRUE ||
-			platform::jni_context::clear_exception() || (only_blocks && !is_holding_block(context.player)))
+			platform::jni_context::clear_exception() || (settings_snapshot.only_blocks && !is_holding_block(context.player)))
 		{
 			platform::jni_context::clear_exception();
 			was_held = false;
@@ -134,7 +137,7 @@ void modules::right_clicker::render_overlay()
 		if (platform::jni_context::clear_exception()) return;
 
 		bool clicked = false;
-		if (glfw_input)
+		if (settings_snapshot.glfw_input)
 		{
 			clicked = services::input::game_mouse_click(services::input::mouse_button::right);
 		}
@@ -153,9 +156,9 @@ void modules::right_clicker::render_overlay()
 			return;
 		}
 
-		if (jitter_camera && context.player)
+		if (settings_snapshot.jitter_camera && context.player)
 		{
-			apply_jitter_camera(context.player, jitter_amount, gen);
+			apply_jitter_camera(context.player, settings_snapshot.jitter_amount, gen);
 		}
 
 		schedule_next_click(now);
@@ -177,30 +180,5 @@ void modules::right_clicker::on_disable(::cache&)
 
 void modules::right_clicker::render_options()
 {
-	ImGui::SetNextItemWidth(210.0f);
-	ImGui::SliderInt(gui::text("Minimum CPS", "Minimum CPS"), &min_cps, 4, 30, "%d CPS");
-	ImGui::SetNextItemWidth(210.0f);
-	ImGui::SliderInt(gui::text("Maximum CPS", "Maksimum CPS"), &max_cps, 4, 30, "%d CPS");
-	if (min_cps > max_cps)
-		max_cps = min_cps;
-
-	ImGui::SetNextItemWidth(210.0f);
-	ImGui::SliderInt(gui::text("Timing Jitter", "Zamanlama Sapması"), &jitter_percent, 0, 35, "%d%%");
-
-	ImGui::Checkbox(gui::text("Jitter Camera", "Kamera Jitter (Sarsıntı)"), &jitter_camera);
-	if (jitter_camera)
-	{
-		ImGui::SetNextItemWidth(210.0f);
-		ImGui::SliderFloat(gui::text("Jitter Intensity", "Jitter Şiddeti"), &jitter_amount, 0.05f, 1.0f, "%.2f°");
-	}
-
-	ImGui::Checkbox(gui::text("Human Fatigue", "El Yorulması (Human Fatigue)"), &fatigue_enabled);
-	if (fatigue_enabled)
-	{
-		ImGui::SetNextItemWidth(210.0f);
-		ImGui::SliderFloat(gui::text("Fatigue Factor", "Yorulma Katsayısı"), &fatigue_factor, 0.1f, 1.0f, "%.2f");
-	}
-
-	ImGui::Checkbox(gui::text("GLFW Input", "GLFW Girişi"), &glfw_input);
-	ImGui::Checkbox(gui::text("Only Block Items", "Sadece Blok Eşyaları"), &only_blocks);
+    gui::settings::render(settings_, module_settings::right_clicker::schema());
 }

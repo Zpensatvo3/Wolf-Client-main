@@ -9,9 +9,10 @@
 #include <imgui/imgui.h>
 
 #include "bridge_assist.hpp"
+#include "../../ui/settings_renderer.hpp"
 #include "../ui_redirect.hpp"
-#include "../gui/gui.hpp"
-#include "../mappings.hpp"
+#include "../../gui/gui.hpp"
+#include "../../mappings.hpp"
 
 namespace
 {
@@ -61,6 +62,7 @@ void modules::bridge_assist::release_sneak(::cache& cache)
 
 void modules::bridge_assist::run(::cache& cache)
 {
+	const auto settings_snapshot = settings_.read();
 	const HWND minecraft_window = gui::get_window();
 	if (!cache.is_valid() || !cache.instance || !cache.world || !cache.player ||
 		!cache.options || !minecraft_window || GetForegroundWindow() != minecraft_window ||
@@ -80,7 +82,7 @@ void modules::bridge_assist::run(::cache& cache)
 			return;
 		}
 
-		if (require_block_item && !is_holding_block(cache.player))
+		if (settings_snapshot.require_block_item && !is_holding_block(cache.player))
 		{
 			release_sneak(cache);
 			return;
@@ -98,7 +100,7 @@ void modules::bridge_assist::run(::cache& cache)
 		velocity_z = velocity.z.get();
 		const bool moving = !platform::jni_context::clear_exception() &&
 			velocity_x * velocity_x + velocity_z * velocity_z >= 0.0004;
-		if (platform::jni_context::clear_exception() || (only_while_moving && !moving && !forced_sneak))
+		if (platform::jni_context::clear_exception() || (settings_snapshot.only_while_moving && !moving && !forced_sneak))
 		{
 			release_sneak(cache);
 			return;
@@ -125,9 +127,9 @@ void modules::bridge_assist::run(::cache& cache)
 		const double center_x = (min_x + max_x) * 0.5;
 		const double center_z = (min_z + max_z) * 0.5;
 		const double half_x = std::max(0.025, (max_x - min_x) * 0.5 -
-			static_cast<double>(std::clamp(edge_offset, 0.0f, 0.27f)));
+			static_cast<double>(std::clamp(settings_snapshot.edge_offset, 0.0f, 0.27f)));
 		const double half_z = std::max(0.025, (max_z - min_z) * 0.5 -
-			static_cast<double>(std::clamp(edge_offset, 0.0f, 0.27f)));
+			static_cast<double>(std::clamp(settings_snapshot.edge_offset, 0.0f, 0.27f)));
 		const int support_y = static_cast<int>(std::floor(min_y - 0.05));
 		const auto unsupported_corners = [&](double sample_center_x, double sample_center_z)
 		{
@@ -186,7 +188,7 @@ void modules::bridge_assist::run(::cache& cache)
 		if (confirmed_edge)
 		{
 			release_deadline = now + std::chrono::milliseconds(
-				std::clamp(unsneak_delay, 0, 300));
+				std::clamp(settings_snapshot.unsneak_delay, 0, 300));
 			maps::KeyBinding sneak_key = cache.options.sneakKey.get();
 			if (!sneak_key || platform::jni_context::clear_exception())
 			{
@@ -241,11 +243,6 @@ void modules::bridge_assist::on_disable(::cache& cache)
 
 void modules::bridge_assist::render_options()
 {
-	ImGui::SetNextItemWidth(210.0f);
-	ImGui::SliderFloat(gui::text("Edge Offset", "Kenar Uzaklığı"), &edge_offset, 0.0f, 0.27f, "%.2f blocks");
-	ImGui::SetNextItemWidth(210.0f);
-	ImGui::SliderInt(gui::text("Unsneak Delay", "Eğilmeyi Bırakma Gecikmesi"), &unsneak_delay, 0, 300, "%d ms");
-	ImGui::Checkbox(gui::text("Require Block Item", "Blok Eşyası Gerekli"), &require_block_item);
-	ImGui::Checkbox(gui::text("Only While Moving", "Sadece Hareket Ederken"), &only_while_moving);
+	gui::settings::render(settings_, module_settings::bridge_assist::schema());
 	ImGui::TextDisabled("%s", gui::text("Sneaks at unsupported hitbox corners; placement stays manual.", "Desteksiz kenarlarda eğilir; blok yerleştirme manuel kalır."));
 }

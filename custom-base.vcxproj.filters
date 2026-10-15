@@ -22,6 +22,9 @@
     <Filter Include="Third Party\include">
       <UniqueIdentifier>{2FF4DB27-C0A7-57FC-A624-47A8CBD45B06}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\src\app">
+      <UniqueIdentifier>{7120BE0D-87EF-5F73-9A65-A25D6A5C7AAA}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Header Files\src\cache">
       <UniqueIdentifier>{DAC786F2-6C21-54D5-9A0E-462D23FC6DAF}</UniqueIdentifier>
     </Filter>
@@ -30,9 +33,6 @@
     </Filter>
     <Filter Include="Header Files\src\gui">
       <UniqueIdentifier>{05373798-E934-51B7-BF72-0D1D4190A977}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Header Files\src\java_hook">
-      <UniqueIdentifier>{FF39872C-6F9E-5F52-AC0C-5C4A83A9C45C}</UniqueIdentifier>
     </Filter>
     <Filter Include="Header Files\src\jvmti">
       <UniqueIdentifier>{1E3A516D-7485-564A-8ED0-2F3FA586E404}</UniqueIdentifier>
@@ -46,6 +46,9 @@
     <Filter Include="Header Files\src\platform">
       <UniqueIdentifier>{D9BD0864-0BF6-51BA-BA99-F8C53F4A6679}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\src\sdk">
+      <UniqueIdentifier>{429CE3A9-C91D-5428-8E75-C5A05C63944F}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Header Files\src\services">
       <UniqueIdentifier>{79FE2DE9-603D-5F27-8C2D-18E22C4BF08F}</UniqueIdentifier>
     </Filter>
@@ -54,6 +57,9 @@
     </Filter>
     <Filter Include="Header Files\src\utils">
       <UniqueIdentifier>{BC3E5905-EE89-525C-82B2-4C51995894F3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\src\app">
+      <UniqueIdentifier>{C1A100D7-9D96-5A26-9C8A-A4E6CB8B211E}</UniqueIdentifier>
     </Filter>
     <Filter Include="Source Files\src\auth">
       <UniqueIdentifier>{33F09CCE-575F-5220-BAAF-DAA47EB9E340}</UniqueIdentifier>
@@ -69,9 +75,6 @@
     </Filter>
     <Filter Include="Source Files\src\gui">
       <UniqueIdentifier>{461288F9-B562-5908-9562-66269A5017B6}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Source Files\src\java_hook">
-      <UniqueIdentifier>{A0423E88-B8BF-5760-91DD-B5E04B480821}</UniqueIdentifier>
     </Filter>
     <Filter Include="Source Files\src\jvmti">
       <UniqueIdentifier>{9F4D6E0E-687C-53FD-BC7C-8873149364F9}</UniqueIdentifier>
@@ -109,9 +112,6 @@
     <Filter Include="Third Party\include\minhook">
       <UniqueIdentifier>{CBE1F04F-DC16-5EB2-9D77-BE2C1B9CFF09}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Header Files\src\java_hook\vape">
-      <UniqueIdentifier>{3B6F073C-BB04-572A-8DAB-C0D00653CF07}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Header Files\src\modules\client">
       <UniqueIdentifier>{A3C29546-4285-5B4F-987F-C4102388C2C7}</UniqueIdentifier>
     </Filter>
@@ -141,6 +141,9 @@
     </Filter>
     <Filter Include="Header Files\src\platform\jni">
       <UniqueIdentifier>{4597DA94-A432-5BA5-88A6-6484C5506AB3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\src\sdk\minecraft">
+      <UniqueIdentifier>{FA5F2907-365F-5C0A-9094-5FF93BAF34AB}</UniqueIdentifier>
     </Filter>
     <Filter Include="Header Files\src\services\game">
       <UniqueIdentifier>{F5559175-978B-5716-B17A-051047019ACF}</UniqueIdentifier>
@@ -361,6 +364,27 @@
     <Filter Include="Third Party\include\minhook\trampoline.h">
       <UniqueIdentifier>{FD6ECE63-9F43-5B1F-9AED-840C38917DC1}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\src\modules\combat\settings">
+      <UniqueIdentifier>{B9CB8704-C38D-5BF5-B9FA-35735C6332C0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\src\modules\misc\settings">
+      <UniqueIdentifier>{02940B97-9457-5CD5-8352-3C1A2900BFF9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\src\modules\render\settings">
+      <UniqueIdentifier>{BD6D461D-4FDC-5939-8338-6036EB92B102}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\src\modules\vape\engines">
+      <UniqueIdentifier>{631083DD-67A1-5FA9-B3D9-B1D4E382F109}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\src\modules\visual\settings">
+      <UniqueIdentifier>{4B805C01-041D-5A18-B518-86F60AB3EFC1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\src\sdk\minecraft\fabric_1_21_1">
+      <UniqueIdentifier>{DF828092-83F2-5579-819D-EA151900B788}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\src\modules\vape\engines\**">
+      <UniqueIdentifier>{935CE363-2ADD-598F-98A1-652A5444A80C}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="include\imgui\imgui.cpp">
@@ -417,9 +441,6 @@
     <ClCompile Include="src\gui\ui_state.cpp">
       <Filter>Source Files\src\gui</Filter>
     </ClCompile>
-    <ClCompile Include="src\gui\sound.cpp">
-      <Filter>Source Files\src\gui</Filter>
-    </ClCompile>
     <ClCompile Include="src\gui\gui.cpp">
       <Filter>Source Files\src\gui</Filter>
     </ClCompile>
@@ -432,14 +453,20 @@
     <ClCompile Include="src\ui\config_page.cpp">
       <Filter>Source Files\src\ui</Filter>
     </ClCompile>
-    <ClCompile Include="src\java_hook\java_hook.cpp">
-      <Filter>Source Files\src\java_hook</Filter>
-    </ClCompile>
     <ClCompile Include="src\jvmti\jvmti.cpp">
       <Filter>Source Files\src\jvmti</Filter>
     </ClCompile>
     <ClCompile Include="src\main.cpp">
       <Filter>Source Files\src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\app\runtime.cpp">
+      <Filter>Source Files\src\app</Filter>
+    </ClCompile>
+    <ClCompile Include="src\app\module_loop.cpp">
+      <Filter>Source Files\src\app</Filter>
+    </ClCompile>
+    <ClCompile Include="src\platform\jni\jvm_session.cpp">
+      <Filter>Source Files\src\platform\jni</Filter>
     </ClCompile>
     <ClCompile Include="src\maths\maths.cpp">
       <Filter>Source Files\src\maths</Filter>
@@ -1538,6 +1565,9 @@
     <ClInclude Include="src\gui\widgets.hpp">
       <Filter>Header Files\src\gui</Filter>
     </ClInclude>
+    <ClInclude Include="src\gui\language.hpp">
+      <Filter>Header Files\src\gui</Filter>
+    </ClInclude>
     <ClInclude Include="src\gui\control_draw.hpp">
       <Filter>Header Files\src\gui</Filter>
     </ClInclude>
@@ -1546,15 +1576,6 @@
     </ClInclude>
     <ClInclude Include="src\services\input\click_tracking.hpp">
       <Filter>Header Files\src\services\input</Filter>
-    </ClInclude>
-    <ClInclude Include="src\gui\sound.hpp">
-      <Filter>Header Files\src\gui</Filter>
-    </ClInclude>
-    <ClInclude Include="src\gui\sound_data.hpp">
-      <Filter>Header Files\src\gui</Filter>
-    </ClInclude>
-    <ClInclude Include="src\java_hook\java_hook.hpp">
-      <Filter>Header Files\src\java_hook</Filter>
     </ClInclude>
     <ClInclude Include="src\jvmti\jvmti.hpp">
       <Filter>Header Files\src\jvmti</Filter>
@@ -1571,7 +1592,46 @@
     <ClInclude Include="src\modules\core\module.hpp">
       <Filter>Header Files\src\modules\core</Filter>
     </ClInclude>
+    <ClInclude Include="src\modules\core\setting_schema.hpp">
+      <Filter>Header Files\src\modules\core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\modules\core\settings_store.hpp">
+      <Filter>Header Files\src\modules\core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\modules\misc\settings\*.hpp">
+      <Filter>Header Files\src\modules\misc\settings</Filter>
+    </ClInclude>
+    <ClInclude Include="src\modules\combat\settings\*.hpp">
+      <Filter>Header Files\src\modules\combat\settings</Filter>
+    </ClInclude>
+    <ClInclude Include="src\modules\visual\settings\*.hpp">
+      <Filter>Header Files\src\modules\visual\settings</Filter>
+    </ClInclude>
+    <ClInclude Include="src\modules\render\settings\*.hpp">
+      <Filter>Header Files\src\modules\render\settings</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ui\settings_renderer.hpp">
+      <Filter>Header Files\src\ui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\sdk\minecraft\fabric_1_21_1\*.hpp">
+      <Filter>Header Files\src\sdk\minecraft\fabric_1_21_1</Filter>
+    </ClInclude>
+    <ClInclude Include="src\platform\jni\jvm_session.hpp">
+      <Filter>Header Files\src\platform\jni</Filter>
+    </ClInclude>
+    <ClInclude Include="src\app\runtime.hpp">
+      <Filter>Header Files\src\app</Filter>
+    </ClInclude>
+    <ClInclude Include="src\app\module_loop.hpp">
+      <Filter>Header Files\src\app</Filter>
+    </ClInclude>
+    <ClInclude Include="src\modules\core\module_runtime_state.hpp">
+      <Filter>Header Files\src\modules\core</Filter>
+    </ClInclude>
     <ClInclude Include="src\modules\core\config_fields.hpp">
+      <Filter>Header Files\src\modules\core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\modules\core\config_json.hpp">
       <Filter>Header Files\src\modules\core</Filter>
     </ClInclude>
     <ClInclude Include="src\modules\core\module_registry.hpp">
@@ -1625,8 +1685,8 @@
     <ClInclude Include="resource.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\combat cpp\**\*.hpp">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="src\modules\vape\engines\**\*.hpp">
+      <Filter>Header Files\src\modules\vape\engines\**</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -1635,6 +1695,12 @@
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
+    <None Include="src\modules\settings_manifest.json">
+      <Filter>Header Files\src\modules</Filter>
+    </None>
+    <None Include="src\sdk\minecraft\fabric_1_21_1\manifest.json">
+      <Filter>Header Files\src\sdk\minecraft\fabric_1_21_1</Filter>
+    </None>
     <None Include="include\glm\detail\func_common.inl">
       <Filter>Third Party\include\glm\detail</Filter>
     </None>
@@ -2063,15 +2129,6 @@
     </None>
     <None Include="include\glm\gtx\wrap.inl">
       <Filter>Third Party\include\glm\gtx</Filter>
-    </None>
-    <None Include="src\java_hook\vape\NativeBridge.java">
-      <Filter>Header Files\src\java_hook\vape</Filter>
-    </None>
-    <None Include="scripts\Build-VapeBridge.ps1">
-      <Filter>Source Files</Filter>
-    </None>
-    <None Include="tests\VapeBridgeSmoke.java">
-      <Filter>Source Files</Filter>
     </None>
   </ItemGroup>
 </Project>

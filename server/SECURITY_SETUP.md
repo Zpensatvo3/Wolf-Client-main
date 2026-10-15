@@ -1,35 +1,87 @@
-# Wolf Auth production setup
+# Onestep — Gelecekteki auth kurulumu
 
-The Worker intentionally fails closed until every secret and the Durable Object
-binding are configured. Do not restore source-code fallbacks.
+## Mevcut durum
 
-1. Deploy `schema.sql` only as a safe bootstrap/migration. It does not create a
-   demo license.
-2. Copy `wrangler.toml.example` to your private `wrangler.toml`, set the D1 id,
-   then deploy the `RATE_LIMITER` Durable Object migration.
-3. Generate random `KEY_PEPPER`, `HWID_PEPPER`, and a long random admin token.
-   Store their values as Worker secrets. Store only `SHA-256(admin-token)` in
-   `ADMIN_TOKEN_HASH`.
-4. Generate an ECDSA P-256 key pair in binary DER form. Store the base64url
-   PKCS#8 private key as `SIGNING_PRIVATE_KEY_PKCS8` and its base64url SPKI
-   public key as `SIGNING_PUBLIC_KEY_SPKI`. Do not base64-encode PEM text.
-5. Rebuild the DLL with the exact same public SPKI value:
+Onestep şu an lisans girişi istemiyor. `src/app/runtime.cpp` lisans doğrulaması
+veya lisans heartbeat başlatmadan uygulamayı çalıştırır. Devre dışı eski konsol
+ekranı altyapı yenilemesinde `main.cpp` içinden kaldırıldı.
 
-   ```powershell
-   msbuild custom-base.vcxproj /m /p:Configuration=Release /p:Platform=x64 /p:AuthPublicKeySpkiBase64=<base64url-spki>
-   ```
+`src/auth/` ve `server/` kaynakları gelecekteki auth entegrasyonu için korunuyor.
+Bu kaynakların bulunması, çalışan veya yayına alınmış bir auth sistemi olduğu
+anlamına gelmez. Bu belge mevcut bir servise deployment yapıldığını varsaymaz.
 
-The private key, peppers, and admin token must never be placed in this
-repository, the DLL, a URL, or browser storage. Rotating the signing key
-requires updating the Worker secrets and rebuilding the DLL with the new public
-key.
+Public config bağlantısı ayrıdır: istemci `configure_config_service` ile
+cihaz kimliğini ve servis adresini hazırlar. Bu işlem lisans doğrulaması yapmaz
+ve lisans heartbeat başlatmaz. Kodda bulunan eski Worker adresinin çalıştığı
+veya gelecekte kullanılacağı doğrulanmış değildir.
 
-Changing `KEY_PEPPER` changes every license hash. Before rotating it on an
-existing installation, run a controlled server-side migration using the old
-pepper, or reissue the affected licenses; otherwise existing keys will no
-longer authenticate.
+## Korunan dosyalar
 
-New dashboard-created licenses are stored encrypted at rest with a key derived
-from `KEY_PEPPER`; an authenticated admin can reveal one from the dashboard.
-Older records that were already stored as one-way hashes cannot be recovered
-and must be reissued if their original key was not saved elsewhere.
+| Dosya | Amaç |
+| --- | --- |
+| `src/auth/auth.cpp`, `auth.hpp` | İstemci doğrulama, imza kontrolü, oturum ve servis istekleri |
+| `server/worker.js` | Worker API, admin işlemleri ve public config uçları |
+| `server/schema.sql` | D1 veritabanı şeması |
+| `server/wrangler.toml` | Worker, D1 ve Durable Object yapılandırması |
+
+Depoda `wrangler.toml.example` yok. Yeni ortam kurulurken mevcut
+`wrangler.toml` içindeki eski Worker adı ve D1 bilgileri hedef ortama göre
+düzenlenmeli; eski kaynaklar doğrudan hedef kabul edilmemeli.
+
+## Auth eklendiğinde izlenecek sıra
+
+1. Lisans, oturum süresi, cihaz eşleme ve public config erişim modelini belirle.
+   Mevcut lisanssız config akışının nasıl devam edeceğini açıkça tanımla.
+2. Hedef Cloudflare hesabında Worker ve D1 kaynaklarını oluştur;
+   `wrangler.toml` içindeki `DB` bağlantısını yeni veritabanına ayarla.
+3. `schema.sql` dosyasını inceleyip yeni veritabanına uygula. Var olan veriye
+   uygulanacak değişiklikler için ayrıca migration hazırla.
+4. Mevcut Worker kullanılacaksa `RATE_LIMITER` Durable Object bağlantısını ve
+   `RateLimiter` migration tanımını yapılandır.
+5. Aşağıdaki sırları Worker secrets olarak tanımla.
+6. İstemciyi aynı imza anahtarının public SPKI değeriyle derle.
+7. `src/app/runtime.cpp` içindeki servis adresini hedef ortama göre güncelle;
+   lisans girişini, oturum yönetimini ve heartbeat akışını uygulama yaşam
+   döngüsüne entegre edip test et. Mevcut auth fonksiyonlarının bulunması tek
+   başına tamamlanmış bir entegrasyon sayılmaz.
+
+## Mevcut Worker'ın beklediği sırlar
+
+| Ad | İçerik |
+| --- | --- |
+| `KEY_PEPPER` | Lisans hash ve mevcut lisans şifreleme işlemleri için rastgele sır |
+| `HWID_PEPPER` | Cihaz kimliği hash işlemleri için ayrı rastgele sır |
+| `ADMIN_TOKEN_HASH` | Uzun rastgele admin token'ının SHA-256 özeti |
+| `SIGNING_PRIVATE_KEY_PKCS8` | ECDSA P-256 private key; PKCS#8 DER verisinin base64url karşılığı |
+| `SIGNING_PUBLIC_KEY_SPKI` | Aynı anahtar çiftinin public key'i; SPKI DER verisinin base64url karşılığı |
+
+Anahtar değerleri PEM metninin base64 karşılığı olmamalı.
+Private key, pepper değerleri ve ham admin token kaynak koduna veya istemci
+paketine eklenmemeli.
+
+İstemci için yalnızca public key kullanılır. Mevcut MSBuild özelliği:
+
+```powershell
+msbuild custom-base.vcxproj /m /p:Configuration=Release /p:Platform=x64 /p:AuthPublicKeySpkiBase64=BASE64URL_SPKI
+```
+
+`BASE64URL_SPKI` gerçek public key değeriyle değiştirilmeli.
+Bu derleme parametresi tek başına lisans girişini etkinleştirmez.
+
+## Devreye almadan önce doğrulama
+
+- Geçerli, hatalı, süresi dolmuş ve iptal edilmiş lisanslar.
+- İmza, nonce, token süresi ve cihaz eşleme kontrolleri.
+- Ağ kesintisi, sunucu hatası, rate limit ve heartbeat davranışı.
+- Admin erişimi ve lisanssız public config isteklerinin yetki sınırları.
+- Oturum kapanışı ve yerel token temizliği.
+
+Kurulum ve kontrollü testler tamamlanana kadar auth, proje belgelerinde
+gelecekte eklenecek özellik olarak belirtilmeli.
+
+## İleride anahtar değişimi
+
+İmza anahtarı değiştirilirse Worker ve istemcinin public key'i birlikte
+güncellenmeli. Mevcut veriler oluştuğunda `KEY_PEPPER` veya `HWID_PEPPER`
+değişikliği migration gerektirebilir. Eski şemada yalnızca tek yönlü hash
+olarak saklanmış lisansların orijinal değerleri geri elde edilemez.

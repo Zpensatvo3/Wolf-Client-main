@@ -1,3 +1,4 @@
+#include "../../ui/settings_renderer.hpp"
 #include "anchor_engine.hpp"
 #include "../../cache/cache.hpp"
 #include "../../platform/jni/jni_context.hpp"
@@ -688,25 +689,7 @@ void anchor_engine::stop(::cache& cache, runtime& state)
 
 void anchor_engine::render_options(config& settings, profile mode, const char* id_suffix)
 {
-	ImGui::PushID(id_suffix);
-	gui::option_toggle(gui::text("Hybrid Slot Input", "Hibrit Slot Girisi"), &settings.hybrid_slot_input);
-	if (mode != profile::blatant)
-	{
-		gui::option_slider(gui::text("Switch Delay", "Gecis Gecikmesi"),
-			&settings.switch_delay, 0, 180, "%d ms");
-		gui::option_slider(gui::text("Action Delay", "Islem Gecikmesi"),
-			&settings.action_delay, 0, 200, "%d ms");
-		if (mode == profile::safe)
-			gui::option_slider(gui::text("Shield Delay", "Koruma Gecikmesi"),
-				&settings.shield_delay, 0, 220, "%d ms");
-		gui::option_slider(gui::text("Return Delay", "Donus Gecikmesi"),
-			&settings.return_delay, 0, 160, "%d ms");
-		gui::option_slider(gui::text("Timing Variance", "Zamanlama Sapmasi"),
-			&settings.timing_variance, 0, 80, "%d ms");
-		gui::option_toggle(gui::text("Camera Movement", "Kamera Hareketi"), &settings.camera_movement);
-		if (settings.camera_movement)
-			gui::option_slider(gui::text("Camera Strength", "Kamera Siddeti"),
-				&settings.camera_strength, 0.0f, 1.2f, "%.2f");
-	}
-	ImGui::PopID();
+    ImGui::PushID(id_suffix);
+    gui::settings::render(settings, schema(mode));
+    ImGui::PopID();
 }

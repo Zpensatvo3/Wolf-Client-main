@@ -1,6 +1,8 @@
 #pragma once
 
 #include "../module_support.hpp"
+#include "../core/settings_store.hpp"
+#include "settings/bridge_assist_settings.hpp"
 
 namespace modules
 {
@@ -14,16 +16,10 @@ class bridge_assist : public module
 		void on_disable(::cache& cache) override;
 		float get_options_height() override { return 230.0f; }
 		void visit_config(config_visitor& v) override
-		{
-			v.field("edge_offset", edge_offset); v.field("unsneak_delay", unsneak_delay);
-			v.field("require_block_item", require_block_item); v.field("only_while_moving", only_while_moving);
-		}
+		{ settings_.visit(v, module_settings::bridge_assist::schema()); }
 
 	private:
-		float edge_offset = 0.08f;
-		int unsneak_delay = 55;
-		bool require_block_item = true;
-		bool only_while_moving = true;
+		modules::settings::store<module_settings::bridge_assist> settings_;
 		bool forced_sneak = false;
 		bool sneak_state_before_force = false;
 		int edge_samples = 0;

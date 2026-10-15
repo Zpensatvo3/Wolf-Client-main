@@ -17,8 +17,8 @@ class hud : public module
 		float get_options_height() override { return 86.0f; }
 		void visit_config(config_visitor& v) override
 		{
-			v.field("scale", gui::hud_scale); v.field("position_x", gui::hud_pos_x); v.field("position_y", gui::hud_pos_y);
-		}
+            modules::settings::visit(v, gui::watermark_settings, module_settings::hud::schema());
+}
 
 	private:
 		mutable std::mutex status_mutex{};

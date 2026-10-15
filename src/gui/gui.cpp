@@ -7,7 +7,6 @@
 #include "theme_palette.hpp"
 #include "surface_style.hpp"
 #include "control_draw.hpp"
-#include "sound.hpp"
 #include "../ui/grim_ui.hpp"
 #include "../ui/hud_editor.hpp"
 #include "../ui/config_page.hpp"
@@ -69,8 +68,6 @@ namespace
 	volatile bool run_once = true;
 
 	int last_pressed_key = 0;
-	bool panic_animation_active = false;
-	std::chrono::steady_clock::time_point panic_animation_started{};
 	modules::module* selected_settings_module = nullptr;
 	ImVector<ImWchar> language_glyph_ranges{};
 	ImVector<ImWchar> icon_glyph_ranges{};
@@ -260,152 +257,6 @@ namespace
 			AttachThreadInput(current_thread, foreground_thread, FALSE);
 	}
 
-	void begin_panic_animation()
-	{
-		if (panic_animation_active)
-			return;
-		panic_animation_active = true;
-		panic_animation_started = std::chrono::steady_clock::now();
-
-		// Stop gameplay behavior immediately while the visual shutdown finishes.
-		for (modules::module* module : modules::get_modules())
-			module->enabled = false;
-	}
-
-	void render_panic_animation(
-		ImDrawList* draw_list,
-		const ImVec2& window_position,
-		const ImVec2& window_size,
-		float rounding)
-	{
-		if (!panic_animation_active || !draw_list)
-			return;
-
-		using clock = std::chrono::steady_clock;
-		const float elapsed = std::chrono::duration<float>(
-			clock::now() - panic_animation_started).count();
-		const float linear_progress = std::clamp(elapsed / 2.60f, 0.0f, 1.0f);
-		const float progress = 1.0f - std::pow(1.0f - linear_progress, 1.35f);
-		const float entrance = std::clamp(elapsed / 0.20f, 0.0f, 1.0f);
-		const float eased_entrance = 1.0f - std::pow(1.0f - entrance, 3.0f);
-		const ImColor accent = gui::get_dynamic_color(static_cast<int>(elapsed * 90.0f));
-
-		const ImVec2 window_end(
-			window_position.x + window_size.x,
-			window_position.y + window_size.y);
-		draw_list->AddRectFilled(
-			window_position,
-			window_end,
-			IM_COL32(5, 5, 8, static_cast<int>(255.0f * eased_entrance)),
-			rounding);
-
-		const ImVec2 card_size(430.0f, 276.0f);
-		const ImVec2 card_min(
-			window_position.x + (window_size.x - card_size.x) * 0.5f,
-			window_position.y + (window_size.y - card_size.y) * 0.5f +
-				(1.0f - eased_entrance) * 18.0f);
-		const ImVec2 card_max(card_min.x + card_size.x, card_min.y + card_size.y);
-
-		for (int layer = 5; layer >= 1; --layer)
-		{
-			const float spread = static_cast<float>(layer) * 3.0f;
-			draw_list->AddRectFilled(
-				ImVec2(card_min.x - spread, card_min.y - spread),
-				ImVec2(card_max.x + spread, card_max.y + spread),
-				color_with_alpha(accent, 0.018f * static_cast<float>(6 - layer) * eased_entrance),
-				18.0f + spread);
-		}
-
-		draw_list->AddRectFilled(card_min, card_max, IM_COL32(16, 16, 20, 252), 18.0f);
-		draw_list->AddRect(card_min, card_max, color_with_alpha(accent, 0.34f), 18.0f, 0, 1.0f);
-
-		const ImVec2 icon_center(card_min.x + card_size.x * 0.5f, card_min.y + 61.0f);
-		const float pulse = 0.5f + 0.5f * std::sin(elapsed * 5.0f);
-		draw_list->AddCircleFilled(icon_center, 35.0f + pulse * 3.0f,
-			color_with_alpha(accent, 0.055f + pulse * 0.025f), 0);
-
-		if (linear_progress < 0.91f)
-		{
-			const float rotation = elapsed * 4.4f;
-			draw_list->PathArcTo(icon_center, 27.0f, rotation, rotation + 4.75f, 40);
-			draw_list->PathStroke(color_with_alpha(accent, 0.95f), 0, 3.0f);
-			draw_list->AddCircle(icon_center, 13.0f, color_with_alpha(accent, 0.92f), 0, 2.2f);
-			draw_list->AddLine(
-				ImVec2(icon_center.x, icon_center.y - 17.0f),
-				ImVec2(icon_center.x, icon_center.y - 3.0f),
-				color_with_alpha(accent, 1.0f), 3.0f);
-		}
-		else
-		{
-			draw_list->AddCircle(icon_center, 27.0f, color_with_alpha(accent, 0.95f), 0, 3.0f);
-			draw_list->AddLine(
-				ImVec2(icon_center.x - 11.0f, icon_center.y),
-				ImVec2(icon_center.x - 2.0f, icon_center.y + 9.0f),
-				color_with_alpha(accent, 1.0f), 3.0f);
-			draw_list->AddLine(
-				ImVec2(icon_center.x - 2.0f, icon_center.y + 9.0f),
-				ImVec2(icon_center.x + 14.0f, icon_center.y - 9.0f),
-				color_with_alpha(accent, 1.0f), 3.0f);
-		}
-
-		auto centered_text = [&](float y, ImU32 color, const char* text)
-		{
-			const ImVec2 text_size = ImGui::CalcTextSize(text);
-			draw_list->AddText(
-				ImVec2(card_min.x + (card_size.x - text_size.x) * 0.5f, y),
-				color, text);
-		};
-
-		centered_text(card_min.y + 104.0f, IM_COL32(240, 240, 245, 255), "Closing Thedorius Lite");
-
-		const char* status = "Disabling active modules";
-		if (linear_progress >= 0.25f) status = "Releasing input hooks";
-		if (linear_progress >= 0.50f) status = "Clearing runtime state";
-		if (linear_progress >= 0.76f) status = "Finalizing safe shutdown";
-		if (linear_progress >= 0.96f) status = "Shutdown complete";
-		centered_text(card_min.y + 132.0f, IM_COL32(132, 132, 143, 255), status);
-
-		const float bar_left = card_min.x + 42.0f;
-		const float bar_right = card_max.x - 42.0f;
-		const float bar_top = card_min.y + 169.0f;
-		const float bar_bottom = bar_top + 8.0f;
-		draw_list->AddRectFilled(
-			ImVec2(bar_left, bar_top), ImVec2(bar_right, bar_bottom),
-			IM_COL32(39, 39, 47, 255), 4.0f);
-		const float fill_right = bar_left + (bar_right - bar_left) * progress;
-		if (fill_right > bar_left + 1.0f)
-		{
-			draw_list->AddRectFilled(
-				ImVec2(bar_left, bar_top - 3.0f), ImVec2(fill_right, bar_bottom + 3.0f),
-				color_with_alpha(accent, 0.12f), 7.0f);
-			draw_list->AddRectFilled(
-				ImVec2(bar_left, bar_top), ImVec2(fill_right, bar_bottom),
-				color_with_alpha(accent, 1.0f), 4.0f);
-		}
-
-		char percentage[16]{};
-		sprintf_s(percentage, "%d%%", static_cast<int>(std::round(progress * 100.0f)));
-		centered_text(card_min.y + 188.0f, color_with_alpha(accent, 0.94f), percentage);
-
-		const char* step_labels[] = { "Modules", "Input", "Memory", "Unload" };
-		const float step_thresholds[] = { 0.08f, 0.34f, 0.60f, 0.84f };
-		for (int step = 0; step < 4; ++step)
-		{
-			const float x = card_min.x + 69.0f + static_cast<float>(step) * 97.0f;
-			const bool complete = linear_progress >= step_thresholds[step];
-			draw_list->AddCircleFilled(
-				ImVec2(x, card_min.y + 226.0f), 4.0f,
-				complete ? color_with_alpha(accent, 1.0f) : IM_COL32(62, 62, 72, 255), 0);
-			const ImVec2 label_size = ImGui::CalcTextSize(step_labels[step]);
-			draw_list->AddText(
-				ImVec2(x - label_size.x * 0.5f, card_min.y + 239.0f),
-				complete ? IM_COL32(185, 185, 194, 255) : IM_COL32(82, 82, 91, 255),
-				step_labels[step]);
-		}
-
-		if (elapsed >= 2.78f)
-			gui::should_unload = true;
-	}
 
 	void render_loader_overlay()
 	{
@@ -841,7 +692,6 @@ namespace
 		if (changed)
 		{
 			*value = !*value;
-			gui::sound::play(*value ? gui::sound::type::toggle_on : gui::sound::type::toggle_off);
 		}
 
 		const bool hovered = ImGui::IsItemHovered();
@@ -925,7 +775,6 @@ namespace
 		if (has_options && ImGui::IsItemClicked())
 		{
 			selected_settings_module = module;
-			gui::sound::play(gui::sound::type::click);
 		}
 
 		const ImVec2 gear_min(card_max.x - 96.0f, card_min.y + 22.0f);
@@ -938,7 +787,6 @@ namespace
 			if (ImGui::IsItemClicked())
 			{
 				selected_settings_module = module;
-				gui::sound::play(gui::sound::type::click);
 			}
 		}
 
@@ -1431,21 +1279,6 @@ namespace
 			gui::option_toggle(gui::text("Reduce Motion", "Hareketi Azalt"), &preferences.reduce_motion);
 			if (preferences.reduce_motion != old_reduce_motion) gui::aegis::mark_preferences_dirty();
 
-			const bool old_sound = preferences.sound_effects;
-			gui::option_toggle(gui::text("Sound Effects", "Ses Efektleri"), &preferences.sound_effects);
-			if (preferences.sound_effects != old_sound) gui::aegis::mark_preferences_dirty();
-
-			if (preferences.sound_effects)
-			{
-				const float old_vol = preferences.sound_volume;
-				int volume_pct = static_cast<int>(std::round(preferences.sound_volume * 100.0f));
-				if (gui::option_slider(gui::text("Sound Volume", "Ses Seviyesi"), &volume_pct, 0, 100, "%d%%"))
-				{
-					preferences.sound_volume = static_cast<float>(volume_pct) / 100.0f;
-					if (std::abs(preferences.sound_volume - old_vol) > 0.005f) gui::aegis::mark_preferences_dirty();
-				}
-			}
-
 			if (gui::action_button(gui::text("Reset UI preferences", "Arayüz tercihlerini sıfırla"),
 				ImVec2(176.0f, 29.0f)))
 			{
@@ -1637,8 +1470,6 @@ namespace
 		ImGui::InvisibleButton("##aegis_icon", ImVec2(34.0f, 34.0f));
 		const bool hovered = ImGui::IsItemHovered();
 		const bool clicked = ImGui::IsItemClicked();
-		if (clicked)
-			gui::sound::play(gui::sound::type::tab_switch);
 		ImDrawList* draw_list = ImGui::GetWindowDrawList();
 		const ImColor accent = gui::get_dynamic_color(0);
 		if (selected || hovered)
@@ -1666,8 +1497,6 @@ namespace
 		ImGui::InvisibleButton("##layout", ImVec2(34.0f, 34.0f));
 		const bool hovered = ImGui::IsItemHovered();
 		const bool clicked = ImGui::IsItemClicked();
-		if (clicked)
-			gui::sound::play(gui::sound::type::click);
 		ImDrawList* draw_list = ImGui::GetWindowDrawList();
 		const ImColor accent = gui::get_dynamic_color(0);
 		draw_list->AddRectFilled(position, ImVec2(position.x + 34.0f, position.y + 34.0f),
@@ -1811,7 +1640,6 @@ namespace
 		if (ImGui::IsItemClicked() && has_options)
 		{
 			module->display_options = !module->display_options;
-			gui::sound::play(gui::sound::type::click);
 		}
 		ImDrawList* draw_list = ImGui::GetWindowDrawList();
 		const ImColor accent = gui::get_dynamic_color(0);
@@ -2094,7 +1922,7 @@ namespace
 		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.38f, 0.035f, 0.075f, 0.95f));
 		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.68f, 0.06f, 0.12f, 1.0f));
 		ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.82f, 0.08f, 0.15f, 1.0f));
-		if (ImGui::Button(gui::text("Panic##aegis", "Panik##aegis"), ImVec2(67.0f, 30.0f))) begin_panic_animation();
+		if (ImGui::Button(gui::text("Panic##aegis", "Panik##aegis"), ImVec2(67.0f, 30.0f))) gui::request_panic();
 		ImGui::PopStyleColor(3);
 
 		render_command_palette(window_position, window_size, search_x, search_width);
@@ -2111,7 +1939,6 @@ namespace
 		if (ImGui::IsItemClicked())
 		{
 			aegis_runtime.horizontal_module = module_has_options(module) ? module : nullptr;
-			gui::sound::play(gui::sound::type::click);
 		}
 		ImDrawList* draw_list = ImGui::GetWindowDrawList();
 		const ImColor accent = gui::get_dynamic_color(0);
@@ -2274,7 +2101,6 @@ namespace
 			aegis_runtime.page = page;
 			if (category >= 0) aegis_runtime.active_category = category;
 			if (page != aegis_page::modules) aegis_runtime.horizontal_module = nullptr;
-			gui::sound::play(gui::sound::type::tab_switch);
 		}
 		ImDrawList* draw_list = ImGui::GetWindowDrawList();
 		const ImColor accent = gui::get_dynamic_color(0);
@@ -2838,9 +2664,12 @@ void gui::render_theme_selection()
 	ImGui::PopID();
 }
 
-void gui::request_panic_animation()
+void gui::request_panic()
 {
-	begin_panic_animation();
+	for (modules::module* module : modules::get_modules())
+		module->enabled = false;
+	gui::draw = false;
+	gui::should_unload = true;
 }
 
 void gui::settings_stepper(
@@ -2939,7 +2768,6 @@ static LRESULT CALLBACK detour_WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		modules::left_clicker::notify_manual_click(false);
 		modules::right_clicker::notify_manual_click(false);
 		release_common_keys(hWnd);
-		gui::sound::play(gui::draw ? gui::sound::type::open_gui : gui::sound::type::close_gui);
 	}
 
 	auto update_physical_button = [&](bool left, bool pressed)
@@ -3350,7 +3178,7 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 				gui::suppress_menu_key_until_release = false;
 		}
 		else if (current_menu_key && !previous_menu_key && !gui::menu_key_scanning &&
-			!panic_animation_active && !gui::loader_visible)
+			!gui::should_unload && !gui::loader_visible)
 		{
 			gui::draw = !gui::draw;
 			ClipCursor(NULL);
@@ -3463,17 +3291,6 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 		gui::grim::render(reference_viewport, callbacks);
 
 
-		// Panic is rendered on the foreground viewport rather than inside the
-		// menu window, so the regular UI disappears completely underneath it.
-		if (panic_animation_active)
-		{
-			const ImGuiViewport* panic_viewport = ImGui::GetMainViewport();
-			render_panic_animation(
-				ImGui::GetForegroundDrawList(),
-				panic_viewport->Pos,
-				panic_viewport->Size,
-				0.0f);
-		}
 	}
 	gui::aegis::flush_preferences();
 	ImGui::EndFrame();
@@ -3525,9 +3342,6 @@ bool gui::init()
 		loader_ui::fail("OpenGL hook activation failed");
 		return false;
 	}
-
-	gui::sound::init();
-
 	return true;
 }
 
@@ -3551,7 +3365,6 @@ ImTextureID gui::get_icon_texture(icon_asset asset)
 
 void gui::shutdown()
 {
-	gui::sound::shutdown();
 	gui::aegis::flush_preferences(true);
 	request_shutdown.store(true, std::memory_order_release);
 	while (!shut_down.load(std::memory_order_acquire))

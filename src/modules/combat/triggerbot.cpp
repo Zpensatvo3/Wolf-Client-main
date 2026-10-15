@@ -16,7 +16,7 @@ void modules::triggerbot::render_overlay()
 
 void modules::triggerbot::render_options()
 {
-	trigger_engine::render_options(settings, state, "triggerbot_v3");
+	trigger_engine::render_options(settings, state, "triggerbot_settings");
 }
 
 void modules::triggerbot::on_disable(::cache&)

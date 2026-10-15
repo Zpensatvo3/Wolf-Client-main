@@ -3,29 +3,11 @@
 #include <chrono>
 #include <mutex>
 
-#include "../cache/cache.hpp"
+#include "../../cache/cache.hpp"
+#include "anchor_config.hpp"
 
 namespace anchor_engine
 {
-	enum class profile
-	{
-		legit,
-		blatant,
-		safe
-	};
-
-	struct config
-	{
-		bool hybrid_slot_input = false;
-		bool camera_movement = true;
-		int switch_delay = 28;
-		int action_delay = 38;
-		int shield_delay = 45;
-		int return_delay = 24;
-		int timing_variance = 14;
-		float camera_strength = 0.28f;
-	};
-
 	struct runtime
 	{
 		enum class phase

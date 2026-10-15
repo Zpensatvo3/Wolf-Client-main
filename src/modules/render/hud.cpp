@@ -1,3 +1,4 @@
+#include "../../ui/settings_renderer.hpp"
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -7,8 +8,8 @@
 #include "../../cache/cache.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../ui_redirect.hpp"
-#include "../gui/gui.hpp"
-#include "../friends/friends.hpp"
+#include "../../gui/gui.hpp"
+#include "../../friends/friends.hpp"
 
 #include <Windows.h>
 #include <imgui/imgui.h>
@@ -182,9 +183,9 @@ void modules::hud::render_overlay()
 
 void modules::hud::render_options()
 {
-	ImGui::TextDisabled("%s", gui::text("Displays onestep logo watermark", "onestep logo watermark gostergesini ekrana cizer"));
-	ImGui::Spacing();
-	ImGui::SliderFloat(gui::text("Scale##watermark", "Olcek##watermark"), &gui::hud_scale, 0.50f, 2.0f, "%.2f");
+    ImGui::TextDisabled("%s", gui::text("Displays onestep logo watermark", "onestep logo watermark gostergesini ekrana cizer"));
+    ImGui::Spacing();
+    gui::settings::render(gui::watermark_settings, module_settings::hud::schema());
 }
 
 std::pair<std::string, int> modules::hud::status_snapshot() const

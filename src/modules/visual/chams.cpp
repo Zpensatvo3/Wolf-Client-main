@@ -1,3 +1,4 @@
+#include "../../ui/settings_renderer.hpp"
 #include "chams.hpp"
 #include "chams_model.hpp"
 #include "../../platform/jni/jni_context.hpp"
@@ -407,44 +408,10 @@ void modules::chams::render_overlay()
 void modules::chams::render_options()
 {
     std::lock_guard lock(settings_mutex);
-    gui::option_toggle(gui::text("Theme Color","Tema rengi"),&settings.theme_color);
-    if (!settings.theme_color) gui::option_color(gui::text("Visible Color","Görünen renk"),settings.visible_color);
-    gui::option_toggle(gui::text("Through Walls","Duvar arkası"),&settings.through_walls);
-    if (settings.through_walls) gui::option_color(gui::text("Hidden Color","Gizli renk"),settings.hidden_color);
-    gui::option_slider(gui::text("Opacity","Opaklık"),&settings.opacity,0.f,1.f,"%.2f");
-    gui::option_slider(gui::text("Range","Menzil"),&settings.range,8.f,96.f,"%.0f m");
-    gui::option_toggle(gui::text("Ignore Friends","Arkadaşları atla"),&settings.ignore_friends);
-    gui::option_toggle("Glow",&settings.glow);
-    if (settings.glow) {
-        gui::option_slider(gui::text("Glow Strength","Parlama gücü"),&settings.glow_strength,0.f,1.f,"%.2f");
-        gui::option_slider(gui::text("Glow Spread","Parlama yayılımı"),&settings.glow_radius,2.f,20.f,"%.0f px");
-    }
+    gui::settings::render(settings, settings_type::schema());
 }
 void modules::chams::visit_config(config_visitor& visitor)
 {
     std::lock_guard lock(settings_mutex);
-    auto candidate = settings;
-    if (visitor.importing()) visitor.stage_values(true);
-    visitor.field("range",candidate.range); visitor.field("opacity",candidate.opacity);
-    visitor.field("glow",candidate.glow); visitor.field("glow_strength",candidate.glow_strength); visitor.field("glow_radius",candidate.glow_radius);
-    visitor.field("through_walls",candidate.through_walls); visitor.field("theme_color",candidate.theme_color);
-    visitor.field("ignore_friends",candidate.ignore_friends);
-    visitor.field("visible_color",candidate.visible_color); visitor.field("hidden_color",candidate.hidden_color);
-    if (visitor.importing()) {
-        bool valid = std::isfinite(candidate.range) && std::isfinite(candidate.opacity) &&
-            std::isfinite(candidate.glow_strength) && std::isfinite(candidate.glow_radius);
-        for (int i = 0; i < 4; ++i) valid = valid && std::isfinite(candidate.visible_color[i]) && std::isfinite(candidate.hidden_color[i]);
-        if (!valid) visitor.reject("Chams: non-finite settings.");
-        visitor.stage_values(false);
-        if (visitor.reading() && visitor.valid()) {
-            candidate.range = std::clamp(candidate.range,8.f,96.f); candidate.opacity = std::clamp(candidate.opacity,0.f,1.f);
-            candidate.glow_strength = std::clamp(candidate.glow_strength,0.f,1.f);
-            candidate.glow_radius = std::clamp(candidate.glow_radius,2.f,20.f);
-            for (int i = 0; i < 4; ++i) {
-                candidate.visible_color[i] = std::clamp(candidate.visible_color[i],0.f,1.f);
-                candidate.hidden_color[i] = std::clamp(candidate.hidden_color[i],0.f,1.f);
-            }
-            settings = candidate; reset_requested.store(true);
-        }
-    }
+    if (modules::settings::visit(visitor, settings, settings_type::schema())) reset_requested.store(true);
 }

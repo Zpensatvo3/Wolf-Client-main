@@ -23,15 +23,8 @@ class safe_anchor : public module
 		float get_options_height() override { return 410.0f; }
 		void visit_config(config_visitor& v) override
 		{
-			v.field("hybrid_slot_input", settings.hybrid_slot_input);
-			v.field("camera_jitter", settings.camera_movement);
-			v.field("jitter_ms", settings.timing_variance);
-			v.field("camera_jitter_strength", settings.camera_strength);
-			v.field("switch_delay", settings.switch_delay);
-			v.field("action_delay", settings.action_delay);
-			v.field("aim_delay", settings.shield_delay);
-			v.field("return_delay", settings.return_delay);
-		}
+            modules::settings::visit(v, settings, anchor_engine::schema(anchor_engine::profile::safe));
+}
 
 	private:
 		anchor_engine::config settings{};

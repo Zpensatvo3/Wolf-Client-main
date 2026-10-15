@@ -1,3 +1,4 @@
+#include "../../ui/settings_renderer.hpp"
 #include <Windows.h>
 #include "jump_reset.hpp"
 #include "../../services/game/client_context.hpp"
@@ -334,7 +335,7 @@ void modules::jump_reset::apply_settings(jump_reset_config::config candidate, bo
 
 void modules::jump_reset::render_options()
 {
-    ImGui::PushID("jump_reset_settings_v3");
+    ImGui::PushID("jump_reset_settings");
     auto candidate = settings_snapshot();
     gui::option_section(gui::text("Timing", "Zamanlama"));
     const char* profile_names[] = {
@@ -376,15 +377,10 @@ void modules::jump_reset::render_options()
     else if (gui::option_combo(gui::text("Preset", "Hazır ayar"), &selected, profile_names, 4))
         jump_reset_config::apply_profile(candidate, static_cast<jump_reset_config::profile>(selected));
 
-    gui::option_slider(gui::text("Activation Chance", "Uygulama olasılığı"), &candidate.chance, 0, 100, "%d%%");
-    gui::option_slider(gui::text("Delay after Damage", "Darbe sonrası gecikme"), &candidate.jump_delay_ms, 0, 100, "%d ms");
+    gui::settings::render(candidate, jump_reset_config::schema().subspan(1, 2));
     gui::option_section(gui::text("Input / conditions", "Giriş / koşullar"));
-    const char* modes[] = {
-        gui::text("Game Binding", "Oyun tuşu"),
-        gui::text("System Space", "Sistem Space")
-    };
-    gui::option_combo(gui::text("Jump Input", "Zıplama girişi"), &candidate.mode, modes, 2);
-    gui::option_toggle(gui::text("Living Attacks Only", "Yalnızca canlı saldırıları"), &candidate.only_combat);
+    gui::settings::render(candidate, jump_reset_config::schema().first(1));
+    gui::settings::render(candidate, jump_reset_config::schema().last(1));
 
     ImGui::Spacing();
     if (gui::action_button(gui::text("Restore Defaults", "Varsayılana dön"),

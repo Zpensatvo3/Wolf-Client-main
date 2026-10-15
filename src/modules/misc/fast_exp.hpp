@@ -1,6 +1,8 @@
 #pragma once
 
 #include "../module_support.hpp"
+#include "../core/settings_store.hpp"
+#include "settings/fast_exp_settings.hpp"
 #include <atomic>
 #include <chrono>
 #include <random>
@@ -26,27 +28,14 @@ namespace modules
 		static void notify_manual_right_click(bool pressed);
 
 		void visit_config(config_visitor& v) override
-		{
-			v.field("min_cps", min_cps);
-			v.field("max_cps", max_cps);
-
-			int old_cps = 0;
-			v.field("cps", old_cps);
-			if (v.reading() && old_cps > 0 && min_cps == 16 && max_cps == 20)
-			{
-				min_cps = (std::max)(5, old_cps - 2);
-				max_cps = (std::min)(40, old_cps + 2);
-			}
-		}
+		{ settings_.visit(v, module_settings::fast_exp::schema()); }
 
 	private:
+        modules::settings::store<module_settings::fast_exp> settings_;
 		inline static std::atomic<fast_exp*> active_instance{ nullptr };
 		std::atomic<bool> manual_right_down{ false };
 		bool was_held = false;
 		bool blocked_until_release = false;
-
-		int min_cps = 16;
-		int max_cps = 20;
 
 		std::chrono::steady_clock::time_point next_click{};
 		std::mt19937_64 gen{ std::random_device{}() };

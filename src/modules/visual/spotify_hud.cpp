@@ -22,6 +22,7 @@
 #endif
 
 #include "spotify_hud.hpp"
+#include "../../ui/settings_renderer.hpp"
 #include "spotify_source.hpp"
 #include "../ui_redirect.hpp"
 #include "../../gui/gui.hpp"
@@ -616,14 +617,15 @@ namespace
 
 void modules::spotify_hud::run(::cache&)
 {
+    auto settings_snapshot = settings_.read();
 	// Ensure background worker is active
 	if (!spotify::source::instance().is_running())
 	{
-		applied_lyrics = show_lyrics && enable_lyrics;
+		applied_lyrics = settings_snapshot.show_lyrics && settings_snapshot.enable_lyrics;
 		spotify::source::instance().start(applied_lyrics);
 	}
 
-	const bool wants_lyrics = show_lyrics && enable_lyrics;
+	const bool wants_lyrics = settings_snapshot.show_lyrics && settings_snapshot.enable_lyrics;
 	if (applied_lyrics != wants_lyrics)
 	{
 		applied_lyrics = wants_lyrics;
@@ -633,7 +635,8 @@ void modules::spotify_hud::run(::cache&)
 
 void modules::spotify_hud::on_enable(::cache&)
 {
-	applied_lyrics = show_lyrics && enable_lyrics;
+    auto settings_snapshot = settings_.read();
+	applied_lyrics = settings_snapshot.show_lyrics && settings_snapshot.enable_lyrics;
 	spotify::source::instance().start(applied_lyrics);
 }
 
@@ -644,38 +647,40 @@ void modules::spotify_hud::on_disable(::cache&)
 
 modules::spotify_hud::bounds modules::spotify_hud::get_bounds(float display_w, float display_h) const
 {
+    auto settings_snapshot = settings_.read();
 	const float size_scale = fixed_scale;
 	const spotify::now_playing info = spotify::source::instance().snapshot();
 	const bool is_idle_state = (!info.active || info.title.empty()) && !gui::draw;
 
 	float width = 0.0f;
 	float height = 0.0f;
-	if (is_idle_state && show_when_idle)
+	if (is_idle_state && settings_snapshot.show_when_idle)
 	{
 		width = std::round(190.0f * size_scale);
 		height = std::round(40.0f * size_scale);
 	}
 	else
 	{
-		const auto layout = compute_layout(size_scale, show_artwork, show_progress, show_lyrics, 1);
+		const auto layout = compute_layout(size_scale, settings_snapshot.show_artwork, settings_snapshot.show_progress, settings_snapshot.show_lyrics, 1);
 		width = layout.width;
 		height = layout.height;
 	}
 
-	const float x = std::round(std::clamp(position_x, 4.0f, (std::max)(4.0f, display_w - width - 4.0f)));
-	const float y = std::round(std::clamp(position_y, 4.0f, (std::max)(4.0f, display_h - height - 4.0f)));
+	const float x = std::round(std::clamp(settings_snapshot.position_x, 4.0f, (std::max)(4.0f, display_w - width - 4.0f)));
+	const float y = std::round(std::clamp(settings_snapshot.position_y, 4.0f, (std::max)(4.0f, display_h - height - 4.0f)));
 	return { x, y, width, height };
 }
 
 void modules::spotify_hud::render_hud_preview(ImDrawList* draw, float x, float y)
 {
+    auto settings_snapshot = settings_.read();
 	if (!draw) return;
 	const float size_scale = fixed_scale;
 	const spotify::now_playing info = spotify::source::instance().snapshot();
 	if (info.active && !info.title.empty())
 	{
-		draw_card(draw, x, y, size_scale, background_opacity, show_artwork, show_progress,
-			show_visualizer, show_brand, show_lyrics, lyric_lines, info, false);
+		draw_card(draw, x, y, size_scale, settings_snapshot.background_opacity, settings_snapshot.show_artwork, settings_snapshot.show_progress,
+			settings_snapshot.show_visualizer, settings_snapshot.show_brand, settings_snapshot.show_lyrics, settings_snapshot.lyric_lines, info, false);
 	}
 	else
 	{
@@ -692,13 +697,14 @@ void modules::spotify_hud::render_hud_preview(ImDrawList* draw, float x, float y
 			{ 74.0, "P1 cleaner than your church shoes, ah" },
 			{ 78.0, "Milli point two just to hurt you, ah" }
 		};
-		draw_card(draw, x, y, size_scale, background_opacity, show_artwork, show_progress,
-			show_visualizer, show_brand, show_lyrics, lyric_lines, preview, false);
+		draw_card(draw, x, y, size_scale, settings_snapshot.background_opacity, settings_snapshot.show_artwork, settings_snapshot.show_progress,
+			settings_snapshot.show_visualizer, settings_snapshot.show_brand, settings_snapshot.show_lyrics, settings_snapshot.lyric_lines, preview, false);
 	}
 }
 
 void modules::spotify_hud::render_overlay()
 {
+    auto settings_snapshot = settings_.read();
 	if (gui::hud_editor_active) return;
 
 	const ImVec2 display = ImGui::GetIO().DisplaySize;
@@ -707,7 +713,7 @@ void modules::spotify_hud::render_overlay()
 	// Keep background service alive while module is active
 	if (!spotify::source::instance().is_running())
 	{
-		applied_lyrics = show_lyrics && enable_lyrics;
+		applied_lyrics = settings_snapshot.show_lyrics && settings_snapshot.enable_lyrics;
 		spotify::source::instance().start(applied_lyrics);
 	}
 
@@ -721,25 +727,25 @@ void modules::spotify_hud::render_overlay()
 
 	float width = 0.0f;
 	float height = 0.0f;
-	if (!has_track && !gui::draw && show_when_idle)
+	if (!has_track && !gui::draw && settings_snapshot.show_when_idle)
 	{
 		width = std::round(190.0f * size_scale);
 		height = std::round(40.0f * size_scale);
 	}
 	else
 	{
-		const auto layout = compute_layout(size_scale, show_artwork, show_progress, show_lyrics, 1);
+		const auto layout = compute_layout(size_scale, settings_snapshot.show_artwork, settings_snapshot.show_progress, settings_snapshot.show_lyrics, 1);
 		width = layout.width;
 		height = layout.height;
 	}
 
-	const float x = std::clamp(position_x, 4.0f, (std::max)(4.0f, display.x - width - 4.0f));
-	const float y = std::clamp(position_y, 4.0f, (std::max)(4.0f, display.y - height - 4.0f));
+	const float x = std::clamp(settings_snapshot.position_x, 4.0f, (std::max)(4.0f, display.x - width - 4.0f));
+	const float y = std::clamp(settings_snapshot.position_y, 4.0f, (std::max)(4.0f, display.y - height - 4.0f));
 
 	if (has_track)
 	{
-		draw_card(draw, x, y, size_scale, background_opacity, show_artwork, show_progress,
-			show_visualizer, show_brand, show_lyrics, lyric_lines, info, false);
+		draw_card(draw, x, y, size_scale, settings_snapshot.background_opacity, settings_snapshot.show_artwork, settings_snapshot.show_progress,
+			settings_snapshot.show_visualizer, settings_snapshot.show_brand, settings_snapshot.show_lyrics, settings_snapshot.lyric_lines, info, false);
 	}
 	else if (gui::draw)
 	{
@@ -757,36 +763,29 @@ void modules::spotify_hud::render_overlay()
 			{ 74.0, "P1 cleaner than your church shoes, ah" },
 			{ 78.0, "Milli point two just to hurt you, ah" }
 		};
-		draw_card(draw, x, y, size_scale, background_opacity, show_artwork, show_progress,
-			show_visualizer, show_brand, show_lyrics, lyric_lines, preview, false);
+		draw_card(draw, x, y, size_scale, settings_snapshot.background_opacity, settings_snapshot.show_artwork, settings_snapshot.show_progress,
+			settings_snapshot.show_visualizer, settings_snapshot.show_brand, settings_snapshot.show_lyrics, settings_snapshot.lyric_lines, preview, false);
 	}
-	else if (show_when_idle)
+	else if (settings_snapshot.show_when_idle)
 	{
 		// In-game without active music: display compact idle badge
-		draw_card(draw, x, y, size_scale, background_opacity, show_artwork, show_progress,
-			show_visualizer, show_brand, show_lyrics, lyric_lines, info, true);
+		draw_card(draw, x, y, size_scale, settings_snapshot.background_opacity, settings_snapshot.show_artwork, settings_snapshot.show_progress,
+			settings_snapshot.show_visualizer, settings_snapshot.show_brand, settings_snapshot.show_lyrics, settings_snapshot.lyric_lines, info, true);
 	}
 }
 
 void modules::spotify_hud::render_options()
 {
+    gui::settings::edit(settings_, module_settings::spotify_hud::schema(), [&](auto& candidate) {
 	const ImVec2 display = ImGui::GetIO().DisplaySize;
 	const float max_x = display.x > 100.0f ? display.x : 1920.0f;
 	const float max_y = display.y > 100.0f ? display.y : 1080.0f;
 
 	// All controls below are redirected to Thedorius widgets via ui_redirect.hpp,
 	// ensuring identical styling, colors, and animations with the rest of the client modules.
-	ImGui::SliderFloat(gui::text("Position X", "Konum X"), &position_x, 0.0f, max_x, "%.0f px");
-	ImGui::SliderFloat(gui::text("Position Y", "Konum Y"), &position_y, 0.0f, max_y, "%.0f px");
-	ImGui::SliderFloat(gui::text("Background", "Arka Plan Saydamlığı"), &background_opacity, 0.20f, 1.0f, "%.2f");
-	ImGui::Checkbox(gui::text("Show When Idle", "Boştayken Göster"), &show_when_idle);
-	ImGui::Checkbox(gui::text("Album Art", "Albüm Kapağı"), &show_artwork);
-	ImGui::Checkbox(gui::text("Progress Bar", "İlerleme Çubuğu"), &show_progress);
-	ImGui::Checkbox(gui::text("Visualizer", "Görselleştirici"), &show_visualizer);
-	ImGui::Checkbox(gui::text("Spotify Logo", "Spotify Logosu"), &show_brand);
-	ImGui::Checkbox(gui::text("Lyrics", "Şarkı Sözleri"), &show_lyrics);
-	if (show_lyrics)
-	{
-		ImGui::Checkbox(gui::text("Fetch Lyrics Online", "Sözleri İnternetten Çek"), &enable_lyrics);
-	}
+	ImGui::SliderFloat(gui::text("Position X", "Konum X"), &candidate.position_x, 0.0f, max_x, "%.0f px");
+	ImGui::SliderFloat(gui::text("Position Y", "Konum Y"), &candidate.position_y, 0.0f, max_y, "%.0f px");
+    gui::settings::render(candidate, module_settings::spotify_hud::schema().subspan(2));
+
+    });
 }

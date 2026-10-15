@@ -5,8 +5,9 @@
 #include "../../services/input/input_service.hpp"
 #include <algorithm>
 #include "fast_place.hpp"
+#include "../../ui/settings_renderer.hpp"
 #include "../ui_redirect.hpp"
-#include "../gui/gui.hpp"
+#include "../../gui/gui.hpp"
 
 namespace
 {
@@ -44,6 +45,7 @@ void modules::fast_place::run(::cache&)
 
 void modules::fast_place::render_overlay()
 {
+	const auto settings_snapshot = settings_.read();
     const HWND window = gui::get_window();
     if (!enabled || gui::draw || gui::loader_visible || gui::should_unload || !window ||
         GetForegroundWindow() != window || !platform::jni_context::bind_current_thread()) return;
@@ -62,7 +64,7 @@ void modules::fast_place::render_overlay()
         if (platform::jni_context::clear_exception() || !held ||
             !is_supported_fast_place_item(context.player) || !context.instance.itemUseCooldown.is_valid()) return;
         const int current_cooldown = context.instance.itemUseCooldown.get();
-        const int desired_delay = std::clamp(delay, 0, 4);
+        const int desired_delay = std::clamp(settings_snapshot.delay, 0, 4);
         // PotionItem includes splash/lingering potions. Reduce only vanilla's
         // click delay; do not duplicate use calls or bypass drinking duration.
         if (!platform::jni_context::clear_exception() && current_cooldown > desired_delay)
@@ -77,5 +79,5 @@ void modules::fast_place::on_disable(::cache& cache)
 
 void modules::fast_place::render_options()
 {
-	ImGui::SliderInt(gui::text("Place Delay", "Yerleştirme Gecikmesi"), &this->delay, 0, 4, gui::text("%d ticks", "%d tik"));
+	gui::settings::render(settings_, module_settings::fast_place::schema());
 }

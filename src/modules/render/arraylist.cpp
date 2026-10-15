@@ -1,3 +1,4 @@
+#include "../../ui/settings_renderer.hpp"
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -583,10 +584,5 @@ void modules::arraylist::on_disable(::cache&)
 
 void modules::arraylist::render_options()
 {
-	ImGui::SliderFloat(gui::text("Scale##al", "Ölçek##al"), &gui::arraylist_scale, 0.5f, 2.0f, "%.2f");
-	ImGui::SliderFloat(gui::text("Background Opacity##al", "Arka plan Opaklığı##al"), &bg_opacity, 0.2f, 1.0f, "%.2f");
-	ImGui::SliderFloat(gui::text("Bar Width##al", "Çubuk Kalınlığı##al"), &bar_width, 1.5f, 6.0f, "%.1f px");
-	ImGui::Checkbox(gui::text("Bar Neon Glow##al", "Çubuk Neon Parlaması##al"), &bar_glow);
-	ImGui::Checkbox(gui::text("Text Shadow##al", "Metin Gölgesi##al"), &text_shadow);
-	ImGui::Checkbox(gui::text("Show Keybinds##al", "Tuş Atamalarını Göster##al"), &show_keybinds);
+    gui::settings::render(gui::arraylist_settings, module_settings::arraylist::schema());
 }

@@ -6,9 +6,10 @@
 #include <imgui/imgui.h>
 
 #include "sprint.hpp"
+#include "../../ui/settings_renderer.hpp"
 #include "../ui_redirect.hpp"
-#include "../gui/gui.hpp"
-#include "../mappings.hpp"
+#include "../../gui/gui.hpp"
+#include "../../mappings.hpp"
 
 namespace
 {
@@ -16,6 +17,7 @@ namespace
 
 void modules::sprint::run(::cache& cache)
 {
+	const auto settings_snapshot = settings_.read();
 	const HWND game_window = gui::get_window();
 	if (gui::draw || !game_window || GetForegroundWindow() != game_window ||
 		!cache.is_valid() || !cache.instance || !cache.player || !jni::get_env())
@@ -27,7 +29,7 @@ void modules::sprint::run(::cache& cache)
 		if (cache.instance.currentScreen.get() || platform::jni_context::clear_exception())
 			return;
 
-		if (stop_while_using_item &&
+		if (settings_snapshot.stop_while_using_item &&
 			cache.player.isUsingItem.call() == JNI_TRUE && !platform::jni_context::clear_exception())
 			return;
 		platform::jni_context::clear_exception();
@@ -69,8 +71,7 @@ void modules::sprint::on_disable(::cache& cache)
 
 void modules::sprint::render_options()
 {
-	ImGui::Checkbox(gui::text("Stop While Using Items", "Eşya Kullanırken Dur"),
-		&stop_while_using_item);
+	gui::settings::render(settings_, module_settings::sprint::schema());
 	ImGui::TextDisabled("%s", gui::text(
 		"Uses Minecraft's native 1.21.1 sprint eligibility checks.",
 		"Minecraft 1.21.1'in kendi sprint uygunluk kontrolünü kullanır."));

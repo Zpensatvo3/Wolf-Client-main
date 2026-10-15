@@ -3,30 +3,11 @@
 #include <chrono>
 #include <string>
 
-#include "../cache/cache.hpp"
+#include "../../cache/cache.hpp"
+#include "blatant_aim_config.hpp"
 
 namespace blatant_aim_engine
 {
-	enum class aim_point
-	{
-		// Keep the old serialized values for Body and Random so existing public
-		// configs continue to load predictably. Old Head/Legs values are migrated
-		// to Body/Adaptive by sanitize_point().
-		body = 1,
-		random = 3,
-		adaptive = 4
-	};
-
-	struct config
-	{
-		float fov = 60.0f;
-		float max_distance = 4.5f;
-		float strength = 0.30f;
-		aim_point point = aim_point::body;
-		bool only_weapon = false;
-		bool last_target = false;
-	};
-
 	struct runtime
 	{
 		bool active = false;

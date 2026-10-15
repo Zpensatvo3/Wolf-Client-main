@@ -1,9 +1,10 @@
 #include "nametag.hpp"
+#include "../../ui/settings_renderer.hpp"
 #include "../../cache/cache.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../../platform/adapter/game_adapter.hpp"
 #include "../ui_redirect.hpp"
-#include "../gui/gui.hpp"
+#include "../../gui/gui.hpp"
 
 #include <imgui/imgui.h>
 
@@ -378,6 +379,7 @@ std::string text_to_string(const maps::Text& text)
 
 void modules::nametag::run(::cache& cache)
 {
+    auto settings_snapshot = settings_.read();
 	jni::frame frame{};
 	JNIEnv* env = jni::get_env();
 	if (!env || !cache.is_valid() || !cache.instance || !cache.world || !cache.player)
@@ -506,7 +508,7 @@ void modules::nametag::run(::cache& cache)
 			const double dy = entry.y - local_position.y;
 			const double dz = entry.z - local_position.z;
 			entry.distance = static_cast<float>(std::sqrt(dx * dx + dy * dy + dz * dz));
-			if (entry.distance > max_distance)
+			if (entry.distance > settings_snapshot.max_distance)
 				continue;
 
 			try
@@ -674,6 +676,7 @@ void modules::nametag::on_disable(::cache& cache)
 
 void modules::nametag::render_overlay()
 {
+    auto settings_snapshot = settings_.read();
 	ImDrawList* draw_list = ImGui::GetForegroundDrawList();
 	ImFont* font = ImGui::GetFont();
 	const ImVec2 display = ImGui::GetIO().DisplaySize;
@@ -719,7 +722,7 @@ void modules::nametag::render_overlay()
 	const float yaw = camera_yaw.load(std::memory_order_relaxed);
 	const float pitch = camera_pitch.load(std::memory_order_relaxed);
 	const float fov = camera_fov.load(std::memory_order_relaxed);
-	const float base_scale = std::clamp(tag_scale, 0.55f, 1.75f);
+	const float base_scale = std::clamp(settings_snapshot.tag_scale, 0.55f, 1.75f);
 	const ImColor accent = gui::get_dynamic_color(20);
 
 	for (const nametag_entry& entry : entries)
@@ -760,10 +763,10 @@ void modules::nametag::render_overlay()
 		std::snprintf(health_text, sizeof(health_text), "%.0f HP", entry.health);
 
 		const ImVec2 name_size = font->CalcTextSizeA(font_size, FLT_MAX, 0.0f, entry.name.c_str());
-		const ImVec2 health_size = show_health
+		const ImVec2 health_size = settings_snapshot.show_health
 			? font->CalcTextSizeA(small_font_size, FLT_MAX, 0.0f, health_text)
 			: ImVec2{};
-		const float top_gap = show_health ? 8.0f * scale : 0.0f;
+		const float top_gap = settings_snapshot.show_health ? 8.0f * scale : 0.0f;
 		const float top_width = name_size.x + top_gap + health_size.x;
 		const float horizontal_padding = 6.0f * scale;
 		const float vertical_padding = 3.0f * scale;
@@ -771,9 +774,9 @@ void modules::nametag::render_overlay()
 		const float chip_height = 16.0f * scale;
 		const float chip_gap = 3.0f * scale;
 		const float armor_width = chip_width * 4.0f + chip_gap * 3.0f;
-		const float panel_width = std::max(top_width, show_armor ? armor_width : 0.0f) + horizontal_padding * 2.0f;
+		const float panel_width = std::max(top_width, settings_snapshot.show_armor ? armor_width : 0.0f) + horizontal_padding * 2.0f;
 		const float panel_height = vertical_padding * 2.0f + std::max(name_size.y, health_size.y) +
-			(show_armor ? chip_height + 4.0f * scale : 0.0f);
+			(settings_snapshot.show_armor ? chip_height + 4.0f * scale : 0.0f);
 		const ImVec2 panel_min(anchor_x - panel_width * 0.5f,
 			anchor_y - std::max(name_size.y, health_size.y) * 0.5f - vertical_padding);
 		const ImVec2 panel_max(panel_min.x + panel_width, panel_min.y + panel_height);
@@ -793,7 +796,7 @@ void modules::nametag::render_overlay()
 			IM_COL32(255, 255, 255, 255), entry.name.c_str());
 
 		top_x += name_size.x + top_gap;
-		if (show_health)
+		if (settings_snapshot.show_health)
 		{
 			const float health_ratio = entry.max_health > 0.0f
 				? std::clamp(entry.health / entry.max_health, 0.0f, 1.0f)
@@ -808,7 +811,7 @@ void modules::nametag::render_overlay()
 			draw_list->AddText(font, small_font_size, hp_pos, hp_color, health_text);
 		}
 
-		if (show_armor)
+		if (settings_snapshot.show_armor)
 		{
 			static constexpr const char* slot_names[4] = { "H", "C", "L", "B" };
 			float chip_x = panel_min.x + (panel_width - armor_width) * 0.5f;
@@ -836,8 +839,5 @@ void modules::nametag::render_overlay()
 
 void modules::nametag::render_options()
 {
-	ImGui::SliderFloat(gui::text("Scale##nametag", "Ölçek##nametag"), &tag_scale, 0.55f, 1.75f, "%.2f");
-	ImGui::SliderFloat(gui::text("Max Distance##nametag", "Maksimum Mesafe##nametag"), &max_distance, 16.0f, 192.0f, "%.0fm");
-	ImGui::Checkbox(gui::text("Show Health##nametag", "Canı Göster##nametag"), &show_health);
-	ImGui::Checkbox(gui::text("Show Armor Set##nametag", "Zırh Setini Göster##nametag"), &show_armor);
+    gui::settings::render(settings_, module_settings::nametag::schema());
 }

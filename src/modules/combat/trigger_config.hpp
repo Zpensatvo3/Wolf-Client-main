@@ -1,19 +1,34 @@
 #pragma once
 #include "trigger_engine.hpp"
-#include "../core/config_fields.hpp"
+#include "../core/setting_schema.hpp"
 
 namespace trigger_engine
 {
+    inline std::span<const modules::settings::descriptor<config>> schema()
+    {
+        using d = modules::settings::descriptor<config>;
+        using label = modules::settings::label;
+        static constexpr label targets[]{{"Players","Oyuncular"},{"Players + Mobs","Oyuncular + Yaratiklar"},{"All Living","Tum Canlilar"}};
+        static constexpr label weapons[]{{"Any Weapon","Herhangi Bir Silah"},{"Sword","Kilic"},{"Axe","Balta"}};
+        static constexpr label criticals[]{{"Off","Kapali"},{"Smart","Akilli"},{"Criticals Only","Sadece Kritik"}};
+        static const d fields[]{
+            d::real_pair("cooldown", {"Cooldown","Cooldown"}, &config::cooldown, .5f, 1.f, "%.0f%%").scaled(100.f),
+            d::integer_pair("reaction", {"Reaction","Tepki"}, &config::reaction, 0, 150, "%d ms"),
+            d::enumeration<&config::targets>("targets", {"Targets","Hedefler"}, targets),
+            d::enumeration<&config::weapon>("weapon", {"Starting Weapon","Baslangic Silahi"}, weapons),
+            d::enumeration<&config::criticals>("criticals", {"Criticals","Kritikler"}, criticals),
+            d::toggle("on_click", {"On Click Only","Sadece Tiklarken"}, &config::on_click)
+        };
+        return fields;
+    }
     inline bool visit_config(modules::config_visitor& v, config& live)
     {
         config candidate = live;
         const bool importing = v.importing();
         if (importing) v.stage_values(true);
-        v.field("cooldown", candidate.cooldown); v.field("reaction", candidate.reaction);
+        modules::settings::visit_fields(v, candidate, schema());
         int targets = static_cast<int>(candidate.targets), weapon = static_cast<int>(candidate.weapon);
         int criticals = static_cast<int>(candidate.criticals);
-        v.bounded_enum("targets", targets, 0, 2); v.bounded_enum("weapon", weapon, 0, 2);
-        v.bounded_enum("criticals", criticals, 0, 2); v.field("on_click", candidate.on_click);
         if (importing) {
             if (!v.has_field("cooldown")) {
                 v.field("min_cooldown", candidate.cooldown[0]); v.field("max_cooldown", candidate.cooldown[1]);

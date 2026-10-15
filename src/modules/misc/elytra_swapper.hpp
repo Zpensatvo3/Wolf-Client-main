@@ -1,6 +1,8 @@
 #pragma once
 
 #include "../module_support.hpp"
+#include "../core/settings_store.hpp"
+#include "settings/elytra_swapper_settings.hpp"
 
 namespace modules
 {
@@ -15,16 +17,11 @@ class elytra_swapper : public module
 		void render_options() override;
 		float get_options_height() override { return 205.0f; }
 		void visit_config(config_visitor& v) override
-		{
-			v.field("target_mode", target_mode); v.field("swap_delay_ms", swap_delay_ms);
-			v.field("use_hotbar", use_hotbar);
-		}
+		{ settings_.visit(v, module_settings::elytra_swapper::schema()); }
 
 	private:
+		modules::settings::store<module_settings::elytra_swapper> settings_;
 		enum class state { idle, pickup_source, pickup_chest, return_old };
-		int target_mode = 0; // 0 = elytra, 1 = chestplate
-		int swap_delay_ms = 70;
-		bool use_hotbar = true;
 		state current_state = state::idle;
 		int source_screen_slot = -1;
 		std::chrono::steady_clock::time_point next_action{};

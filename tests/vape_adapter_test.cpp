@@ -1,8 +1,6 @@
-#include "../../combat cpp/aimassist/AimAssist.hpp"
-#include "../../combat cpp/combat/SilentAura.hpp"
-#include "../../combat cpp/combat/CrystalAura.hpp"
-#include "../../combat cpp/combat/Triggerbot.hpp"
-#include "../../combat cpp/movement/JumpReset.hpp"
+#include "../src/modules/vape/engines/aimassist/AimAssist.hpp"
+#include "../src/modules/vape/engines/clicker/LeftClicker.hpp"
+#include "../src/modules/vape/engines/clicker/RightClicker.hpp"
 #include <cassert>
 #include <cmath>
 #include <iostream>
@@ -39,54 +37,26 @@ int main()
     aim.reset();yaw=0;
     aim.applyRenderTick(yaw,pitch,.5f);assert(yaw==0);
 
-    Combat::SilentAura aura;
-    aura.humanJitter=false;
-    const std::vector<Combat::CombatTarget> enemies{{7,bounds}};
-    auto action=aura.update(eye,0,0,.5f,1.f,false,false,enemies,.05);
-    assert(action.targetEntityId==7&&action.shouldAttack);
-    action=aura.update(eye,0,0,.5f,0.f,false,false,enemies,.05);
-    assert(action.targetEntityId==7&&!action.shouldAttack);
-
-    Combat::CrystalAura crystal;
-    const std::vector<Combat::CrystalPlacement> placements{{{1,0,2},8,2,1,false}};
-    auto crystal_action=crystal.update({},20,0,20,8,0,0,2,3,placements,{});
-    assert(crystal_action.type==Combat::CrystalAura::ActionType::PLACE_CRYSTAL);
-    crystal.maxSelfDamage=1;
-    crystal_action=crystal.update({},20,0,20,8,0,0,2,3,placements,{});
-    assert(crystal_action.type==Combat::CrystalAura::ActionType::NONE);
-    crystal.maxSelfDamage=4;
-    crystal_action=crystal.update({},20,0,20,8,0,0,-2,3,placements,{});
-    assert(crystal_action.type==Combat::CrystalAura::ActionType::PLACE_CRYSTAL&&crystal_action.hotbarSlot==-2);
-    assert(std::abs(Combat::CrystalAura::reduceDamageByEnchants(100,0,0,16)-36)<.001f);
-
-    Combat::JumpReset jump;
-    jump.chance=jump.accuracy=100;jump.delayTicks=1;
-    assert(!jump.onTick(true)); // No velocity must never produce a jump.
-    assert(!jump.onVelocityPacket(.4,.2,true,false));
-    assert(jump.onTick(true));assert(!jump.onTick(true));
-    assert(!jump.onVelocityPacket(.4,.2,true,false));
-    assert(!jump.onTick(false));assert(!jump.onTick(true)); // No stale jump after landing.
-
-    Combat::Triggerbot delayed,early;
-    for(auto* engine:{&delayed,&early}) {
-        engine->requireMouseDown=false;engine->limitToWeapons=false;
-        engine->airCrits=false;engine->mouseOverDelayMaxMs=0;
-    }
-    delayed.extraDelayMinTicks=delayed.extraDelayMaxTicks=3;
-    early.extraDelayMinTicks=early.extraDelayMaxTicks=-2;
-    assert(delayed.cooldownOffsetTicks(7)==-3);
-    assert(early.cooldownOffsetTicks(7)==2);
-    for(int i=0;i<20;++i)assert(delayed.cooldownOffsetTicks(7)==-3);
-    // One short wait for the independent engine's existing 50 ms safety timer;
-    // all remaining checks are numeric and make no game/system input calls.
-    std::this_thread::sleep_for(std::chrono::milliseconds(55));
-    auto decide=[](Combat::Triggerbot& engine,float cd) {
-        return engine.onTick(true,0,0,0,true,cd,false,true,7,true,false,false,false,false);
-    };
-    assert(decide(delayed,.85f)==Combat::Triggerbot::TriggerAction::NONE);
-    assert(decide(delayed,1.f)==Combat::Triggerbot::TriggerAction::ATTACK);
-    assert(decide(early,1.f)==Combat::Triggerbot::TriggerAction::ATTACK);
-    early.onAttackProcessed();
-    assert(decide(early,1.f)==Combat::Triggerbot::TriggerAction::NONE);
-    std::cout<<"Vape decision smoke passed (offline; no game attached).\n";
+    Combat::LeftClicker left(9,13.5);
+    Combat::RightClicker right(12,18);
+    assert(!left.shouldClick(false,false,true,false));
+    assert(!left.shouldClick(true,true,true,false));
+    assert(!left.shouldClick(true,false,false,false));
+    assert(!left.shouldClick(true,false,true,true));
+    left.breakBlocksProtection=false;
+    left.weaponsOnly=false;
+    assert(left.shouldClick(true,true,false,false));
+    left.onClickProcessed();
+    assert(!left.shouldClick(true,true,false,false));
+    assert(!right.shouldClick(false,true,false,false));
+    assert(!right.shouldClick(true,false,false,false));
+    assert(!right.shouldClick(true,true,false,true));
+    assert(right.shouldClick(true,false,true,false));
+    right.allowOffhand=false;
+    assert(!right.shouldClick(true,false,true,false));
+    right.holdToClick=false;
+    assert(right.shouldClick(false,true,false,false));
+    right.onClickProcessed();
+    assert(!right.shouldClick(false,true,false,false));
+    std::cout << "Vape aim/clicker engine checks passed\n";
 }

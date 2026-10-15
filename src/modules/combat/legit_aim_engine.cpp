@@ -1,3 +1,4 @@
+#include "../../ui/settings_renderer.hpp"
 #include "legit_aim_engine.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../../platform/adapter/game_adapter.hpp"
@@ -320,28 +321,7 @@ void legit_aim_engine::run(const config& requested, runtime& state, bool enabled
 
 void legit_aim_engine::render_options(config& settings, const char* id_suffix)
 {
-	ImGui::PushID(id_suffix);
-	gui::option_slider(gui::text("Assist Strength", "Yardim Gucu"),
-		&settings.strength, 0.0f, 100.0f, "%.0f%%");
-	gui::option_slider("FOV", &settings.fov, 20.0f, 120.0f, "%.0f deg");
-	gui::option_slider(gui::text("Range", "Menzil"),
-		&settings.max_distance, 2.5f, 5.0f, "%.1f blocks");
-
-	const char* point_labels[] = {
-		gui::text("Adaptive", "Uyarlanabilir"),
-		gui::text("Upper Body", "Ust Govde"),
-		gui::text("Head", "Bas")
-	};
-	int point = settings.point == aim_point::head
-		? 2
-		: (settings.point == aim_point::upper_body ? 1 : 0);
-	if (gui::option_combo(gui::text("Aim Point", "Nisan Noktasi"),
-		&point, point_labels, IM_ARRAYSIZE(point_labels)))
-	{
-		settings.point = point == 2
-			? aim_point::head
-			: (point == 1 ? aim_point::upper_body : aim_point::adaptive);
-	}
-	gui::option_toggle(gui::text("Weapon Only", "Sadece Silah"), &settings.weapon_only);
-	ImGui::PopID();
+    ImGui::PushID(id_suffix);
+    gui::settings::render(settings, schema());
+    ImGui::PopID();
 }

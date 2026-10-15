@@ -13,6 +13,7 @@
 #include <mutex>
 #include <shared_mutex>
 #include <cstdint>
+#include <cstddef>
 #include <functional>
 
 #ifdef NDEBUG
@@ -119,7 +120,7 @@ namespace jni
 
 		auto append = [i = 0, &concatenated](auto const& s) mutable
 		{
-			for (int n = 0; n < sizeof(s.value) - 1; ++n) concatenated[i++] = s.value[n]; //-1 to not include null terminator
+			for (std::size_t n = 0; n < sizeof(s.value) - 1; ++n) concatenated[i++] = s.value[n]; //-1 to not include null terminator
 		};
 		(append(strs), ...);
 		concatenated[size] = '\0';
@@ -257,12 +258,26 @@ namespace jni
 		NOT_STATIC = false
 	};
 
+	template<string_litteral class_name, class members_type> class klass;
+
+	// A method signature needs a Java class name, not a complete C++ wrapper.
+	// This keeps cross-domain forward declarations usable in standalone SDK headers.
+	template<class T> struct reference_signature
+	{
+		static constexpr auto get() { return T::get_signature(); }
+	};
+	template<string_litteral class_name, class members_type>
+	struct reference_signature<klass<class_name, members_type>>
+	{
+		static constexpr auto get() { return concat<"L", class_name, ";">(); }
+	};
+
 	template<class T> inline constexpr auto get_signature_for_type()
 	{
 		if constexpr (std::is_void_v<T>) 
 			return string_litteral("V");
 		if constexpr (!is_jni_primitive_type<T> && !std::is_void_v<T>)
-			return T::get_signature();
+			return reference_signature<T>::get();
 		if constexpr (std::is_same_v<jboolean, T>)
 			return string_litteral("Z");
 		if constexpr (std::is_same_v<jbyte, T>)

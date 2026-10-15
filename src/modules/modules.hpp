@@ -45,6 +45,5 @@
 #include "visual/nametag.hpp"
 #include "friends/friend_manager.hpp"
 #include "vape/vape_module.hpp"
-#include "vape/advanced_module.hpp"
 
 #include "ui_redirect.hpp"

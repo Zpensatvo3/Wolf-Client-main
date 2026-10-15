@@ -1,4 +1,5 @@
 #include "storage_esp.hpp"
+#include "../../ui/settings_renderer.hpp"
 #include "../../cache/cache.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../../platform/adapter/game_adapter.hpp"
@@ -11,7 +12,7 @@
 
 #include <imgui/imgui.h>
 
-#include "../gui/gui.hpp"
+#include "../../gui/gui.hpp"
 
 
 namespace
@@ -89,6 +90,7 @@ namespace
 
 void modules::storage_esp::run(::cache& cache)
 {
+    auto settings_snapshot = settings_.read();
 	if (!cache.is_valid() || !cache.player || !cache.world || !jni::get_env()) return;
 	try
 	{
@@ -97,7 +99,7 @@ void modules::storage_esp::run(::cache& cache)
 		const int px = static_cast<int>(std::floor(player_pos.x));
 		const int py = static_cast<int>(std::floor(player_pos.y));
 		const int pz = static_cast<int>(std::floor(player_pos.z));
-		const int horizontal = std::clamp(range, 4, 24);
+		const int horizontal = std::clamp(settings_snapshot.range, 4, 24);
 		const int vertical_radius = std::min(horizontal, 12);
 		const int side = horizontal * 2 + 1;
 		const int vertical = vertical_radius * 2 + 1;
@@ -158,6 +160,7 @@ void modules::storage_esp::run(::cache& cache)
 
 void modules::storage_esp::render_overlay()
 {
+    auto settings_snapshot = settings_.read();
 	if (!platform::jni_context::bind_current_thread()) return;
 	double cx = 0.0, cy = 0.0, cz = 0.0;
 	float yaw = 0.0f, pitch = 0.0f, fov = 70.0f;
@@ -194,7 +197,7 @@ void modules::storage_esp::render_overlay()
 			continue;
 
 		const ImU32 color = storage_color(entry.label);
-		if (box_style == 0)
+		if (settings_snapshot.box_style == 0)
 		{
 			draw->AddRectFilled(ImVec2(min_x, min_y), ImVec2(max_x, max_y),
 				(color & 0x00FFFFFFu) | 0x1E000000u, 2.0f);
@@ -219,9 +222,9 @@ void modules::storage_esp::render_overlay()
 		const double dx = entry.x + .5 - cx, dy = entry.y + .5 - cy, dz = entry.z + .5 - cz;
 		const int distance = static_cast<int>(std::sqrt(dx * dx + dy * dy + dz * dz));
 		char text[96]{};
-		if (show_labels && show_distance) std::snprintf(text, sizeof(text), "%s  %dm", entry.label.c_str(), distance);
-		else if (show_labels) std::snprintf(text, sizeof(text), "%s", entry.label.c_str());
-		else if (show_distance) std::snprintf(text, sizeof(text), "%dm", distance);
+		if (settings_snapshot.show_labels && settings_snapshot.show_distance) std::snprintf(text, sizeof(text), "%s  %dm", entry.label.c_str(), distance);
+		else if (settings_snapshot.show_labels) std::snprintf(text, sizeof(text), "%s", entry.label.c_str());
+		else if (settings_snapshot.show_distance) std::snprintf(text, sizeof(text), "%dm", distance);
 		if (text[0] == '\0') continue;
 		const ImVec2 text_size = ImGui::CalcTextSize(text);
 		const float text_x = (min_x + max_x - text_size.x) * 0.5f;
@@ -241,9 +244,5 @@ void modules::storage_esp::on_disable(::cache&)
 
 void modules::storage_esp::render_options()
 {
-	const char* styles[] = { "2D Box", "3D Box" };
-	ImGui::Combo(gui::text("Box Style", "Kutu Stili"), &box_style, styles, IM_ARRAYSIZE(styles));
-	ImGui::SliderInt(gui::text("Range", "Menzil"), &range, 4, 24, "%d blocks");
-	ImGui::Checkbox(gui::text("Show Labels", "Etiketleri Goster"), &show_labels);
-	ImGui::Checkbox(gui::text("Show Distance", "Mesafeyi Goster"), &show_distance);
+    gui::settings::render(settings_, module_settings::storage_esp::schema());
 }

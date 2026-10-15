@@ -10,6 +10,7 @@
 #include <imgui/imgui.h>
 
 #include "hit_crystal.hpp"
+#include "../../ui/settings_renderer.hpp"
 #include "../ui_redirect.hpp"
 #include "../../gui/gui.hpp"
 #include "../../gui/widgets.hpp"
@@ -202,7 +203,8 @@ maps::BlockState state_at(const maps::ClientWorld& world, int x, int y, int z)
 
 void modules::hit_crystal::stop_clicking(::cache& cache, bool restore)
 {
-	if (restore && restore_slot && old_slot >= 0 && old_slot <= 8 &&
+    auto settings_snapshot = settings_.read();
+	if (restore && settings_snapshot.restore_slot && old_slot >= 0 && old_slot <= 8 &&
 		cache.player && cache.instance)
 	{
 		maps::ClientPlayerInteractionManager manager = cache.instance.interactionManager.get();
@@ -229,6 +231,7 @@ void modules::hit_crystal::run(::cache&)
 
 void modules::hit_crystal::render_overlay()
 {
+    auto settings_snapshot = settings_.read();
 	if (!platform::jni_context::bind_current_thread())
 		return;
 	std::lock_guard lock(state_mutex);
@@ -244,7 +247,7 @@ void modules::hit_crystal::render_overlay()
 
 	auto reset_cycle = [&](bool restore)
 	{
-		if (restore && restore_slot && old_slot >= 0 && player && manager)
+		if (restore && settings_snapshot.restore_slot && old_slot >= 0 && player && manager)
 			services::hotbar::restore_if_owned(player, manager, old_slot, crystal_slot);
 		old_slot = -1;
 		crystal_slot = -1;
@@ -267,8 +270,8 @@ void modules::hit_crystal::render_overlay()
 	}
 
 	auto now = steady_clock::now();
-	place_delay = std::clamp(place_delay, 0, 250);
-	break_delay = std::clamp(break_delay, 0, 200);
+	settings_snapshot.place_delay = std::clamp(settings_snapshot.place_delay, 0, 250);
+	settings_snapshot.break_delay = std::clamp(settings_snapshot.break_delay, 0, 200);
 
 	try
 	{
@@ -278,14 +281,14 @@ void modules::hit_crystal::render_overlay()
 				world, player, target_x, target_y, target_z, target_crystal_id);
 			if (!crystal)
 			{
-				if (restore_slot && old_slot >= 0)
+				if (settings_snapshot.restore_slot && old_slot >= 0)
 					services::hotbar::restore_if_owned(player, manager, old_slot, crystal_slot);
 				old_slot = -1;
 				crystal_slot = -1;
 				target_crystal_id = -1;
 				retries = 0;
 				state = State::WAIT_REPLACE;
-				next_action_time = now + std::chrono::milliseconds(place_delay);
+				next_action_time = now + std::chrono::milliseconds(settings_snapshot.place_delay);
 				return;
 			}
 
@@ -300,7 +303,7 @@ void modules::hit_crystal::render_overlay()
 				if (attack_crystal(player, manager, crystal))
 					++retries;
 				next_action_time = now + std::chrono::milliseconds(
-					(std::max)(35, break_delay));
+					(std::max)(35, settings_snapshot.break_delay));
 			}
 			return;
 		}
@@ -327,7 +330,7 @@ void modules::hit_crystal::render_overlay()
 				state_started = now;
 				retries = 0;
 				next_action_time = now + std::chrono::milliseconds(
-					(std::max)(35, break_delay));
+					(std::max)(35, settings_snapshot.break_delay));
 				return;
 			}
 
@@ -366,7 +369,7 @@ void modules::hit_crystal::render_overlay()
 			}
 			state = State::WAIT_CRYSTAL;
 			state_started = now;
-			next_action_time = now + std::chrono::milliseconds(break_delay);
+			next_action_time = now + std::chrono::milliseconds(settings_snapshot.break_delay);
 			return;
 		}
 
@@ -401,7 +404,7 @@ void modules::hit_crystal::render_overlay()
 			return;
 		}
 
-		if (auto_switch)
+		if (settings_snapshot.auto_switch)
 		{
 			crystal_slot = find_item_slot(items, crystal_item);
 			if (crystal_slot < 0)
@@ -451,10 +454,5 @@ void modules::hit_crystal::on_disable(::cache& cache)
 
 void modules::hit_crystal::render_options()
 {
-	gui::option_toggle(gui::text("Auto Switch", "Otomatik Gecis"), &auto_switch);
-	gui::option_toggle(gui::text("Restore Slot", "Slotu Geri Yukle"), &restore_slot);
-	gui::option_slider(gui::text("Place Delay", "Yerlestirme Gecikmesi"),
-		&place_delay, 0, 250, "%d ms");
-	gui::option_slider(gui::text("Break Delay", "Kirma Gecikmesi"),
-		&break_delay, 0, 200, "%d ms");
+    gui::settings::render(settings_, module_settings::hit_crystal::schema());
 }

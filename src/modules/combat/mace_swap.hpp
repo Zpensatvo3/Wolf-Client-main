@@ -1,6 +1,8 @@
 #pragma once
 
 #include "../module_support.hpp"
+#include "../core/settings_store.hpp"
+#include "settings/mace_swap_settings.hpp"
 #include "../../services/game/client_context.hpp"
 
 namespace modules
@@ -20,9 +22,7 @@ class mace_swap : public module
 		void on_disable(::cache& cache) override;
 		float get_options_height() override { return 200.0f; }
 		void visit_config(config_visitor& v) override
-		{
-			v.field("preferred_mace_slot", preferred_mace_slot); v.field("return_delay", return_delay);
-		}
+		{ settings_.visit(v, module_settings::mace_swap::schema()); }
 
 		// Called on Minecraft's window/render thread before an attack reaches the
 		// game. Both physical and tagged synthetic attacks share this coordinator.
@@ -36,9 +36,8 @@ class mace_swap : public module
 			const maps::ClientPlayerInteractionManager& manager, bool consumed);
 
 	private:
+        modules::settings::store<module_settings::mace_swap> settings_;
 		inline static std::atomic<mace_swap*> active_instance{ nullptr };
-		int preferred_mace_slot = 2;
-		int return_delay = 10;
 		int old_slot = -1;
 		int mace_slot = -1;
 		bool waiting_for_release = false;

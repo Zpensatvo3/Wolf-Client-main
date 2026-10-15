@@ -1,6 +1,8 @@
 #pragma once
 
 #include "../module_support.hpp"
+#include "../core/settings_store.hpp"
+#include "settings/shield_breaker_settings.hpp"
 #include "../../services/game/client_context.hpp"
 
 namespace modules
@@ -21,11 +23,7 @@ class shield_breaker : public module
 		void on_disable(::cache& cache) override;
 		float get_options_height() override { return 150.0f; }
 		void visit_config(config_visitor& v) override
-		{
-			// Keep switch_delay in the payload so older public configs remain valid.
-			v.field("switch_delay", switch_delay); v.field("return_delay", return_delay);
-			v.field("axe_slot", config_axe_slot);
-		}
+		{ settings_.visit(v, module_settings::shield_breaker::schema()); }
 
 		// Runs on Minecraft's window thread before the physical click reaches
 		// GLFW, so the vanilla attack itself is performed with the axe selected.
@@ -39,10 +37,8 @@ class shield_breaker : public module
 			const maps::ClientPlayerInteractionManager& manager, bool consumed);
 
 	private:
+        modules::settings::store<module_settings::shield_breaker> settings_;
 		inline static std::atomic<shield_breaker*> active_instance{ nullptr };
-		int switch_delay = 0; // Legacy config field; switching is now pre-click.
-		int return_delay = 110;
-		int config_axe_slot = 1; // User-facing hotbar slot (1-9).
 		int old_slot = -1;
 		int axe_slot = -1;
 		bool waiting_to_restore = false;

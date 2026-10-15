@@ -1,5 +1,5 @@
-#include "modules.hpp"
-#include "../gui/gui.hpp"
+#include "../modules.hpp"
+#include "../../gui/gui.hpp"
 #include "../../platform/adapter/game_adapter.hpp"
 #include <imgui/imgui.h>
 #include <algorithm>
@@ -267,6 +267,7 @@ static bool clip_edge_to_near_plane(ViewPoint& from, ViewPoint& to)
 // ---- Game thread: cache bbox + read camera + FOV from JNI ----
 void modules::player_esp::run(::cache& cache)
 {
+    auto settings_snapshot = settings_.read();
     // Need a fresh JNI frame for all local references in this call
     jni::frame frame{};
 
@@ -291,7 +292,7 @@ void modules::player_esp::run(::cache& cache)
 		}
 
         // ----- Read FOV from GameOptions (1.21.1: field_1826 = SimpleOption<Integer>) -----
-        if (use_game_fov)
+        if (settings_snapshot.use_game_fov)
         {
             try
             {
@@ -318,7 +319,8 @@ void modules::player_esp::run(::cache& cache)
                                         if (game_fov >= 30.f && game_fov <= 120.f)
                                         {
                                             s_game_fov.store(game_fov, std::memory_order_relaxed);
-                                            fov_value = game_fov;
+                                            settings_snapshot.fov_value = game_fov;
+                                            settings_.update([&](auto& current) { current.fov_value = settings_snapshot.fov_value; return true; });
                                         }
                                     }
                                     else { env->ExceptionClear(); }
@@ -350,11 +352,12 @@ void modules::player_esp::run(::cache& cache)
                 s_cam_z.store(cam_data.pos.z,     std::memory_order_relaxed);
                 s_cam_yaw.store(cam_data.yaw,     std::memory_order_relaxed);
                 s_cam_pitch.store(cam_data.pitch, std::memory_order_relaxed);
-				if (use_game_fov && std::isfinite(cam_data.fov) &&
+				if (settings_snapshot.use_game_fov && std::isfinite(cam_data.fov) &&
 					cam_data.fov >= 1.0f && cam_data.fov <= 179.0f)
 				{
 					s_game_fov.store(cam_data.fov, std::memory_order_relaxed);
-					fov_value = cam_data.fov;
+					settings_snapshot.fov_value = cam_data.fov;
+					settings_.update([&](auto& current) { current.fov_value = settings_snapshot.fov_value; return true; });
 				}
                 got_cam = true;
             }
@@ -497,6 +500,7 @@ void modules::player_esp::run(::cache& cache)
 // ---- Render thread (ZERO JNI) ----
 void modules::player_esp::render_overlay()
 {
+    auto settings_snapshot = settings_.read();
     const float sw = ImGui::GetIO().DisplaySize.x;
     const float sh = ImGui::GetIO().DisplaySize.y;
     if (sw < 1.f || sh < 1.f) return;
@@ -510,14 +514,14 @@ void modules::player_esp::render_overlay()
     double cz    = s_cam_z.load(std::memory_order_relaxed);
     float  yaw   = s_cam_yaw.load(std::memory_order_relaxed);
     float  pitch = s_cam_pitch.load(std::memory_order_relaxed);
-    float  fov   = use_game_fov ? s_game_fov.load(std::memory_order_relaxed) : fov_value;
+    float  fov   = settings_snapshot.use_game_fov ? s_game_fov.load(std::memory_order_relaxed) : settings_snapshot.fov_value;
 	float render_fov = fov;
-	if (read_render_camera(cx, cy, cz, yaw, pitch, render_fov) && use_game_fov)
+	if (read_render_camera(cx, cy, cz, yaw, pitch, render_fov) && settings_snapshot.use_game_fov)
 		fov = render_fov;
 
-	ImVec4 active_color = use_theme_color
+	ImVec4 active_color = settings_snapshot.use_theme_color
 		? gui::get_dynamic_color().Value
-		: ImVec4(esp_color[0], esp_color[1], esp_color[2], esp_color[3]);
+		: ImVec4(settings_snapshot.esp_color[0], settings_snapshot.esp_color[1], settings_snapshot.esp_color[2], settings_snapshot.esp_color[3]);
 	active_color.w = std::clamp(active_color.w, 0.05f, 1.0f);
 	ImColor acc(active_color);
     ImU32 col = ImGui::ColorConvertFloat4ToU32(active_color);
@@ -551,7 +555,7 @@ void modules::player_esp::render_overlay()
 			ok[i] = project_view(view_points[i], sw, sh, fov, px[i], py_[i]);
             if (ok[i]) vis++;
         }
-		if (esp_mode == 2 && vis < 2) continue;
+		if (settings_snapshot.esp_mode == 2 && vis < 2) continue;
 
         // Find 2D bounding rectangle
         float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
@@ -563,7 +567,7 @@ void modules::player_esp::render_overlay()
             if (px[i]  > x1) x1 = px[i];
             if (py_[i] > y1) y1 = py_[i];
         }
-		if (esp_mode != 2)
+		if (settings_snapshot.esp_mode != 2)
 		{
 			// A centre-axis box does not change width when different 3D corners
 			// cross the near plane. This is substantially steadier while either
@@ -617,24 +621,24 @@ void modules::player_esp::render_overlay()
 		if (x0 > x1 || y0 > y1) continue;
         if (x1 < 0 || x0 > sw || y1 < 0 || y0 > sh) continue;
 
-        if (esp_mode == 0) // Modern 2D Box
+        if (settings_snapshot.esp_mode == 0) // Modern 2D Box
         {
             // Outer subtle glow / shadow
             dl->AddRect(ImVec2(x0 - 1.5f, y0 - 1.5f), ImVec2(x1 + 1.5f, y1 + 1.5f),
                 IM_COL32(0, 0, 0, 160), 2.0f, 0, 1.0f);
 
             // Main ESP box
-            dl->AddRect(ImVec2(x0, y0), ImVec2(x1, y1), col, 2.0f, 0, box_thickness);
+            dl->AddRect(ImVec2(x0, y0), ImVec2(x1, y1), col, 2.0f, 0, settings_snapshot.box_thickness);
 
             // Inner outline
             dl->AddRect(ImVec2(x0 + 1.0f, y0 + 1.0f), ImVec2(x1 - 1.0f, y1 - 1.0f),
                 IM_COL32(0, 0, 0, 120), 1.0f, 0, 1.0f);
         }
-        else if (esp_mode == 1) // Modern Corners
+        else if (settings_snapshot.esp_mode == 1) // Modern Corners
         {
             const float bxs = (x1 - x0) * 0.28f;
             const float bys = (y1 - y0) * 0.28f;
-            const float bt = box_thickness;
+            const float bt = settings_snapshot.box_thickness;
             const ImU32 shadow = IM_COL32(0, 0, 0, 190);
 
             // Outer dark drop lines
@@ -657,7 +661,7 @@ void modules::player_esp::render_overlay()
             dl->AddLine(ImVec2(x1, y1), ImVec2(x1 - bxs, y1), col, bt);
             dl->AddLine(ImVec2(x1, y1), ImVec2(x1, y1 - bys), col, bt);
         }
-		else if (esp_mode == 2) // 3D Box
+		else if (settings_snapshot.esp_mode == 2) // 3D Box
 		{
 			static constexpr int faces[6][4] = {
 				{ 0, 1, 3, 2 }, { 4, 5, 7, 6 },
@@ -666,7 +670,7 @@ void modules::player_esp::render_overlay()
 			};
 
 			ImVec4 fill_value = acc.Value;
-			fill_value.w = std::clamp(fill_opacity, 0.02f, 0.55f);
+			fill_value.w = std::clamp(settings_snapshot.fill_opacity, 0.02f, 0.55f);
 			const ImU32 fill_color = ImGui::ColorConvertFloat4ToU32(fill_value);
 			for (const auto& face : faces)
 			{
@@ -713,12 +717,12 @@ void modules::player_esp::render_overlay()
 				}
 			};
 
-			draw_edges(ImColor(0, 0, 0, 190), box_thickness + 2.0f);
-			draw_edges(col, box_thickness);
+			draw_edges(ImColor(0, 0, 0, 190), settings_snapshot.box_thickness + 2.0f);
+			draw_edges(col, settings_snapshot.box_thickness);
 		}
 
         // ---- Modern Health bar (left side, vertical) ----
-        if (show_health)
+        if (settings_snapshot.show_health)
         {
             const float bar_w = 4.0f;
             const float bar_x = x0 - bar_w - 4.0f;
@@ -742,7 +746,7 @@ void modules::player_esp::render_overlay()
         }
 
         // ---- Sleek Name tag (above box) ----
-        if (show_names && !b.name.empty())
+        if (settings_snapshot.show_names && !b.name.empty())
         {
             const ImVec2 ts = ImGui::CalcTextSize(b.name.c_str());
             const float tx = (x0 + x1) * 0.5f - ts.x * 0.5f;
@@ -754,7 +758,7 @@ void modules::player_esp::render_overlay()
         }
 
         // ---- Sleek Distance indicator (below box) ----
-        if (show_distance)
+        if (settings_snapshot.show_distance)
         {
             char dist_str[16];
             std::snprintf(dist_str, sizeof(dist_str), "%.1fm", b.distance);
@@ -832,28 +836,5 @@ void modules::player_esp::refresh_local_skin_texture()
 
 void modules::player_esp::render_options()
 {
-    const char* esp_modes[] = { gui::text("2D Box", "2D Kutu"), gui::text("Corners", "Köşeler"), gui::text("3D Box", "3D Kutu") };
-    ImGui::SetNextItemWidth(140.f);
-    ImGui::Combo(gui::text("Style", "Stil"), &esp_mode, esp_modes, IM_ARRAYSIZE(esp_modes));
-	if (esp_mode == 2)
-	{
-		ImGui::SetNextItemWidth(140.f);
-		ImGui::SliderFloat(gui::text("Fill Opacity", "Dolgu Saydamlığı"), &fill_opacity, 0.02f, 0.55f, "%.2f");
-	}
-
-    ImGui::SetNextItemWidth(140.f);
-    ImGui::SliderFloat(gui::text("Thickness", "Kalınlık"), &box_thickness, 0.5f, 5.0f, "%.1f");
-	ImGui::Checkbox(gui::text("Use Theme Color", "Tema Rengini Kullan"), &use_theme_color);
-	if (!use_theme_color)
-		ImGui::ColorEdit4(gui::text("ESP Color", "ESP Rengi"), esp_color,
-			ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar);
-    ImGui::Checkbox(gui::text("Show Names", "İsimleri Göster"), &show_names);
-    ImGui::Checkbox(gui::text("Show Health", "Canı Göster"), &show_health);
-    ImGui::Checkbox(gui::text("Show Distance", "Mesafeyi Göster"), &show_distance);
-    ImGui::Checkbox(gui::text("Use Game FOV", "Oyun FOV'unu Kullan"), &use_game_fov);
-    if (!use_game_fov)
-    {
-        ImGui::SetNextItemWidth(140.f);
-        ImGui::SliderFloat("FOV", &fov_value, 30.f, 120.f, "%.0f");
-    }
+    gui::settings::render(settings_, module_settings::player_esp::schema());
 }

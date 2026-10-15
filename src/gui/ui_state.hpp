@@ -33,8 +33,6 @@ namespace gui::aegis
         bool has_geometry = false;
         ImVec2 window_position = ImVec2(0.0f, 0.0f);
         ImVec2 window_size = ImVec2(1280.0f, 620.0f);
-        bool sound_effects = true;
-        float sound_volume = 0.70f;
         bool has_hud_layout = false;
         std::array<hud_placement, 3> hud_layout{{ {10, 10, 1}, {10, 10, 1.12f}, {22, 60, 1.2f} }};
     };

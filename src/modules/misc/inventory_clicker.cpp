@@ -10,8 +10,9 @@
 #include <imgui/imgui.h>
 
 #include "inventory_clicker.hpp"
+#include "../../ui/settings_renderer.hpp"
 #include "../ui_redirect.hpp"
-#include "../gui/gui.hpp"
+#include "../../gui/gui.hpp"
 
 namespace
 {
@@ -40,6 +41,7 @@ long long now_milliseconds()
 
 void modules::inventory_clicker::run(::cache& cache)
 {
+    auto settings_snapshot = settings_.read();
 	const bool lmb_down = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
 	HWND minecraft_window = gui::get_window();
 
@@ -82,11 +84,12 @@ void modules::inventory_clicker::run(::cache& cache)
 			// Let Minecraft process the user's original physical click first.
 			previous_lmb_down = true;
 			last_click_time = now;
-			click_delay = random_click_delay(min_cps, max_cps);
+			settings_snapshot.click_delay = random_click_delay(settings_snapshot.min_cps, settings_snapshot.max_cps);
+			settings_.update([&](auto& current) { current.click_delay = settings_snapshot.click_delay; return true; });
 			return;
 		}
 
-		if (now - last_click_time < click_delay)
+		if (now - last_click_time < settings_snapshot.click_delay)
 			return;
 
 		maps::HandledScreen handled_screen(current_screen.object_instance, false);
@@ -122,7 +125,8 @@ void modules::inventory_clicker::run(::cache& cache)
 
 		platform::jni_context::clear_exception();
 		last_click_time = now;
-		click_delay = random_click_delay(min_cps, max_cps);
+		settings_snapshot.click_delay = random_click_delay(settings_snapshot.min_cps, settings_snapshot.max_cps);
+		settings_.update([&](auto& current) { current.click_delay = settings_snapshot.click_delay; return true; });
 	}
 	catch (...)
 	{
@@ -134,17 +138,15 @@ void modules::inventory_clicker::run(::cache& cache)
 
 void modules::inventory_clicker::on_disable(::cache& cache)
 {
+    auto settings_snapshot = settings_.read();
 	(void)cache;
 	previous_lmb_down = false;
 	last_click_time = 0;
-	click_delay = 150;
+	settings_snapshot.click_delay = 150;
+	settings_.update([&](auto& current) { current.click_delay = settings_snapshot.click_delay; return true; });
 }
 
 void modules::inventory_clicker::render_options()
 {
-	ImGui::SliderInt(gui::text("Min CPS", "Minimum CPS"), &min_cps, 1, 20);
-	ImGui::SliderInt(gui::text("Max CPS", "Maksimum CPS"), &max_cps, 1, 20);
-
-	min_cps = std::clamp(min_cps, 1, 20);
-	max_cps = std::clamp(max_cps, min_cps, 20);
+    gui::settings::render(settings_, module_settings::inventory_clicker::schema());
 }

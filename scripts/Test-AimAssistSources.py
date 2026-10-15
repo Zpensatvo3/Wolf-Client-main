@@ -31,7 +31,7 @@ assert "geometry::stop_motion(state.motion)" in engine
 assert "damped_axis" in texts["src/modules/combat/legit_aim_math.hpp"]
 assert "strength = 42.f" in texts["src/modules/combat/legit_aim_config.hpp"]
 assert "check_visibility" not in engine
-mapping = (ROOT / "src/mappings.hpp").read_text(encoding="utf-8")
+mapping = (ROOT / "src/sdk/minecraft/fabric_1_21_1/entities.hpp").read_text(encoding="utf-8")
 assert re.search(r'jni::method<jdouble,\s*"method_23320">\s+getEyeY', mapping)
 assert re.search(r'jni::method<jfloat,\s*"method_5751">\s+getStandingEyeHeight', mapping)
 assert "context.player.getEyeY.is_valid()" in engine

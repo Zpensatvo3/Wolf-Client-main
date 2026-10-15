@@ -1,6 +1,8 @@
 #pragma once
 
 #include "../module_support.hpp"
+#include "../core/settings_store.hpp"
+#include "settings/hit_crystal_settings.hpp"
 
 namespace modules
 {
@@ -15,12 +17,10 @@ class hit_crystal : public module
 		void on_disable(::cache& cache) override;
 		float get_options_height() override { return 300.0f; }
 		void visit_config(config_visitor& v) override
-		{
-			v.field("auto_switch", auto_switch); v.field("restore_slot", restore_slot);
-			v.field("place_delay", place_delay); v.field("break_delay", break_delay);
-		}
+		{ settings_.visit(v, module_settings::hit_crystal::schema()); }
 
 	private:
+        modules::settings::store<module_settings::hit_crystal> settings_;
 			enum class State
 		{
 			SEEK_PLACE,
@@ -29,11 +29,6 @@ class hit_crystal : public module
 			WAIT_BREAK_CONFIRM,
 			WAIT_REPLACE
 		};
-
-		bool auto_switch = true;
-		bool restore_slot = true;
-		int place_delay = 28;
-		int break_delay = 24;
 		int old_slot = -1;
 		int crystal_slot = -1;
 		int target_crystal_id = -1;

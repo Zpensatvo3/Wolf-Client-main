@@ -1,6 +1,8 @@
 #pragma once
 
 #include "../module_support.hpp"
+#include "../core/settings_store.hpp"
+#include "settings/auto_armor_settings.hpp"
 
 namespace modules
 {
@@ -14,14 +16,11 @@ class auto_armor : public module
 		void render_options() override;
 		float get_options_height() override { return 180.0f; }
 		void visit_config(config_visitor& v) override
-		{
-			v.field("action_delay_ms", action_delay_ms); v.field("protect_elytra", protect_elytra);
-		}
+		{ settings_.visit(v, module_settings::auto_armor::schema()); }
 
 	private:
+		modules::settings::store<module_settings::auto_armor> settings_;
 		enum class state { idle, pickup_source, pickup_armor, return_old };
-		int action_delay_ms = 120;
-		bool protect_elytra = true;
 		state current_state = state::idle;
 		int source_screen_slot = -1;
 		int armor_screen_slot = -1;

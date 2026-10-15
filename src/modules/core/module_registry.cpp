@@ -1,4 +1,5 @@
 #include "module_registry.hpp"
+#include "module_runtime_state.hpp"
 #include "../../cache/cache.hpp"
 #include <algorithm>
 
@@ -36,7 +37,8 @@ void modules::clear_modules(::cache& cache)
 {
     for (module* current : registered_modules)
     {
-        if (current && current->enabled && cache.is_valid()) current->on_disable(cache);
+        if (current && (current->enabled || current->prev_enabled) && cache.is_valid())
+            stop_module(*current, cache);
         delete current;
     }
     registered_modules.clear();

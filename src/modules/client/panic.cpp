@@ -6,5 +6,5 @@
 void modules::panic::run(::cache&)
 {
     enabled = false;
-    gui::request_panic_animation();
+    gui::request_panic();
 }

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../mappings.hpp"
+#include "../../sdk/minecraft/fabric_1_21_1/inventory_network.hpp"
 
 namespace services::inventory
 {

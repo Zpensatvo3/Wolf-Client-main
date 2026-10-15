@@ -16,9 +16,10 @@
 #include <imgui/imgui.h>
 
 #include "trajectories.hpp"
+#include "../../ui/settings_renderer.hpp"
 #include "../../platform/adapter/game_adapter.hpp"
 #include "../ui_redirect.hpp"
-#include "../gui/gui.hpp"
+#include "../../gui/gui.hpp"
 
 namespace
 {
@@ -287,6 +288,7 @@ void clear_snapshot()
 
 void modules::trajectories::run(::cache& cache)
 {
+    auto settings_snapshot = settings_.read();
 	if (!cache.is_valid() || !cache.instance || !cache.world || !cache.player ||
 		!jni::get_env())
 	{
@@ -331,12 +333,12 @@ void modules::trajectories::run(::cache& cache)
 		}
 		if (!profile.valid ||
 			((profile.bow || profile.crossbow || std::strcmp(profile.name, "Trident") == 0) &&
-				!show_bows) ||
+				!settings_snapshot.show_bows) ||
 			((std::string(profile.name).find("Potion") != std::string::npos ||
-				std::string(profile.name).find("Bottle") != std::string::npos) && !show_potions) ||
+				std::string(profile.name).find("Bottle") != std::string::npos) && !settings_snapshot.show_potions) ||
 			(!profile.bow && !profile.crossbow && std::strcmp(profile.name, "Trident") != 0 &&
 				std::string(profile.name).find("Potion") == std::string::npos &&
-				std::string(profile.name).find("Bottle") == std::string::npos && !show_throwables))
+				std::string(profile.name).find("Bottle") == std::string::npos && !settings_snapshot.show_throwables))
 		{
 			clear_snapshot();
 			return;
@@ -407,14 +409,14 @@ void modules::trajectories::run(::cache& cache)
 		}
 
 		trajectory_snapshot updated;
-		updated.points.reserve(static_cast<std::size_t>(max_ticks) + 1);
+		updated.points.reserve(static_cast<std::size_t>(settings_snapshot.max_ticks) + 1);
 		updated.points.push_back(position);
 		updated.item_name = profile.name;
 		updated.aim_yaw = angles.yaw;
 		updated.aim_pitch = angles.pitch;
 		const trajectory_point origin = position;
 
-		const int simulation_ticks = std::clamp(max_ticks, 40, 240);
+		const int simulation_ticks = std::clamp(settings_snapshot.max_ticks, 40, 240);
 		for (int tick = 1; tick <= simulation_ticks; ++tick)
 		{
 			trajectory_point next{
@@ -461,6 +463,7 @@ void modules::trajectories::run(::cache& cache)
 
 void modules::trajectories::render_overlay()
 {
+    auto settings_snapshot = settings_.read();
 	if (platform::jni_context::bind_current_thread())
 	{
 		jni::frame frame{ 48 };
@@ -512,7 +515,7 @@ void modules::trajectories::render_overlay()
 	const ImColor accent = gui::get_dynamic_color();
 	const ImU32 line_color = ImGui::ColorConvertFloat4ToU32(ImVec4(
 		accent.Value.x, accent.Value.y, accent.Value.z, 0.96f));
-	const float thickness = std::clamp(line_thickness, 1.0f, 5.0f);
+	const float thickness = std::clamp(settings_snapshot.line_thickness, 1.0f, 5.0f);
 
 	auto draw_screen_segment = [&](const ImVec2& from, const ImVec2& to)
 	{
@@ -575,7 +578,7 @@ void modules::trajectories::render_overlay()
 		draw_screen_segment(screen_from, screen_to);
 	}
 
-	if (!current.hit || !show_landing_marker)
+	if (!current.hit || !settings_snapshot.show_landing_marker)
 		return;
 
 	const view_point landing_view = to_view(current.points.back(), cx, cy, cz, yaw, pitch);
@@ -590,7 +593,7 @@ void modules::trajectories::render_overlay()
 	draw->AddLine(ImVec2(landing.x, landing.y - 3.5f),
 		ImVec2(landing.x, landing.y + 3.5f), line_color, 1.4f);
 
-	if (show_flight_time)
+	if (settings_snapshot.show_flight_time)
 	{
 		char label[96]{};
 		sprintf_s(label, "%s  %.2fs  %.1fm", current.item_name.c_str(),
@@ -608,17 +611,7 @@ void modules::trajectories::render_overlay()
 
 void modules::trajectories::render_options()
 {
-	ImGui::Checkbox(gui::text("Bows & Trident", "Yaylar ve Trident"), &show_bows);
-	ImGui::Checkbox(gui::text("Throwables", "Fırlatılabilir Eşyalar"), &show_throwables);
-	ImGui::Checkbox(gui::text("Potions & XP", "Potion ve XP"), &show_potions);
-	ImGui::Checkbox(gui::text("Impact Marker", "Çarpma İşareti"), &show_landing_marker);
-	ImGui::Checkbox(gui::text("Flight Info", "Uçuş Bilgisi"), &show_flight_time);
-	ImGui::SetNextItemWidth(210.0f);
-	ImGui::SliderFloat(gui::text("Line Thickness", "Çizgi Kalınlığı"),
-		&line_thickness, 1.0f, 5.0f, "%.1f px");
-	ImGui::SetNextItemWidth(210.0f);
-	ImGui::SliderInt(gui::text("Prediction Time", "Tahmin Süresi"),
-		&max_ticks, 40, 240, "%d ticks");
+    gui::settings::render(settings_, module_settings::trajectories::schema());
 }
 
 void modules::trajectories::on_disable(::cache& cache)

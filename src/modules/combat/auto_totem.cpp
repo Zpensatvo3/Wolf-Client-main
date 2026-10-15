@@ -9,8 +9,9 @@
 #include <imgui/imgui.h>
 
 #include "auto_totem.hpp"
+#include "../../ui/settings_renderer.hpp"
 #include "../ui_redirect.hpp"
-#include "../gui/gui.hpp"
+#include "../../gui/gui.hpp"
 
 namespace
 {
@@ -135,6 +136,7 @@ bool stack_is_totem(const maps::ItemStack& stack, const maps::Item& totem_item)
 
 void modules::auto_totem::run(::cache& cache)
 {
+    auto settings_snapshot = settings_.read();
 	const auto reset_inventory_state = [this]()
 	{
 		inventory_was_open = false;
@@ -158,7 +160,7 @@ void modules::auto_totem::run(::cache& cache)
         const auto schedule_action = [this, now](int base_delay)
         {
             next_action_time = now + std::chrono::milliseconds(
-                humanized_delay(base_delay, timing_randomness_ms));
+                humanized_delay(base_delay, settings_snapshot.timing_randomness_ms));
         };
 
         maps::Screen current_screen = cache.instance.currentScreen.get();
@@ -175,9 +177,9 @@ void modules::auto_totem::run(::cache& cache)
         if (!main_items || !offhand_items || platform::jni_context::clear_exception())
             return;
 
-        const int target_hotbar_index = std::clamp(hotbar_slot, 1, 9) - 1;
-		const bool need_offhand = fill_offhand && !list_slot_is_totem(offhand_items, 0, totem_item);
-		const bool need_hotbar = fill_hotbar && !list_slot_is_totem(main_items, target_hotbar_index, totem_item);
+        const int target_hotbar_index = std::clamp(settings_snapshot.hotbar_slot, 1, 9) - 1;
+		const bool need_offhand = settings_snapshot.fill_offhand && !list_slot_is_totem(offhand_items, 0, totem_item);
+		const bool need_hotbar = settings_snapshot.fill_hotbar && !list_slot_is_totem(main_items, target_hotbar_index, totem_item);
 
 		// clickSlot is server-authoritative. Wait for the inventory update before
 		// scheduling another swap, otherwise a delayed update can turn a second
@@ -191,13 +193,13 @@ void modules::auto_totem::run(::cache& cache)
 			{
 				pending_destination = -1;
 				pending_action_time = {};
-				schedule_action(delay_ms);
+				schedule_action(settings_snapshot.delay_ms);
 				return;
 			}
 
 			if (pending_action_time != steady_clock::time_point{} &&
 				now - pending_action_time < std::chrono::milliseconds(
-					std::clamp(confirmation_timeout_ms, 80, 1200)))
+					std::clamp(settings_snapshot.confirmation_timeout_ms, 80, 1200)))
 			{
 				return;
 			}
@@ -206,7 +208,7 @@ void modules::auto_totem::run(::cache& cache)
 			// rescan after a full delay instead of issuing duplicate packets.
 			pending_destination = -1;
 			pending_action_time = {};
-			schedule_action(initial_reaction_ms);
+			schedule_action(settings_snapshot.initial_reaction_ms);
 			return;
 		}
 
@@ -233,7 +235,7 @@ void modules::auto_totem::run(::cache& cache)
             if (inventory_opened_by_module && now >= next_action_time)
                 inventory_opened_by_module = false;
 
-            if (auto_open_inventory && !current_screen && now >= next_action_time)
+            if (settings_snapshot.auto_open_inventory && !current_screen && now >= next_action_time)
             {
                 const int source_offhand = need_offhand ? find_totem_source(main_items, totem_item, -1) : -1;
                 const int source_hotbar = need_hotbar ? find_totem_source(main_items, totem_item, target_hotbar_index) : -1;
@@ -242,7 +244,7 @@ void modules::auto_totem::run(::cache& cache)
                 {
                     pulse_key('E');
                     inventory_opened_by_module = true;
-                    schedule_action(initial_reaction_ms);
+                    schedule_action(settings_snapshot.initial_reaction_ms);
                 }
             }
 			return;
@@ -255,7 +257,7 @@ void modules::auto_totem::run(::cache& cache)
             // Auto-open already scheduled its reaction delay. Manual inventory
             // opening gets its own small decision pause here.
             if (!inventory_opened_by_module)
-                schedule_action(initial_reaction_ms);
+                schedule_action(settings_snapshot.initial_reaction_ms);
             return;
         }
 
@@ -266,14 +268,14 @@ void modules::auto_totem::run(::cache& cache)
         if (!handler || platform::jni_context::clear_exception())
             return;
 
-        if (pause_with_cursor_item)
+        if (settings_snapshot.pause_with_cursor_item)
         {
             maps::ItemStack cursor_stack = handler.getCursorStack.call();
             if (!cursor_stack || platform::jni_context::clear_exception())
                 return;
             if (cursor_stack.isEmpty.call() != JNI_TRUE && !platform::jni_context::clear_exception())
             {
-                schedule_action(delay_ms);
+                schedule_action(settings_snapshot.delay_ms);
                 return;
             }
         }
@@ -303,7 +305,7 @@ void modules::auto_totem::run(::cache& cache)
 
         // One inventory action per scheduled interval keeps swaps ordered and
         // prevents two clickSlot packets from landing in the same client tick.
-		const bool action_performed = offhand_first
+		const bool action_performed = settings_snapshot.offhand_first
 			? (try_offhand() || try_hotbar())
 			: (try_hotbar() || try_offhand());
 		if (action_performed)
@@ -315,7 +317,7 @@ void modules::auto_totem::run(::cache& cache)
 
 		// No spare totem was found. Do not repeatedly scan the same inventory on
 		// every worker iteration while the player is still looking at it.
-		schedule_action(initial_reaction_ms);
+		schedule_action(settings_snapshot.initial_reaction_ms);
 
 		if (inventory_opened_by_module)
         {
@@ -340,16 +342,8 @@ void modules::auto_totem::on_disable(::cache& cache)
 
 void modules::auto_totem::render_options()
 {
-	ImGui::TextDisabled("Server-confirmed swaps prevent delayed swap-back actions.");
-	ImGui::SliderInt("Server Confirmation", &confirmation_timeout_ms, 80, 1200, "%d ms");
-    ImGui::Checkbox(gui::text("Fill Offhand", "Yan Eli Doldur"), &fill_offhand);
-    ImGui::Checkbox(gui::text("Fill Hotbar", "Hotbarı Doldur"), &fill_hotbar);
-    ImGui::Checkbox(gui::text("Auto Open Inventory ('E')", "Otomatik Envanter Aç ('E')"), &auto_open_inventory);
-    ImGui::Checkbox(gui::text("Offhand First", "Önce Yan El"), &offhand_first);
-    ImGui::Checkbox(gui::text("Pause While Carrying Item", "Elde Item Varken Bekle"), &pause_with_cursor_item);
-    ImGui::SliderInt(gui::text("Hotbar Slot", "Hotbar Slotu"), &hotbar_slot, 1, 9, "Slot %d");
-    ImGui::SliderInt(gui::text("Action Delay", "İşlem Gecikmesi"), &delay_ms, 20, 500, "%d ms");
-    ImGui::SliderInt(gui::text("Timing Randomness", "Zamanlama Rastgeleliği"), &timing_randomness_ms, 0, 150, "%d ms");
-    ImGui::SliderInt(gui::text("Initial Reaction", "İlk Tepki Süresi"), &initial_reaction_ms, 30, 500, "%d ms");
-    ImGui::TextDisabled("%s", gui::text("Performs one verified swap per interval and never closes a manually opened inventory.", "Her aralıkta tek doğrulanmış taşıma yapar ve elle açılan envanteri kapatmaz."));
+    ImGui::TextDisabled("Server-confirmed swaps prevent delayed swap-back actions.");
+    gui::settings::render(settings_, module_settings::auto_totem::schema());
+    ImGui::TextDisabled("%s", gui::text("Performs one verified swap per interval and never closes a manually opened inventory.",
+        "Her aralikta tek dogrulanmis tasima yapar ve elle acilan envanteri kapatmaz."));
 }

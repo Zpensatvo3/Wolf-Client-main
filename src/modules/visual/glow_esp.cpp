@@ -1,4 +1,5 @@
 #include "glow_esp.hpp"
+#include "../../ui/settings_renderer.hpp"
 #include "../../cache/cache.hpp"
 #include "../../platform/adapter/game_adapter.hpp"
 #include "../ui_redirect.hpp"
@@ -104,5 +105,5 @@ void modules::glow_esp::render_overlay()
 // Options can be empty or have different settings if needed
 void modules::glow_esp::render_options()
 {
-    // Native glow esp has no configurable options.
+    gui::settings::render(settings_, module_settings::glow_esp::schema());
 }

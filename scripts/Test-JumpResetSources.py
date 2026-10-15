@@ -17,8 +17,9 @@ texts = {source: (ROOT / source).read_text(encoding="utf-8") for source in sourc
 config, header, implementation = (texts[source] for source in sources[:3])
 includes = re.findall(r'^#include\s+["<]([^">]+)', config, re.M)
 assert not any(any(word in include.lower() for word in ("windows", "jni", "imgui", "cache", "mappings")) for include in includes)
-fields = re.findall(r'visitor\.(?:field|bounded_enum)\("([^"]+)"', config)
+fields = re.findall(r'd::(?:choice|integer|toggle)\("([^"]+)"', config)
 assert fields == ["mode", "chance", "jump_delay_ms", "only_combat"]
+assert "modules::settings::visit_fields(visitor, candidate, schema())" in config
 assert "settings_snapshot()" in header and "apply_settings(candidate, true)" in header
 assert "Success Chance" not in implementation and "Real Space Press" not in implementation
 assert 'width >= 280.f' in implementation and 'profile_names, 4' in implementation

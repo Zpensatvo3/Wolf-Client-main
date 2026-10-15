@@ -1,7 +1,6 @@
 #include "widgets.hpp"
 #include "gui.hpp"
 #include "ui_state.hpp"
-#include "sound.hpp"
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
@@ -138,8 +137,6 @@ namespace
                     next = std::clamp(next, minimum, maximum);
                     changed = next != *value;
                     *value = next;
-                    if (changed)
-                        gui::sound::play_slider_tick();
                 }
             }
         }
@@ -162,7 +159,9 @@ namespace
             ImGui::GetColorU32(ImGuiCol_TextDisabled), value_text);
 		draw->AddRectFilled(ImVec2(track_left, track_y), ImVec2(track_right, track_y + 2.0f),
 			IM_COL32(55, 59, 70, 220), 1.0f);
-        const float ratio = std::clamp(static_cast<float>(*value - minimum) / static_cast<float>(maximum - minimum), 0.0f, 1.0f);
+        const float ratio = maximum > minimum
+            ? std::clamp(static_cast<float>(*value - minimum) / static_cast<float>(maximum - minimum), 0.0f, 1.0f)
+            : 0.0f;
         const float thumb_x = track_left + (track_right - track_left) * ratio;
         draw->AddRectFilled(ImVec2(track_left, track_y), ImVec2(thumb_x, track_y + 2.0f), with_alpha(accent, 0.88f), 1.0f);
         draw->AddCircleFilled(ImVec2(thumb_x, track_y + 1.0f), 3.4f + anim.hover * 0.45f, with_alpha(accent, 1.0f));
@@ -201,8 +200,6 @@ namespace
             else next = std::max(next, value[0]);
             changed = next != value[selected];
             value[selected] = next;
-            if (changed)
-                gui::sound::play_slider_tick();
         }
 
         char first[48]{}, second[48]{}, combined[104]{};
@@ -253,8 +250,6 @@ bool gui::centered_text_button(const char* label, const ImVec2& size)
     ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), ImGui::GetFontSize(),
         ImVec2(button_min.x + std::floor((size.x - text_size.x) * 0.5f), button_min.y + std::floor((size.y - text_size.y) * 0.5f)),
         ImGui::GetColorU32(ImGuiCol_Text), label, visible_end);
-    if (pressed)
-        gui::sound::play(gui::sound::type::click);
     return pressed;
 }
 
@@ -357,8 +352,6 @@ bool gui::icon_action(const char* id, const char* glyph, const char* fallback, c
         ImGui::EndTooltip();
     }
     ImGui::PopID();
-    if (clicked)
-        gui::sound::play(gui::sound::type::click);
     return clicked;
 }
 
@@ -440,7 +433,6 @@ bool gui::option_toggle(const char* label, bool* value)
     if (pressed)
     {
         *value = !*value;
-        gui::sound::play(*value ? gui::sound::type::toggle_on : gui::sound::type::toggle_off);
     }
     anim.toggle = approach(anim.toggle, *value ? 1.0f : 0.0f, 13.0f);
     anim.hover = approach(anim.hover, ImGui::IsItemHovered() ? 1.0f : 0.0f, 13.0f);
@@ -529,7 +521,6 @@ bool gui::option_combo(const char* label, int* current_item, const char* const i
         if (just_opened)
             anim.combo_scroll_pending = true;
         current_frame_combo_interaction = true;
-        gui::sound::play(anim.combo_open ? gui::sound::type::tab_switch : gui::sound::type::click);
     }
     const float combo_delta = std::clamp(ImGui::GetIO().DeltaTime, 0.0f, 0.05f);
     const float combo_duration = anim.combo_open ? 0.18f : 0.15f;
@@ -621,7 +612,6 @@ bool gui::option_combo(const char* label, int* current_item, const char* const i
                     changed = true;
                     anim.combo_open = false;
                     current_frame_combo_interaction = true;
-                    gui::sound::play(gui::sound::type::click);
                 }
                 if (item_clicked || (item_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)))
                     current_frame_combo_interaction = true;

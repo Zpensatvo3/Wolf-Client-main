@@ -10,9 +10,10 @@
 #include <imgui/imgui.h>
 
 #include "pearl_macro.hpp"
+#include "../../ui/settings_renderer.hpp"
 #include "../ui_redirect.hpp"
-#include "../gui/gui.hpp"
-#include "../mappings.hpp"
+#include "../../gui/gui.hpp"
+#include "../../mappings.hpp"
 
 namespace
 {
@@ -65,6 +66,7 @@ void modules::pearl_macro::finish(::cache& cache, bool turn_off)
 
 void modules::pearl_macro::run(::cache& cache)
 {
+	const auto settings_snapshot = settings_.read();
 	const HWND minecraft_window = gui::get_window();
 	if (gui::draw || !minecraft_window || GetForegroundWindow() != minecraft_window ||
 		!cache.is_valid() || !cache.instance || !cache.player || !jni::get_env())
@@ -106,7 +108,7 @@ void modules::pearl_macro::run(::cache& cache)
 			}
 			state = State::WAIT_SWITCH;
 			next_action = now + std::chrono::milliseconds(
-				std::clamp(switch_delay, 0, 150));
+				std::clamp(settings_snapshot.switch_delay, 0, 150));
 			return;
 		}
 
@@ -139,7 +141,7 @@ void modules::pearl_macro::run(::cache& cache)
 			right_click_down = false;
 			state = State::WAIT_RETURN;
 			next_action = now + std::chrono::milliseconds(
-				std::clamp(return_delay, 0, 250));
+				std::clamp(settings_snapshot.return_delay, 0, 250));
 			return;
 		}
 
@@ -160,8 +162,7 @@ void modules::pearl_macro::on_disable(::cache& cache)
 
 void modules::pearl_macro::render_options()
 {
-	ImGui::SliderInt(gui::text("Switch Delay", "Geçiş Gecikmesi"), &switch_delay, 0, 150, "%d ms");
-	ImGui::SliderInt(gui::text("Return Delay", "Geri Dönüş Gecikmesi"), &return_delay, 0, 250, "%d ms");
+	gui::settings::render(settings_, module_settings::pearl_macro::schema());
 	ImGui::TextDisabled("%s", gui::text("One use: switch to pearl, throw, then restore the old slot.", "Ender Pearl'e geçer, atar ve eski slota döner."));
 	ImGui::TextDisabled("%s", gui::text("Requires an ender pearl in the hotbar.", "Hotbarda Ender Pearl gerektirir."));
 }

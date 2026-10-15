@@ -1,0 +1,159 @@
+// Compile real JNI mapping macros without creating Java objects or attaching to a JVM.
+#include "../src/sdk/minecraft/fabric_1_21_1/inventory_network.hpp"
+#include "../src/sdk/minecraft/fabric_1_21_1/client.hpp"
+#include "../src/mappings.hpp"
+#include <iostream>
+#include <string_view>
+
+// Signature generation must also work before the wrapper's member type exists.
+struct future_members;
+using future_reference = jni::klass<"onestep/test/Future", future_members>;
+static_assert(std::string_view(jni::get_signature_for_type<future_reference>()) == "Lonestep/test/Future;");
+static_assert(std::string_view(jni::get_signature_for_type<jni::array<future_reference>>()) == "[Lonestep/test/Future;");
+using future_method = jni::method<future_reference, "future", jni::NOT_STATIC,
+    future_reference, jni::array<future_reference>, jint>;
+static_assert(std::string_view(future_method::get_signature()) == "(Lonestep/test/Future;[Lonestep/test/Future;I)Lonestep/test/Future;");
+
+static_assert(std::string_view(maps::Object::get_name()) == "java/lang/Object");
+static_assert(std::string_view(maps::Comparable::get_name()) == "java/lang/Comparable");
+static_assert(std::string_view(maps::Integer::get_name()) == "java/lang/Integer");
+static_assert(std::string_view(maps::Class::get_name()) == "java/lang/Class");
+static_assert(std::string_view(maps::String::get_name()) == "java/lang/String");
+static_assert(std::string_view(maps::Collection::get_name()) == "java/util/Collection");
+static_assert(std::string_view(maps::List::get_name()) == "java/util/List");
+static_assert(std::string_view(maps::DefaultedList::get_name()) == "net/minecraft/class_2371");
+static_assert(std::string_view(maps::Iterator::get_name()) == "java/util/Iterator");
+static_assert(std::string_view(maps::Iterable::get_name()) == "java/lang/Iterable");
+static_assert(std::string_view(maps::URL::get_name()) == "java/net/URL");
+static_assert(std::string_view(maps::ClassLoader::get_name()) == "java/lang/ClassLoader");
+static_assert(std::string_view(maps::URLClassLoader::get_name()) == "java/net/URLClassLoader");
+static_assert(std::string_view(maps::Double::get_name()) == "java/lang/Double");
+static_assert(std::string_view(maps::PrintStream::get_name()) == "java/io/PrintStream");
+static_assert(std::string_view(maps::System::get_name()) == "java/lang/System");
+static_assert(std::string_view(maps::Vec3d::get_name()) == "net/minecraft/class_243");
+static_assert(std::string_view(maps::BlockHitResult::get_name()) == "net/minecraft/class_3965");
+static_assert(std::string_view(maps::RaycastContext::get_name()) == "net/minecraft/class_3959");
+static_assert(std::string_view(maps::RaycastContext$ShapeType::get_name()) == "net/minecraft/class_3959$class_3960");
+static_assert(std::string_view(maps::RaycastContext$FluidHandling::get_name()) == "net/minecraft/class_3959$class_242");
+static_assert(std::string_view(maps::Item::get_name()) == "net/minecraft/class_1792");
+static_assert(std::string_view(maps::SwordItem::get_name()) == "net/minecraft/class_1829");
+static_assert(std::string_view(maps::AxeItem::get_name()) == "net/minecraft/class_1743");
+static_assert(std::string_view(maps::BlockItem::get_name()) == "net/minecraft/class_1747");
+static_assert(std::string_view(maps::MaceItem::get_name()) == "net/minecraft/class_9362");
+static_assert(std::string_view(maps::ShieldItem::get_name()) == "net/minecraft/class_1819");
+static_assert(std::string_view(maps::Items::get_name()) == "net/minecraft/class_1802");
+static_assert(std::string_view(maps::BlockPos::get_name()) == "net/minecraft/class_2338");
+static_assert(std::string_view(maps::Property::get_name()) == "net/minecraft/class_2769");
+static_assert(std::string_view(maps::IntProperty::get_name()) == "net/minecraft/class_2758");
+static_assert(std::string_view(maps::RespawnAnchorBlock::get_name()) == "net/minecraft/class_4969");
+static_assert(std::string_view(maps::Block::get_name()) == "net/minecraft/class_2248");
+static_assert(std::string_view(maps::Blocks::get_name()) == "net/minecraft/class_2246");
+static_assert(std::string_view(maps::BlockState::get_name()) == "net/minecraft/class_2680");
+static_assert(std::string_view(maps::TeamVisibilityRule::get_name()) == "net/minecraft/class_270$class_272");
+static_assert(std::string_view(maps::Team::get_name()) == "net/minecraft/class_268");
+static_assert(std::string_view(maps::Scoreboard::get_name()) == "net/minecraft/class_269");
+static_assert(std::string_view(maps::World::get_name()) == "net/minecraft/class_1937");
+static_assert(std::string_view(maps::WorldProperties::get_name()) == "net/minecraft/class_638$class_5271");
+static_assert(std::string_view(maps::Direction::get_name()) == "net/minecraft/class_2350");
+static_assert(std::string_view(maps::Packet::get_name()) == "net/minecraft/class_2596");
+static_assert(std::string_view(maps::GameProfile::get_name()) == "com/mojang/authlib/GameProfile");
+static_assert(std::string_view(maps::PlayerListEntry::get_name()) == "net/minecraft/class_640");
+static_assert(std::string_view(maps::ClientPlayNetworkHandler::get_name()) == "net/minecraft/class_634");
+static_assert(std::string_view(maps::PlayerActionC2SPacket$Action::get_name()) == "net/minecraft/class_2846$class_2847");
+static_assert(std::string_view(maps::PlayerActionC2SPacket::get_name()) == "net/minecraft/class_2846");
+static_assert(std::string_view(maps::PickFromInventoryC2SPacket::get_name()) == "net/minecraft/class_2838");
+static_assert(std::string_view(maps::ClickSlotC2SPacket::get_name()) == "net/minecraft/class_2813");
+static_assert(std::string_view(maps::ComponentType::get_name()) == "net/minecraft/class_9331");
+static_assert(std::string_view(maps::ChargedProjectilesComponent::get_name()) == "net/minecraft/class_9278");
+static_assert(std::string_view(maps::RegistryEntry::get_name()) == "net/minecraft/class_6880");
+static_assert(std::string_view(maps::ItemStack::get_name()) == "net/minecraft/class_1799");
+static_assert(std::string_view(maps::ScreenHandler::get_name()) == "net/minecraft/class_1703");
+static_assert(std::string_view(maps::UpdateSelectedSlotC2SPacket::get_name()) == "net/minecraft/class_2868");
+static_assert(std::string_view(maps::NbtCompound::get_name()) == "net/minecraft/class_2487");
+static_assert(std::string_view(maps::DataComponentTypes::get_name()) == "net/minecraft/class_9334");
+static_assert(std::string_view(maps::Screen::get_name()) == "net/minecraft/class_437");
+static_assert(std::string_view(maps::Inventory::get_name()) == "net/minecraft/class_1263");
+static_assert(std::string_view(maps::Slot::get_name()) == "net/minecraft/class_1735");
+static_assert(std::string_view(maps::HandledScreen::get_name()) == "net/minecraft/class_465");
+static_assert(std::string_view(maps::InventoryScreen::get_name()) == "net/minecraft/class_490");
+static_assert(std::string_view(maps::GenericContainerScreen::get_name()) == "net/minecraft/class_476");
+static_assert(std::string_view(maps::CreativeInventoryScreen::get_name()) == "net/minecraft/class_481");
+static_assert(std::string_view(maps::Potion::get_name()) == "net/minecraft/class_1842");
+static_assert(std::string_view(maps::PotionContentsComponent::get_name()) == "net/minecraft/class_1844");
+static_assert(std::string_view(maps::Potions::get_name()) == "net/minecraft/class_1847");
+static_assert(std::string_view(maps::SlotActionType::get_name()) == "net/minecraft/class_1713");
+static_assert(std::string_view(maps::PotionItem::get_name()) == "net/minecraft/class_1812");
+static_assert(std::string_view(maps::SplashPotionItem::get_name()) == "net/minecraft/class_1828");
+static_assert(std::string_view(maps::PlayerInventory::get_name()) == "net/minecraft/class_1661");
+static_assert(std::string_view(maps::Box::get_name()) == "net/minecraft/class_238");
+static_assert(std::string_view(maps::EntityPose::get_name()) == "net/minecraft/class_4050");
+static_assert(std::string_view(maps::EntityDimensions::get_name()) == "net/minecraft/class_4048");
+static_assert(std::string_view(maps::StatusEffect::get_name()) == "net/minecraft/class_1291");
+static_assert(std::string_view(maps::StatusEffects::get_name()) == "net/minecraft/class_1294");
+static_assert(std::string_view(maps::StatusEffectInstance::get_name()) == "net/minecraft/class_1293");
+static_assert(std::string_view(maps::PlayerAbilities::get_name()) == "net/minecraft/class_1656");
+static_assert(std::string_view(maps::OrderedText::get_name()) == "net/minecraft/class_5481");
+static_assert(std::string_view(maps::Text::get_name()) == "net/minecraft/class_2561");
+static_assert(std::string_view(maps::Hand::get_name()) == "net/minecraft/class_1268");
+static_assert(std::string_view(maps::PlayerInteractItemC2SPacket::get_name()) == "net/minecraft/class_2886");
+static_assert(std::string_view(maps::HitResult$Type::get_name()) == "net/minecraft/class_239$class_240");
+static_assert(std::string_view(maps::HitResult::get_name()) == "net/minecraft/class_239");
+static_assert(std::string_view(maps::Entity::get_name()) == "net/minecraft/class_1297");
+static_assert(std::string_view(maps::ArmorStandEntity::get_name()) == "net/minecraft/class_1531");
+static_assert(std::string_view(maps::TextDisplayEntity::get_name()) == "net/minecraft/class_8113$class_8123");
+static_assert(std::string_view(maps::EndCrystalEntity::get_name()) == "net/minecraft/class_1511");
+static_assert(std::string_view(maps::DamageSource::get_name()) == "net/minecraft/class_1282");
+static_assert(std::string_view(maps::LivingEntity::get_name()) == "net/minecraft/class_1309");
+static_assert(std::string_view(maps::PlayerEntity::get_name()) == "net/minecraft/class_1657");
+static_assert(std::string_view(maps::Input::get_name()) == "net/minecraft/class_744");
+static_assert(std::string_view(maps::Identifier::get_name()) == "net/minecraft/class_2960");
+static_assert(std::string_view(maps::Texture::get_name()) == "net/minecraft/class_1044");
+static_assert(std::string_view(maps::SkinTextures::get_name()) == "net/minecraft/class_8685");
+static_assert(std::string_view(maps::Registry::get_name()) == "net/minecraft/class_2378");
+static_assert(std::string_view(maps::DefaultedRegistry::get_name()) == "net/minecraft/class_7922");
+static_assert(std::string_view(maps::Registries::get_name()) == "net/minecraft/class_7923");
+static_assert(std::string_view(maps::TextureManager::get_name()) == "net/minecraft/class_1060");
+static_assert(std::string_view(maps::AbstractClientPlayerEntity::get_name()) == "net/minecraft/class_742");
+static_assert(std::string_view(maps::ClientPlayerEntity::get_name()) == "net/minecraft/class_746");
+static_assert(std::string_view(maps::MobEntity::get_name()) == "net/minecraft/class_1308");
+static_assert(std::string_view(maps::ZombieEntity::get_name()) == "net/minecraft/class_1642");
+static_assert(std::string_view(maps::AnimalEntity::get_name()) == "net/minecraft/class_1429");
+static_assert(std::string_view(maps::ClientWorld::get_name()) == "net/minecraft/class_638");
+static_assert(std::string_view(maps::OtherClientPlayerEntity::get_name()) == "net/minecraft/class_745");
+static_assert(std::string_view(maps::SimpleOption::get_name()) == "net/minecraft/class_7172");
+static_assert(std::string_view(maps::InputKeyType::get_name()) == "net/minecraft/class_3675$class_307");
+static_assert(std::string_view(maps::InputKey::get_name()) == "net/minecraft/class_3675$class_306");
+static_assert(std::string_view(maps::KeyBinding::get_name()) == "net/minecraft/class_304");
+static_assert(std::string_view(maps::GameOptions::get_name()) == "net/minecraft/class_315");
+static_assert(std::string_view(maps::Mouse::get_name()) == "net/minecraft/class_312");
+static_assert(std::string_view(maps::RenderTickCounter::get_name()) == "net/minecraft/class_9779$class_9781");
+static_assert(std::string_view(maps::ActionResult::get_name()) == "net/minecraft/class_1269");
+static_assert(std::string_view(maps::EntityHitResult::get_name()) == "net/minecraft/class_3966");
+static_assert(std::string_view(maps::ClientPlayerInteractionManager::get_name()) == "net/minecraft/class_636");
+static_assert(std::string_view(maps::PlayerInteractBlockC2SPacket::get_name()) == "net/minecraft/class_2885");
+static_assert(std::string_view(maps::MatrixStack::get_name()) == "net/minecraft/class_4587");
+static_assert(std::string_view(maps::Window::get_name()) == "net/minecraft/class_1041");
+static_assert(std::string_view(maps::TextRenderer::get_name()) == "net/minecraft/class_327");
+static_assert(std::string_view(maps::Camera::get_name()) == "net/minecraft/class_4184");
+static_assert(std::string_view(maps::EntityRenderDispatcher::get_name()) == "net/minecraft/class_898");
+static_assert(std::string_view(maps::GameRenderer::get_name()) == "net/minecraft/class_757");
+static_assert(std::string_view(maps::ServerInfo::get_name()) == "net/minecraft/class_642");
+static_assert(std::string_view(maps::UUID::get_name()) == "java/util/UUID");
+static_assert(std::string_view(maps::Session::get_name()) == "net/minecraft/class_320");
+static_assert(std::string_view(maps::MinecraftClient::get_name()) == "net/minecraft/class_310");
+
+using eye_y = decltype(maps::Entity_members::getEyeY);
+using standing_eye = decltype(maps::Entity_members::getStandingEyeHeight);
+using selected_slot = decltype(maps::PlayerInventory_members::selectedSlot);
+using attack = decltype(maps::MinecraftClient_members::doAttack);
+static_assert(std::string_view(eye_y::get_name()) == "method_23320");
+static_assert(std::string_view(eye_y::get_signature()) == "()D");
+static_assert(std::string_view(standing_eye::get_name()) == "method_5751");
+static_assert(std::string_view(standing_eye::get_signature()) == "()F");
+static_assert(std::string_view(selected_slot::get_signature()) == "I");
+static_assert(std::string_view(attack::get_signature()) == "()Z");
+
+int main()
+{
+    std::cout << "Fabric 1.21.1 SDK: 127 class names, JNI signatures and umbrella compatibility passed\n";
+}

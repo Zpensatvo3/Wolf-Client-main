@@ -1,7 +1,7 @@
 #pragma once
 #include <jvmti.h>
 #include <string>
-#include "../mappings.hpp"
+#include "../sdk/minecraft/fabric_1_21_1/java_types.hpp"
 
 // Requires jni to be attached first
 class jvmti

@@ -1,6 +1,7 @@
 param(
     [switch]$Clean,
-    [switch]$SkipSign
+    [switch]$SkipSign,
+    [string]$PlatformToolset = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -13,16 +14,25 @@ $msbuildCandidates = @(
 )
 $msbuild = $msbuildCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 if (-not $msbuild) {
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+    if (Test-Path -LiteralPath $vswhere) {
+        $msbuild = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' |
+            Select-Object -First 1
+    }
+}
+if (-not $msbuild) {
     throw 'MSBuild bulunamadi. Visual Studio C++ Build Tools kurulumunu kontrol et.'
 }
 
 $target = if ($Clean) { 'Rebuild' } else { 'Build' }
-& $msbuild $project /m /t:$target /p:Configuration=Release /p:Platform=x64 /v:minimal /nologo
+$buildArgs = @($project, '/m', "/t:$target", '/p:Configuration=Release', '/p:Platform=x64', '/v:minimal', '/nologo')
+if ($PlatformToolset) { $buildArgs += "/p:PlatformToolset=$PlatformToolset" }
+& $msbuild @buildArgs
 if ($LASTEXITCODE -ne 0) {
     throw "Release derlemesi basarisiz oldu ($LASTEXITCODE)."
 }
 
-$output = Join-Path $projectRoot 'build\Thedorius-Lite.dll'
+$output = Join-Path $projectRoot 'build\Onestep.dll'
 if (-not (Test-Path -LiteralPath $output)) {
     throw "Derleme ciktisi bulunamadi: $output"
 }

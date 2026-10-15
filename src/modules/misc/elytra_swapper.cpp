@@ -1,4 +1,5 @@
 #include "elytra_swapper.hpp"
+#include "../../ui/settings_renderer.hpp"
 #include "../../cache/cache.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../ui_redirect.hpp"
@@ -8,7 +9,7 @@
 
 #include <imgui/imgui.h>
 
-#include "../gui/gui.hpp"
+#include "../../gui/gui.hpp"
 
 
 namespace
@@ -95,6 +96,7 @@ void modules::elytra_swapper::run(::cache&)
 
 void modules::elytra_swapper::render_overlay()
 {
+	const auto settings_snapshot = settings_.read();
 	if (!platform::jni_context::bind_current_thread())
 		return;
 
@@ -148,13 +150,13 @@ void modules::elytra_swapper::render_overlay()
 			// PlayerInventory armor index 2 is the chest equipment slot.
 			maps::Object chest_object = armor.get.call(2);
 			if (chest_object && !platform::jni_context::clear_exception() &&
-				stack_matches_mode(maps::ItemStack(chest_object.object_instance, false), target_mode))
+				stack_matches_mode(maps::ItemStack(chest_object.object_instance, false), settings_snapshot.target_mode))
 			{
 				finish();
 				return;
 			}
 
-			const int inventory_slot = find_target_slot(main, target_mode, use_hotbar);
+			const int inventory_slot = find_target_slot(main, settings_snapshot.target_mode, settings_snapshot.use_hotbar);
 			source_screen_slot = screen_slot_from_inventory_slot(inventory_slot);
 			if (source_screen_slot < 0 || !click_slot(instance, player, handler, source_screen_slot))
 			{
@@ -163,7 +165,7 @@ void modules::elytra_swapper::render_overlay()
 			}
 			current_state = state::pickup_source;
 			next_action = steady_clock::now() + std::chrono::milliseconds(
-				std::clamp(swap_delay_ms, 20, 300));
+				std::clamp(settings_snapshot.swap_delay_ms, 20, 300));
 			return;
 		}
 
@@ -179,7 +181,7 @@ void modules::elytra_swapper::render_overlay()
 			}
 			current_state = state::pickup_chest;
 			next_action = steady_clock::now() + std::chrono::milliseconds(
-				std::clamp(swap_delay_ms, 20, 300));
+				std::clamp(settings_snapshot.swap_delay_ms, 20, 300));
 			return;
 		}
 
@@ -214,13 +216,7 @@ void modules::elytra_swapper::on_disable(::cache&)
 
 void modules::elytra_swapper::render_options()
 {
-	const char* modes[] = {
-		gui::text("Equip Elytra", "Elytra Tak"),
-		gui::text("Equip Chestplate", "Gogusluk Tak")
-	};
-	ImGui::Combo(gui::text("Swap Target", "Takas Hedefi"), &target_mode, modes, IM_ARRAYSIZE(modes));
-	ImGui::Checkbox(gui::text("Use Hotbar", "Hotbar Kullan"), &use_hotbar);
-	ImGui::SliderInt(gui::text("Click Delay", "Tik Gecikmesi"), &swap_delay_ms, 20, 300, "%d ms");
+	gui::settings::render(settings_, module_settings::elytra_swapper::schema());
 	ImGui::TextDisabled("%s", gui::text(
 		"One use: swaps the chest item and turns itself off.",
 		"Tek kullanim: gogus esyasini degistirir ve kendini kapatir."));

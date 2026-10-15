@@ -1,5 +1,5 @@
 #pragma once
-#include "../core/config_fields.hpp"
+#include "../core/setting_schema.hpp"
 #include <algorithm>
 
 namespace jump_reset_config
@@ -10,6 +10,20 @@ namespace jump_reset_config
         int chance = 100, jump_delay_ms = 0;
         bool only_combat = true;
     };
+    inline std::span<const modules::settings::descriptor<config>> schema()
+    {
+        using d = modules::settings::descriptor<config>;
+        static constexpr modules::settings::label modes[]{
+            {"Game Binding","Oyun tusu"}, {"System Space","Sistem Space"}
+        };
+        static const d fields[]{
+            d::choice("mode", {"Jump Input","Ziplama girisi"}, &config::mode, modes),
+            d::integer("chance", {"Activation Chance","Uygulama olasiligi"}, &config::chance, 0, 100, "%d%%"),
+            d::integer("jump_delay_ms", {"Delay after Damage","Darbe sonrasi gecikme"}, &config::jump_delay_ms, 0, 100, "%d ms"),
+            d::toggle("only_combat", {"Living Attacks Only","Yalnizca canli saldirilari"}, &config::only_combat)
+        };
+        return fields;
+    }
     enum class profile { custom = 0, immediate = 1, balanced = 2, controlled = 3 };
     inline bool normalize(config& value)
     {
@@ -46,10 +60,7 @@ namespace jump_reset_config
         config candidate = live;
         const bool importing = visitor.importing();
         if (importing) visitor.stage_values(true);
-        visitor.bounded_enum("mode", candidate.mode, 0, 1);
-        visitor.field("chance", candidate.chance);
-        visitor.field("jump_delay_ms", candidate.jump_delay_ms);
-        visitor.field("only_combat", candidate.only_combat);
+        modules::settings::visit_fields(visitor, candidate, schema());
         if (!importing) return false;
         if (!normalize(candidate)) visitor.reject("Jump Reset: invalid input mode.");
         visitor.stage_values(false);

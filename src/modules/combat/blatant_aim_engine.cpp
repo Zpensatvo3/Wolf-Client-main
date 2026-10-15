@@ -1,3 +1,4 @@
+#include "../../ui/settings_renderer.hpp"
 #include "blatant_aim_engine.hpp"
 #include "../../cache/cache.hpp"
 #include "../../platform/jni/jni_context.hpp"
@@ -466,29 +467,7 @@ void blatant_aim_engine::run(::cache& cache, config& settings, runtime& state)
 
 void blatant_aim_engine::render_options(config& settings, const char* id_suffix)
 {
-	ImGui::PushID(id_suffix);
-	gui::option_slider("FOV", &settings.fov, 10.0f, 180.0f, "%.0f deg");
-	gui::option_slider(gui::text("Max Distance", "Maksimum Mesafe"),
-		&settings.max_distance, 1.0f, 6.0f, "%.1f blocks");
-	gui::option_slider(gui::text("Strength", "Guc"),
-		&settings.strength, 0.05f, 1.0f, "%.2f");
-	gui::option_toggle(gui::text("Only Weapon", "Sadece Silah"), &settings.only_weapon);
-	gui::option_toggle(gui::text("Last Target", "Son Hedef"), &settings.last_target);
-
-	const char* point_labels[] = {
-		gui::text("Body", "Govde"),
-		gui::text("Random", "Rastgele"),
-		gui::text("Adaptive", "Uyarlanabilir")
-	};
-	int point_index = settings.point == aim_point::random
-		? 1
-		: settings.point == aim_point::adaptive ? 2 : 0;
-	if (gui::option_combo(gui::text("Aim Point", "Nisan Noktasi"),
-		&point_index, point_labels, IM_ARRAYSIZE(point_labels)))
-	{
-		settings.point = point_index == 1
-			? aim_point::random
-			: point_index == 2 ? aim_point::adaptive : aim_point::body;
-	}
-	ImGui::PopID();
+    ImGui::PushID(id_suffix);
+    gui::settings::render(settings, schema());
+    ImGui::PopID();
 }

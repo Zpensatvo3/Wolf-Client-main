@@ -476,7 +476,7 @@ namespace
         if (clicked)
         {
             if (std::strcmp(module->get_id(), "panic") == 0)
-                gui::request_panic_animation();
+                gui::request_panic();
             else if (has_options(module))
             {
                 state.selected = (state.selected == module) ? nullptr : module;

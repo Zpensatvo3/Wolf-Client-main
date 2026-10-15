@@ -1,11 +1,11 @@
 #pragma once
-#include "../core/config_fields.hpp"
+#include "../core/setting_schema.hpp"
 #include <algorithm>
 #include <cmath>
 
 namespace legit_aim_engine
 {
-    // Public config v3 values are intentionally sparse and remain unchanged.
+    // Serialized values are intentionally sparse and remain unchanged.
     enum class aim_point { head = 0, upper_body = 1, adaptive = 4 };
     struct config
     {
@@ -13,6 +13,21 @@ namespace legit_aim_engine
         aim_point point = aim_point::adaptive;
         bool weapon_only = true;
     };
+    inline std::span<const modules::settings::descriptor<config>> schema()
+    {
+        using d = modules::settings::descriptor<config>;
+        using label = modules::settings::label;
+        static constexpr label points[]{{"Adaptive","Uyarlanabilir"},{"Upper Body","Ust Govde"},{"Head","Bas"}};
+        static constexpr int values[]{4,1,0};
+        static const d fields[]{
+            d::number("strength", {"Assist Strength","Yardim Gucu"}, &config::strength, 0.f, 100.f, "%.0f%%"),
+            d::number("fov", {"FOV","FOV"}, &config::fov, 20.f, 120.f, "%.0f deg"),
+            d::number("max_distance", {"Range","Menzil"}, &config::max_distance, 2.5f, 5.f, "%.1f blocks"),
+            d::enumeration<&config::point>("aim_point", {"Aim Point","Nisan Noktasi"}, points, values),
+            d::toggle("weapon_only", {"Weapon Only","Sadece Silah"}, &config::weapon_only)
+        };
+        return fields;
+    }
     inline bool normalize(config& value)
     {
         if (!std::isfinite(value.strength) || !std::isfinite(value.fov) ||
@@ -33,12 +48,8 @@ namespace legit_aim_engine
         config candidate = live;
         const bool importing = visitor.importing();
         if (importing) visitor.stage_values(true);
-        visitor.field("fov", candidate.fov); visitor.field("max_distance", candidate.max_distance);
-        visitor.field("strength", candidate.strength); visitor.field("weapon_only", candidate.weapon_only);
-        int point = static_cast<int>(candidate.point);
-        visitor.enum_value("aim_point", point);
+        modules::settings::visit_fields(visitor, candidate, schema());
         if (!importing) return false;
-        candidate.point = static_cast<aim_point>(point);
         if (!normalize(candidate)) visitor.reject("Aim Assist: invalid aim point or non-finite settings.");
         visitor.stage_values(false);
         if (visitor.reading() && visitor.valid()) { live = candidate; return true; }

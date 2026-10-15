@@ -1,11 +1,12 @@
 #include "config_fields.hpp"
 #include "module.hpp"
+#include "config_json.hpp"
 
 #include <charconv>
 #include <cmath>
-#include <cstdlib>
 #include <iomanip>
 #include <limits>
+#include <locale>
 #include <optional>
 #include <sstream>
 #include <string_view>
@@ -45,86 +46,11 @@ namespace
         while (position < text.size() && static_cast<unsigned char>(text[position]) <= 0x20) ++position;
     }
 
-    std::optional<std::string_view> raw_field(std::string_view object, std::string_view key)
-    {
-        std::size_t position = 0;
-        skip_spaces(object, position);
-        if (position >= object.size() || object[position++] != '{') return std::nullopt;
-
-        while (position < object.size())
-        {
-            skip_spaces(object, position);
-            if (position < object.size() && object[position] == '}') return std::nullopt;
-            if (position >= object.size() || object[position++] != '"') return std::nullopt;
-
-            std::string current_key;
-            bool escaped = false;
-            while (position < object.size())
-            {
-                const char character = object[position++];
-                if (escaped) { current_key.push_back(character); escaped = false; continue; }
-                if (character == '\\') { escaped = true; continue; }
-                if (character == '"') break;
-                current_key.push_back(character);
-            }
-            skip_spaces(object, position);
-            if (position >= object.size() || object[position++] != ':') return std::nullopt;
-            skip_spaces(object, position);
-            const std::size_t start = position;
-            bool quoted = false;
-            bool value_escaped = false;
-            int object_depth = 0;
-            int array_depth = 0;
-            while (position < object.size())
-            {
-                const char character = object[position];
-                if (quoted)
-                {
-                    ++position;
-                    if (value_escaped) value_escaped = false;
-                    else if (character == '\\') value_escaped = true;
-                    else if (character == '"') quoted = false;
-                    continue;
-                }
-                if (character == '"') { quoted = true; ++position; continue; }
-                if (character == '{') ++object_depth;
-                else if (character == '}')
-                {
-                    if (object_depth == 0 && array_depth == 0) break;
-                    --object_depth;
-                }
-                else if (character == '[') ++array_depth;
-                else if (character == ']') --array_depth;
-                else if (character == ',' && object_depth == 0 && array_depth == 0) break;
-                ++position;
-            }
-            std::size_t end = position;
-            while (end > start && static_cast<unsigned char>(object[end - 1]) <= 0x20) --end;
-            if (current_key == key) return object.substr(start, end - start);
-            if (position < object.size() && object[position] == ',') ++position;
-        }
-        return std::nullopt;
-    }
-
     bool parse_json_string(std::string_view raw, std::string& output)
     {
-        if (raw.size() < 2 || raw.front() != '"' || raw.back() != '"') return false;
-        output.clear();
-        for (std::size_t position = 1; position + 1 < raw.size(); ++position)
-        {
-            char character = raw[position];
-            if (character != '\\') { output.push_back(character); continue; }
-            if (++position + 1 > raw.size()) return false;
-            switch (raw[position])
-            {
-            case '\\': output.push_back('\\'); break;
-            case '"': output.push_back('"'); break;
-            case 'n': output.push_back('\n'); break;
-            case 'r': output.push_back('\r'); break;
-            case 't': output.push_back('\t'); break;
-            default: return false;
-            }
-        }
+        const auto parsed = modules::config_json::parse(raw);
+        if (!parsed || parsed->type != modules::config_json::kind::string) return false;
+        output = parsed->text;
         return true;
     }
 
@@ -142,10 +68,9 @@ namespace
     template <typename Number>
     bool parse_decimal(std::string_view raw, Number& output)
     {
-        std::string copy(raw);
-        char* end = nullptr;
-        const double parsed = std::strtod(copy.c_str(), &end);
-        if (!end || end != copy.c_str() + copy.size() || !std::isfinite(parsed)) return false;
+        double parsed{};
+        const auto result = std::from_chars(raw.data(), raw.data() + raw.size(), parsed);
+        if (result.ec != std::errc{} || result.ptr != raw.data() + raw.size() || !std::isfinite(parsed)) return false;
         if (parsed < -1000000.0 || parsed > 1000000.0) return false;
         output = static_cast<Number>(parsed);
         return true;
@@ -211,6 +136,7 @@ namespace
         {
             prefix(name);
             std::ostringstream stream;
+            stream.imbue(std::locale::classic());
             stream << std::setprecision(std::numeric_limits<Number>::max_digits10) << value;
             output += stream.str();
         }
@@ -224,6 +150,7 @@ namespace
                 else
                 {
                     std::ostringstream stream;
+                    stream.imbue(std::locale::classic());
                     stream << std::setprecision(std::numeric_limits<Number>::max_digits10) << values[index];
                     output += stream.str();
                 }
@@ -235,59 +162,64 @@ namespace
     class reader final : public modules::config_visitor
     {
     public:
-        reader(std::string_view object, bool apply) : object(object), apply(apply) {}
+        reader(std::string_view object, bool apply) : parsed(modules::config_json::parse(object)), apply(apply)
+        {
+            if (!parsed || parsed->type != modules::config_json::kind::object) {
+                valid_state = false; error = "Invalid settings JSON.";
+            }
+        }
         bool reading() const override { return apply; }
         bool valid() const override { return valid_state; }
         bool importing() const override { return true; }
-        bool has_field(const char* name) const override { return raw_field(object, name).has_value(); }
+        bool has_field(const char* name) const override { return raw_field(name).has_value(); }
         void stage_values(bool enabled) override { staged = enabled; }
         void reject(const char* message) override { valid_state = false; if (error.empty()) error = message ? message : "Invalid settings."; }
         const std::string& message() const { return error; }
 
         void field(const char* name, bool& value) override
         {
-            const auto raw = raw_field(object, name); if (!raw) return;
+            const auto raw = raw_field(name); if (!raw) return;
             bool parsed{};
             if (*raw == "true") parsed = true;
             else if (*raw == "false") parsed = false;
-            else { valid_state = false; return; }
+            else { reject_field(name); return; }
             if (apply || staged) value = parsed;
         }
         void field(const char* name, int& value) override
         {
-            const auto raw = raw_field(object, name); if (!raw) return;
-            int parsed{}; if (!parse_integer(*raw, parsed)) { valid_state = false; return; }
+            const auto raw = raw_field(name); if (!raw) return;
+            int parsed{}; if (!parse_integer(*raw, parsed)) { reject_field(name); return; }
             if (apply || staged) value = parsed;
         }
         void field(const char* name, float& value) override { decimal(name, value); }
         void field(const char* name, double& value) override { decimal(name, value); }
         void field(const char* name, std::string& value) override
         {
-            const auto raw = raw_field(object, name); if (!raw) return;
-            std::string parsed; if (!parse_json_string(*raw, parsed)) { valid_state = false; return; }
+            const auto raw = raw_field(name); if (!raw) return;
+            std::string parsed; if (!parse_json_string(*raw, parsed)) { reject_field(name); return; }
             if (apply || staged) value = std::move(parsed);
         }
         void field(const char* name, int* values, std::size_t count) override
         {
-            const auto raw = raw_field(object, name); if (!raw) return;
-            if (!parse_number_array(*raw, values, count, parse_integer<int>, apply || staged)) valid_state = false;
+            const auto raw = raw_field(name); if (!raw) return;
+            if (!parse_number_array(*raw, values, count, parse_integer<int>, apply || staged)) reject_field(name);
         }
         void field(const char* name, float* values, std::size_t count) override
         {
-            const auto raw = raw_field(object, name); if (!raw) return;
-            if (!parse_number_array(*raw, values, count, parse_decimal<float>, apply || staged)) valid_state = false;
+            const auto raw = raw_field(name); if (!raw) return;
+            if (!parse_number_array(*raw, values, count, parse_decimal<float>, apply || staged)) reject_field(name);
         }
         void field(const char* name, std::vector<std::string>& values) override
         {
-            const auto raw = raw_field(object, name); if (!raw) return;
-            if (raw->size() < 2 || raw->front() != '[' || raw->back() != ']') { valid_state = false; return; }
+            const auto raw = raw_field(name); if (!raw) return;
+            if (raw->size() < 2 || raw->front() != '[' || raw->back() != ']') { reject_field(name); return; }
             std::vector<std::string> parsed;
             std::size_t position = 1;
             while (position + 1 < raw->size())
             {
                 skip_spaces(*raw, position);
                 if ((*raw)[position] == ']') break;
-                if ((*raw)[position] != '"') { valid_state = false; return; }
+                if ((*raw)[position] != '"') { reject_field(name); return; }
                 const std::size_t start = position++;
                 bool escaped = false;
                 while (position < raw->size())
@@ -298,26 +230,37 @@ namespace
                     else if (character == '"') break;
                 }
                 std::string item;
-                if (!parse_json_string(raw->substr(start, position - start), item)) { valid_state = false; return; }
-                if (item.size() > 128 || parsed.size() >= 256) { valid_state = false; return; }
+                if (!parse_json_string(raw->substr(start, position - start), item)) { reject_field(name); return; }
+                if (item.size() > 128 || parsed.size() >= 256) { reject_field(name); return; }
                 parsed.push_back(std::move(item));
                 skip_spaces(*raw, position);
                 if (position < raw->size() && (*raw)[position] == ',') ++position;
-                else if (position < raw->size() && (*raw)[position] != ']') { valid_state = false; return; }
+                else if (position < raw->size() && (*raw)[position] != ']') { reject_field(name); return; }
             }
             if (apply || staged) values = std::move(parsed);
         }
 
     private:
-        std::string_view object;
+        std::optional<modules::config_json::value> parsed;
+        std::optional<std::string_view> raw_field(const char* name) const
+        {
+            if (!parsed) return std::nullopt;
+            const auto* field = parsed->find(name);
+            return field ? std::optional<std::string_view>(field->raw) : std::nullopt;
+        }
+        void reject_field(const char* name)
+        {
+            const std::string detail = std::string(name) + ": invalid value or type.";
+            reject(detail.c_str());
+        }
         bool apply = false;
         bool valid_state = true;
         bool staged = false;
         std::string error;
         template <typename Number> void decimal(const char* name, Number& value)
         {
-            const auto raw = raw_field(object, name); if (!raw) return;
-            Number parsed{}; if (!parse_decimal(*raw, parsed)) { valid_state = false; return; }
+            const auto raw = raw_field(name); if (!raw) return;
+            Number parsed{}; if (!parse_decimal(*raw, parsed)) { reject_field(name); return; }
             if (apply || staged) value = parsed;
         }
     };

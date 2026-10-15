@@ -19,11 +19,9 @@ int main()
     gui::aegis::preferences test{};
     test.window_size = ImVec2(std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity());
     test.window_position = ImVec2(std::numeric_limits<float>::quiet_NaN(), -std::numeric_limits<float>::infinity());
-    test.sound_volume = std::numeric_limits<float>::quiet_NaN();
     normalize(test);
     check(test.window_size.x == 1280 && test.window_size.y == 620, "invalid dimensions must normalize");
     check(test.window_position.x == 0 && test.window_position.y == 0, "invalid position must normalize");
-    check(test.sound_volume == .7f, "invalid sound volume must normalize");
     test.hud_layout[0].x = std::numeric_limits<float>::quiet_NaN();
     test.hud_layout[1].scale = 10.f;
     test.hud_layout[2].scale = .5f;

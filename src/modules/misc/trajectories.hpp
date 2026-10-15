@@ -1,6 +1,8 @@
 #pragma once
 
 #include "../module_support.hpp"
+#include "../core/settings_store.hpp"
+#include "settings/trajectories_settings.hpp"
 
 namespace modules
 {
@@ -15,20 +17,9 @@ class trajectories : public module
 		void on_disable(::cache& cache) override;
 		float get_options_height() override { return 245.0f; }
 		void visit_config(config_visitor& v) override
-		{
-			v.field("show_bows", show_bows); v.field("show_throwables", show_throwables);
-			v.field("show_potions", show_potions); v.field("show_landing_marker", show_landing_marker);
-			v.field("show_flight_time", show_flight_time); v.field("line_thickness", line_thickness);
-			v.field("max_ticks", max_ticks);
-		}
+		{ settings_.visit(v, module_settings::trajectories::schema()); }
 
 	private:
-		bool show_bows = true;
-		bool show_throwables = true;
-		bool show_potions = true;
-		bool show_landing_marker = true;
-		bool show_flight_time = true;
-		float line_thickness = 2.0f;
-		int max_ticks = 160;
+        modules::settings::store<module_settings::trajectories> settings_;
 	};
 }

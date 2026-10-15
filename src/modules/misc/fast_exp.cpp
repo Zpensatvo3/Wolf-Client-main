@@ -11,9 +11,10 @@
 #include <imgui/imgui.h>
 
 #include "fast_exp.hpp"
+#include "../../ui/settings_renderer.hpp"
 #include "../ui_redirect.hpp"
-#include "../gui/gui.hpp"
-#include "../mappings.hpp"
+#include "../../gui/gui.hpp"
+#include "../../mappings.hpp"
 
 namespace
 {
@@ -38,8 +39,9 @@ void modules::fast_exp::notify_manual_right_click(bool pressed)
 
 void modules::fast_exp::schedule_next_click(steady_clock::time_point now)
 {
-	const int low = std::clamp((std::min)(min_cps, max_cps), 1, 50);
-	const int high = std::clamp((std::max)(min_cps, max_cps), low, 50);
+    auto settings_snapshot = settings_.read();
+	const int low = std::clamp((std::min)(settings_snapshot.min_cps, settings_snapshot.max_cps), 1, 50);
+	const int high = std::clamp((std::max)(settings_snapshot.min_cps, settings_snapshot.max_cps), low, 50);
 	std::uniform_int_distribution<int> cps_distribution(low, high);
 	const double selected_cps = static_cast<double>(cps_distribution(gen));
 
@@ -181,22 +183,8 @@ void modules::fast_exp::on_disable(::cache& cache)
 
 void modules::fast_exp::render_options()
 {
-	ImGui::SetNextItemWidth(210.0f);
-	if (ImGui::SliderInt(gui::text("Minimum CPS", "Minimum CPS"), &min_cps, 5, 40, "%d CPS"))
-	{
-		if (min_cps > max_cps)
-			max_cps = min_cps;
-	}
-
-	ImGui::SetNextItemWidth(210.0f);
-	if (ImGui::SliderInt(gui::text("Maximum CPS", "Maksimum CPS"), &max_cps, 5, 40, "%d CPS"))
-	{
-		if (max_cps < min_cps)
-			min_cps = max_cps;
-	}
-
-	ImGui::Spacing();
-	ImGui::TextDisabled("%s", gui::text("Input: Windows API (SendInput)", "Girdi: Windows API (SendInput)"));
-	ImGui::TextDisabled("%s", gui::text("Hold right-click with EXP bottle to fire.", "EXP elindeyken sag tika basili tutarak atesleyin."));
-	ImGui::TextDisabled("%s", gui::text("Safety checks active (GUI, screens, EXP detection).", "Guvenlik kontrolleri aktif (Menu, ekranlar, EXP kontrolu)."));
+    gui::settings::render(settings_, module_settings::fast_exp::schema());
+    ImGui::TextDisabled("%s", gui::text("Input: Windows API (SendInput)", "Girdi: Windows API (SendInput)"));
+    ImGui::TextDisabled("%s", gui::text("Hold right-click with EXP bottle to fire.", "EXP elindeyken sag tika basili tutarak atesleyin."));
+    ImGui::TextDisabled("%s", gui::text("Safety checks active (GUI, screens, EXP detection).", "Guvenlik kontrolleri aktif (Menu, ekranlar, EXP kontrolu)."));
 }

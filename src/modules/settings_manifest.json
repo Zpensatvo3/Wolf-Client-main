@@ -1,0 +1,320 @@
+{
+  "version": 1,
+  "modules": [
+    {
+      "id": "friends_manager",
+      "owner": "src/modules/friends/friend_manager.hpp",
+      "model": null,
+      "ownership": "no_module_settings",
+      "panel": null
+    },
+    {
+      "id": "click_gui",
+      "owner": "src/modules/client/click_gui.hpp",
+      "model": null,
+      "ownership": "no_module_settings",
+      "panel": null
+    },
+    {
+      "id": "panic",
+      "owner": "src/modules/client/panic.hpp",
+      "model": null,
+      "ownership": "no_module_settings",
+      "panel": null
+    },
+    {
+      "id": "legit_click_aim_assist",
+      "owner": "src/modules/combat/aimassist.hpp",
+      "model": "src/modules/combat/legit_aim_config.hpp",
+      "ownership": "client_thread_config",
+      "panel": "src/modules/combat/legit_aim_engine.cpp"
+    },
+    {
+      "id": "blatant_click_aim_assist",
+      "owner": "src/modules/combat/blatant_clickaimassist.hpp",
+      "model": "src/modules/combat/blatant_aim_config.hpp",
+      "ownership": "existing_runtime",
+      "panel": "src/modules/combat/blatant_aim_engine.cpp"
+    },
+    {
+      "id": "aim_assist",
+      "owner": "src/modules/combat/clickaimassist.hpp",
+      "model": "src/modules/combat/legit_aim_config.hpp",
+      "ownership": "client_thread_config",
+      "panel": "src/modules/combat/legit_aim_engine.cpp"
+    },
+    {
+      "id": "triggerbot",
+      "owner": "src/modules/combat/triggerbot.hpp",
+      "model": "src/modules/combat/trigger_config.hpp",
+      "ownership": "client_thread_config",
+      "panel": "src/modules/combat/trigger_options.cpp"
+    },
+    {
+      "id": "mace_swap",
+      "owner": "src/modules/combat/mace_swap.hpp",
+      "model": "src/modules/combat/settings/mace_swap_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/combat/mace_swap.cpp"
+    },
+    {
+      "id": "anchor_macro",
+      "owner": "src/modules/combat/anchor_macro.hpp",
+      "model": "src/modules/combat/anchor_config.hpp",
+      "ownership": "client_thread_config",
+      "panel": "src/modules/combat/anchor_engine.cpp"
+    },
+    {
+      "id": "blatant_anchor_macro",
+      "owner": "src/modules/combat/anchor_macro.hpp",
+      "model": "src/modules/combat/anchor_config.hpp",
+      "ownership": "client_thread_config",
+      "panel": "src/modules/combat/anchor_engine.cpp"
+    },
+    {
+      "id": "safe_anchor",
+      "owner": "src/modules/combat/safe_anchor.hpp",
+      "model": "src/modules/combat/anchor_config.hpp",
+      "ownership": "client_thread_config",
+      "panel": "src/modules/combat/anchor_engine.cpp"
+    },
+    {
+      "id": "hit_crystal",
+      "owner": "src/modules/combat/hit_crystal.hpp",
+      "model": "src/modules/combat/settings/hit_crystal_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/combat/hit_crystal.cpp"
+    },
+    {
+      "id": "watermark",
+      "owner": "src/modules/render/hud.hpp",
+      "model": "src/modules/render/settings/hud_settings.hpp",
+      "ownership": "render_preferences",
+      "panel": "src/modules/render/hud.cpp"
+    },
+    {
+      "id": "arraylist",
+      "owner": "src/modules/render/arraylist.hpp",
+      "model": "src/modules/render/settings/arraylist_settings.hpp",
+      "ownership": "render_preferences",
+      "panel": "src/modules/render/arraylist.cpp"
+    },
+    {
+      "id": "glow_esp",
+      "owner": "src/modules/visual/glow_esp.hpp",
+      "model": "src/modules/visual/settings/glow_esp_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/visual/glow_esp.cpp"
+    },
+    {
+      "id": "chams",
+      "owner": "src/modules/visual/chams.hpp",
+      "model": "src/modules/visual/settings/chams_settings.hpp",
+      "ownership": "existing_lock",
+      "panel": "src/modules/visual/chams.cpp"
+    },
+    {
+      "id": "player_esp",
+      "owner": "src/modules/visual/player_esp.hpp",
+      "model": "src/modules/visual/settings/player_esp_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/visual/player_esp.cpp"
+    },
+    {
+      "id": "storage_esp",
+      "owner": "src/modules/visual/storage_esp.hpp",
+      "model": "src/modules/visual/settings/storage_esp_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/visual/storage_esp.cpp"
+    },
+    {
+      "id": "block_esp",
+      "owner": "src/modules/visual/block_esp.hpp",
+      "model": "src/modules/visual/settings/block_esp_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/visual/block_esp.cpp"
+    },
+    {
+      "id": "radar",
+      "owner": "src/modules/visual/radar.hpp",
+      "model": "src/modules/visual/settings/radar_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/visual/radar.cpp"
+    },
+    {
+      "id": "spotify_hud",
+      "owner": "src/modules/visual/spotify_hud.hpp",
+      "model": "src/modules/visual/settings/spotify_hud_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/visual/spotify_hud.cpp"
+    },
+    {
+      "id": "full_bright",
+      "owner": "src/modules/visual/full_bright.hpp",
+      "model": null,
+      "ownership": "no_module_settings",
+      "panel": null
+    },
+    {
+      "id": "nametag",
+      "owner": "src/modules/visual/nametag.hpp",
+      "model": "src/modules/visual/settings/nametag_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/visual/nametag.cpp"
+    },
+    {
+      "id": "jump_reset",
+      "owner": "src/modules/combat/jump_reset.hpp",
+      "model": "src/modules/combat/jump_reset_config.hpp",
+      "ownership": "revisioned_lock",
+      "panel": "src/modules/combat/jump_reset.cpp"
+    },
+    {
+      "id": "shield_breaker",
+      "owner": "src/modules/combat/shield_breaker.hpp",
+      "model": "src/modules/combat/settings/shield_breaker_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/combat/shield_breaker.cpp"
+    },
+    {
+      "id": "auto_totem",
+      "owner": "src/modules/combat/auto_totem.hpp",
+      "model": "src/modules/combat/settings/auto_totem_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/combat/auto_totem.cpp"
+    },
+    {
+      "id": "legit_auto_totem",
+      "owner": "src/modules/combat/legit_auto_totem.hpp",
+      "model": "src/modules/combat/settings/legit_auto_totem_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/combat/legit_auto_totem.cpp"
+    },
+    {
+      "id": "pearl_macro",
+      "owner": "src/modules/misc/pearl_macro.hpp",
+      "model": "src/modules/misc/settings/pearl_macro_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/misc/pearl_macro.cpp"
+    },
+    {
+      "id": "chest_stealer",
+      "owner": "src/modules/misc/chest_stealer.hpp",
+      "model": "src/modules/misc/settings/chest_stealer_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/misc/chest_stealer.cpp"
+    },
+    {
+      "id": "elytra_swapper",
+      "owner": "src/modules/misc/elytra_swapper.hpp",
+      "model": "src/modules/misc/settings/elytra_swapper_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/misc/elytra_swapper.cpp"
+    },
+    {
+      "id": "auto_tool",
+      "owner": "src/modules/misc/auto_tool.hpp",
+      "model": "src/modules/misc/settings/auto_tool_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/misc/auto_tool.cpp"
+    },
+    {
+      "id": "auto_armor",
+      "owner": "src/modules/misc/auto_armor.hpp",
+      "model": "src/modules/misc/settings/auto_armor_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/misc/auto_armor.cpp"
+    },
+    {
+      "id": "sprint",
+      "owner": "src/modules/misc/sprint.hpp",
+      "model": "src/modules/misc/settings/sprint_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/misc/sprint.cpp"
+    },
+    {
+      "id": "trajectories",
+      "owner": "src/modules/misc/trajectories.hpp",
+      "model": "src/modules/misc/settings/trajectories_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/misc/trajectories.cpp"
+    },
+    {
+      "id": "bridge_assist",
+      "owner": "src/modules/misc/bridge_assist.hpp",
+      "model": "src/modules/misc/settings/bridge_assist_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/misc/bridge_assist.cpp"
+    },
+    {
+      "id": "right_clicker",
+      "owner": "src/modules/misc/right_clicker.hpp",
+      "model": "src/modules/misc/settings/right_clicker_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/misc/right_clicker.cpp"
+    },
+    {
+      "id": "left_clicker",
+      "owner": "src/modules/misc/left_clicker.hpp",
+      "model": "src/modules/misc/settings/left_clicker_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/misc/left_clicker.cpp"
+    },
+    {
+      "id": "inventory_clicker",
+      "owner": "src/modules/misc/inventory_clicker.hpp",
+      "model": "src/modules/misc/settings/inventory_clicker_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/misc/inventory_clicker.cpp"
+    },
+    {
+      "id": "fast_place",
+      "owner": "src/modules/misc/fast_place.hpp",
+      "model": "src/modules/misc/settings/fast_place_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/misc/fast_place.cpp"
+    },
+    {
+      "id": "fast_exp",
+      "owner": "src/modules/misc/fast_exp.hpp",
+      "model": "src/modules/misc/settings/fast_exp_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/misc/fast_exp.cpp"
+    },
+    {
+      "id": "pot_refill",
+      "owner": "src/modules/misc/pot_refill.hpp",
+      "model": "src/modules/misc/settings/pot_refill_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/misc/pot_refill.cpp"
+    },
+    {
+      "id": "mouse_tweaks",
+      "owner": "src/modules/misc/mouse_tweaks.hpp",
+      "model": "src/modules/misc/settings/mouse_tweaks_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/misc/mouse_tweaks.cpp"
+    },
+    {
+      "id": "vape_aim_assist",
+      "owner": "src/modules/vape/vape_module.hpp",
+      "model": "src/modules/vape/vape_config.hpp",
+      "ownership": "existing_lock",
+      "panel": "src/modules/vape/vape_options.cpp"
+    },
+    {
+      "id": "vape_left_clicker",
+      "owner": "src/modules/vape/vape_module.hpp",
+      "model": "src/modules/vape/vape_config.hpp",
+      "ownership": "existing_lock",
+      "panel": "src/modules/vape/vape_options.cpp"
+    },
+    {
+      "id": "vape_right_clicker",
+      "owner": "src/modules/vape/vape_module.hpp",
+      "model": "src/modules/vape/vape_config.hpp",
+      "ownership": "existing_lock",
+      "panel": "src/modules/vape/vape_options.cpp"
+    }
+  ]
+}

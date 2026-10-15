@@ -201,7 +201,7 @@ namespace
         std::error_code error;
         std::filesystem::create_directories(directory, error);
         if (error) return {};
-        const std::filesystem::path path = directory / L"Thedorius-Lite.dll";
+        const std::filesystem::path path = directory / L"Onestep.dll";
         HANDLE file = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
             FILE_ATTRIBUTE_NORMAL, nullptr);
         if (file == INVALID_HANDLE_VALUE) return {};
@@ -222,7 +222,7 @@ namespace
         {
             do
             {
-                if (_wcsicmp(entry.szModule, L"Thedorius-Lite.dll") == 0) { found = true; break; }
+                if (_wcsicmp(entry.szModule, L"Onestep.dll") == 0) { found = true; break; }
             } while (Module32NextW(snapshot, &entry));
         }
         CloseHandle(snapshot);
@@ -443,7 +443,7 @@ namespace
             else
             {
                 current_stage = stage::injecting;
-                status_detail = "Loading Thedorius-Lite.dll into the selected game";
+                status_detail = "Loading Onestep.dll into the selected game";
                 std::string error;
                 if (inject_client(target, client, error))
                 {

@@ -12,6 +12,7 @@
 #include <imgui/imgui.h>
 
 #include "mace_swap.hpp"
+#include "../../ui/settings_renderer.hpp"
 #include "../ui_redirect.hpp"
 #include "../../gui/gui.hpp"
 #include "../../gui/widgets.hpp"
@@ -24,6 +25,7 @@ namespace
 
 bool modules::mace_swap::prepare_current_thread()
 {
+    auto settings_snapshot = settings_.read();
 	if (gui::draw || gui::loader_visible)
 		return false;
 
@@ -55,7 +57,7 @@ bool modules::mace_swap::prepare_current_thread()
 		platform::jni_context::clear_exception() || !services::inventory::slot_matches(items, selected_slot, services::inventory::hotbar_item_kind::sword))
 		return false;
 
-	const int selected_mace_slot = services::inventory::find_hotbar_slot(items, services::inventory::hotbar_item_kind::mace, preferred_mace_slot - 1);
+	const int selected_mace_slot = services::inventory::find_hotbar_slot(items, services::inventory::hotbar_item_kind::mace, settings_snapshot.preferred_mace_slot - 1);
 	if (selected_mace_slot < 0 || selected_mace_slot == selected_slot || platform::jni_context::clear_exception())
 		return false;
 
@@ -197,13 +199,14 @@ void modules::mace_swap::restore(::cache& cache)
 
 void modules::mace_swap::run(::cache& cache)
 {
+    auto settings_snapshot = settings_.read();
 	std::lock_guard lock(state_mutex);
 	if (trigger_prepared) return;
 	if (!waiting_for_release)
 		return;
 
 	const auto now = std::chrono::steady_clock::now();
-	const int safe_delay = (std::max)(18, std::clamp(return_delay, 0, 75));
+	const int safe_delay = (std::max)(18, std::clamp(settings_snapshot.return_delay, 0, 75));
 	const bool delay_elapsed = now - switched_at >= std::chrono::milliseconds(safe_delay);
 	const HWND window = gui::get_window();
 	if (!cache.is_valid() || !window || GetForegroundWindow() != window || gui::draw ||
@@ -220,8 +223,5 @@ void modules::mace_swap::on_disable(::cache& cache)
 
 void modules::mace_swap::render_options()
 {
-	gui::option_slider(gui::text("Preferred Mace Slot", "Tercih Edilen Mace Slotu"),
-		&preferred_mace_slot, 1, 9, "Slot %d");
-	gui::option_slider(gui::text("Return Delay", "Geri Donus Gecikmesi"),
-		&return_delay, 0, 75, "%d ms");
+    gui::settings::render(settings_, module_settings::mace_swap::schema());
 }

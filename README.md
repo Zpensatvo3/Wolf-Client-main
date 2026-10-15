@@ -1,256 +1,212 @@
-# Thedorius Lite
+# Onestep
 
-Native C++ client project targeting Minecraft Fabric 1.21.1 on Windows.
+Windows x64 üzerinde Minecraft Fabric 1.21.1 için geliştirilen native C++20 istemci.
+OpenGL ve ImGui tabanlı arayüz, HUD düzenleyicisi, modül sistemi ve public config
+istemcisi içerir.
 
-## Build
+## Güncel durum
 
-Release x64 incremental build and test signing:
+- Ürün adı **Onestep**.
+- Lisans girişi ve lisans heartbeat akışı şu an devre dışı; auth gelecekte eklenecek.
+- Public config bağlantısı lisans girişinden ayrı çalışacak şekilde korunuyor.
+  Uzak servisin bu ortamda erişilebilirliği doğrulanmadı.
+- Vape sayfasında yalnızca Aim Assist (Simple/Adaptive), Left Clicker ve Right Clicker var.
+- Eski UI/Qt kaynakları ve arayüz ses sistemi kaldırıldı.
+
+## Gereksinimler
+
+- Windows x64
+- Visual Studio C++ Build Tools / MSBuild ve Windows SDK
+- PowerShell; altyapı kontrolleri ve proje filtreleri için Python 3.9+
+- Oyun içi kullanım için Minecraft Fabric 1.21.1
+
+## Derleme
+
+Komutları depo kökünde çalıştır:
 
 ```powershell
+# Release x64 DLL
 .\scripts\Build-Release.ps1
-```
 
-ImGui loader/injector ile tek EXE paketi:
+# Temiz derleme
+.\scripts\Build-Release.ps1 -Clean
 
-```powershell
+# İmzasız yerel derleme
+.\scripts\Build-Release.ps1 -SkipSign
+
+# DLL'yi içeren ImGui launcher EXE paketi
 .\scripts\Build-Launcher.ps1
 ```
 
-Clean rebuild:
+DLL çıktısı Onestep adını kullanır; launcher'ın teknik dosya adı korunuyor:
 
-```powershell
-.\scripts\Build-Release.ps1 -Clean
+| Çıktı | Yol |
+| --- | --- |
+| İstemci DLL | `build\Onestep.dll` |
+| Launcher EXE | `dist\Thedorius.exe` |
+
+İmzalama scriptleri, mevcut kullanıcı sertifika deposundaki
+`CN=Thedorius Lite Test` sertifikasını arar. Sertifika adı henüz değiştirilmedi.
+GitHub Actions, `main` güncellendiğinde offline testlerden sonra Windows x64
+DLL'yi derler ve `Onestep-Windows-x64` artifact'i olarak saklar. Bu çıktı imzasızdır.
+
+## Kaynak yapısı
+
+```text
+assets/                   Fontlar, ikonlar ve arka plan
+include/                  Üçüncü taraf kütüphaneler
+launcher/                 Windows launcher ve DLL yükleme akışı
+scripts/                  Derleme ve kaynak doğrulama araçları
+server/                   Gelecekteki auth için korunan Worker ve veritabanı kaynakları
+src/
+  main.cpp                Yalnızca DLL girişi ve worker başlatma
+  app/                    Uygulama başlangıcı, kapanışı ve modül döngüsü
+  auth/                   Korunan auth kodu ve config servis bağlantısı
+  cache/                  Oyun nesnesi önbelleği
+  configs/                Public config istemcisi
+  friends/                Oturumluk arkadaş listesi
+  gui/                    ImGui shell, kontroller ve yerel arayüz tercihleri
+  ui/                     Çalışma alanı, HUD editörü ve config sayfası
+  modules/                Modüller, kayıt sistemi ve config serileştirme
+    core/setting_schema.hpp  UI'dan bağımsız ayar tanımları ve doğrulama
+    vape/engines/         Korunan Aim Assist ve clicker motorları
+    vape/vape_config.hpp  Korunan Vape modüllerinin ortak ayar modeli
+    misc/settings/        Utility modüllerinin bağımsız ayar modelleri
+    combat/settings/      Combat modüllerinin bağımsız ayar modelleri
+    visual/settings/      Görsel modüllerin bağımsız ayar modelleri
+    render/settings/      Watermark ve Arraylist tercihleri
+    settings_manifest.json  45 stable ID için model ve panel sahipliği
+  sdk/minecraft/
+    fabric_1_21_1/        Alanlara bölünmüş JNI mapping'leri ve sürüm manifesti
+  mappings.hpp            Eski include yolları için ince uyumluluk başlığı
+  platform/               Oyun adaptörü, sahipli JVM oturumu ve client-thread iş kuyruğu
+  services/               Ortak oyun ve input servisleri
+  jvmti/                  JVM araç katmanı
+  maths/                  Oyun matematiği
+  utils/                  Yardımcı araçlar
+tests/                    Offline motor, config ve arayüz test kaynakları
 ```
 
-The output is written to `build\Thedorius-Lite.dll`. The script signs it when
-the `CN=Thedorius Lite Test` certificate is available in the current user's
-certificate store. Use `-SkipSign` when only a local compile check is needed.
-
-Infrastructure validation:
+## Doğrulama
 
 ```powershell
 .\scripts\Test-Infrastructure.ps1
-```
+python .\scripts\Test-Infrastructure.py
+python .\scripts\Test-AimAssistSources.py
+python .\scripts\Test-TriggerbotSources.py
+python .\scripts\Test-JumpResetSources.py
 
-Refresh Visual Studio filters after changing project items:
-
-```powershell
+# Proje girdileri değiştiğinde
 python .\scripts\Refresh-ProjectFilters.py
 ```
 
-## Source layout
+17 offline testi tek komutla derleyip çalıştırmak için:
 
-```text
-src/
-  cache/                  Minecraft object snapshot used by module ticks
-  configs/                Public config network client
-  friends/                Session-only friend state and server-player scan
-  gui/                    ImGui management shell, widgets and local UI state
-  ui/                     Grim workspace, HUD editor and config library screens
-  modules/
-    client/               Click GUI and Panic
-    combat/               Combat modules and their focused engines
-    misc/                 Player, movement and world utility modules
-    render/               Watermark and ArrayList
-    visual/               ESP, radar, nametag and brightness modules
-    vape/                 Independent user-supplied engine adapters (Vape UI page)
-    friends/              Friends module declaration
-    core/                 Module contract, registry and config serialization
-  platform/jni/           JNI thread context and client-thread dispatcher
-  services/
-    game/                 Client context, hotbar, inventory, target and attack
-    input/                Tagged Windows input coordination
+```sh
+python scripts/Test-Offline.py
+
+# Yalnızca ayar modeli ve yayınlama testleri
+python scripts/Test-Offline.py --test utility_settings --test remaining_settings --test settings_store --test settings_renderer
 ```
 
-Gameplay modules use focused implementations; the Vape family shares typed
-IO adapters around independent engines. `modules.hpp` is only a compatibility umbrella.
-The registry is populated through the validated descriptor table in
-`module_catalog.cpp`.
+Araç Linux'ta g++, Windows'ta Developer PowerShell içindeki MSVC derleyicisini
+kullanır; farklı derleyici yolu `--compiler` ile verilebilir. Testler assertion
+kontrolleri açık şekilde geçici klasörde derlenir. Modül tuş/lifecycle akışı,
+Vape motorları, Wolf aim matematiği, Triggerbot ve Jump Reset karar/input
+modelleri, ortak config serileştirme ve dört modül grubunun config testleri
+çalışır. Ek utility testi on modülün eski config alanlarını, varsayılanlarını,
+tamsayı sınırlarını ve gizli alanlarını doğrular. Ayar deposu testi iki eşzamanlı
+yazıcı ve bir okuyucuyla tutarlı snapshot ve işlem geri alma davranışını sınar.
+Kalan ayar modellerinin testi eski alan adlarını, renk/dizi/liste türlerini,
+seyrek enum değerlerini, EXP/Anchor uyumluluğunu ve geçersiz içe aktarmaların
+atomik reddini doğrular. Renderer testi gerçek çizim yapmadan kontrol
+bağlantılarını, koşullu görünürlüğü, yüzde dönüşümünü ve UI/import limitlerini sınar.
+SDK testi 127 sınıf adını, temel JNI imzalarını ve dokuz domain başlığının
+tek başına derlenmesini kontrol eder; JVM başlatmaz veya oyuna bağlanmaz.
+Windows'a bağlı UI tercihleri ve görsel arayüz testleri bu pakete dahil değildir.
 
-Visual / Chams provides a model-based colored overlay using independent baked
-wide/slim player models and vanilla limb/pose animation. It does not hook shaders,
-mutate shared entity models or change Glow ESP. Visibility/color selection is
-entity-level line of sight, not per-pixel world-depth masking. Skin outer layers,
-armor, capes and special root poses (elytra, swimming, sleeping, mounts) are not
-rendered by this first version. Its settings use the standard config visitor.
-Release compilation succeeded; controlled in-game appearance remains unverified.
+Kaynak kontrolleri ve offline testler, Windows DLL derlemesi veya oyun içi
+doğrulama anlamına gelmez. Yeni uygulama ve ayar arayüzü katmanlarının Windows
+DLL derlemesi ve oyun içi doğrulaması henüz yapılmadı.
 
-Triggerbot separates a native-free decision model, staged config migration,
-client-thread game adaptation and tagged input tracking. Its automatic attacks
-coordinate with Shield Breaker, Mace Swap and Left Clicker. Static checks and
-pending offline/native scenarios are documented in `tests/TRIGGERBOT.md`.
+## Uygulama yaşam döngüsü
 
-The Configs workspace uses a searchable library and a responsive details/editor
-panel. Publishing errors keep the draft intact; deletion requires confirmation.
-Favourites are session-only. Offline UI/model/service tests do not contact the
-public config API or modify real shared configs.
+`main.cpp` worker'ı başlatır ve `app::run()` tamamlandıktan sonra DLL'yi boşaltır.
+`app/runtime.cpp` başlangıç/kapanış sırasını, `app/module_loop.cpp` ise modül
+tuşlarını ve worker tick akışını yönetir. Devre dışı eski auth konsol ekranı
+giriş dosyasından kaldırıldı; gelecekteki auth kaynakları korunuyor.
 
-## Vape integration status
+Modüller render hook kurulmadan önce kaydedilir. Kapanışta config worker ve
+render akışı durur; ardından modüller, oyun önbelleği, JNI metadata ve JVM
+bağlantısı temizlenir. Aynı kaynak sahipliği, yarıda kalan başlangıçta da geçerlidir.
+Panic isteği thread'ler arasında atomik olarak aktarılır.
 
-The separate Vape page registers 20 adapters, with separate `vape_` config IDs:
-Aim Assist (Simple/Adaptive), Bow Aimbot, Left/Right Clicker, Sprint, Triggerbot,
-Velocity, Knockback Delay, Jump Reset, WTap, Shield Breaker, Auto Mace, Hit Swap,
-Hit Select, Block Hit, Reach, No Item Release, Hit Flick, Silent Aura, Crystal Aura.
-This adds a new Vape Velocity; it does not restore the removed Wolf Velocity or
-Scaffold modules. Existing Wolf calculations and the earlier Triggerbot fixes
-have not been changed.
+Tuşlar ekran/focus engeli sırasında da örneklenir; basılı tutulan bir tuşun
+focus dönüşünde veya yeniden atanırken modülü yanlışlıkla açması önlenir.
+Kendini kapatan modüllerin lifecycle geçişleri aynı tick içinde tamamlanır.
+Diğer paylaşılan modül/UI durumları henüz bütünüyle yeni bir thread modeline
+taşınmadı; registry ve ayar yayınlama sahipliği sonraki aşamadır.
 
-The user's engines are included directly from sibling `../combat cpp/`; keep
-that directory next to this project. Completed missing pieces are deliberately
-inside that independent package: Adaptive target dispatch, Hit Swap's mace
-follow-up action, Auto Mace missing-weapon/slot ownership cases, Block Hit Lag
-hold, No Item Release's C++ enum syntax, and Crystal Aura's obsidian decision
-and exposure-aware damage inputs. Existing aim, timing, weapon-score, PID and
-ray-intersection formulas remain independent from Wolf engines.
+## Ayarlar ve SDK sınırları
 
-The first enabled advanced Vape module lazily installs exact Fabric 1.21.1
-hooks through live JVMTI class retransformation and Fabric's ASM. No debugger
-breakpoints, JVM internal offsets or JVM memory patches are used. The embedded
-Java helper provides transport only; C++ engines keep decisions. Installation
-requires all six hook points on five classes to match, otherwise activation is
-rolled back and the settings panel shows the failure. Other Wolf modules can
-still run. JNI exceptions are cleared without swallowing vanilla exceptions.
+`setting_schema.hpp` bool, tamsayı, sayısal değer, aralık, renk, metin listesi ve
+seyrek enum değerlerini de destekleyen seçenek listeleri için
+üye bağlarını, config anahtarlarını, sınırları ve dil etiketlerini tanımlar.
+`ui/settings_renderer.hpp` bu tanımları mevcut arayüz kontrolleriyle çizer.
+İçe aktarma önce yerel aday ayarları doğrular; geçersiz değerler canlı ayarlara
+uygulanmaz. Gizli kontrollerin değerleri config içinde korunur.
 
-The velocity hook matches `NetworkThreadUtils.method_11074(Packet,
-PacketListener, ThreadExecutor)` with its exact intermediary descriptor. The
-offline fixture uses the real signature and rejects the former incorrect
-`method_11054` name and generic Object descriptor. Restart Minecraft before
-loading a corrected DLL after an earlier Java bridge was defined: unloading
-the native DLL alone does not unload that Java helper from the game loader.
+Katalogdaki 45 stable ID'nin tamamı `settings_manifest.json` ile izlenir.
+Modüle özel ayarları bulunan 41 kayıt ortak şemaya bağlandı. Friends Manager,
+Click GUI, Panic ve Full Bright için modüle özel config alanı yoktur; arkadaş
+listesi ve genel UI tercihleri kendi mevcut sahiplerinde kalır.
 
-Velocity events run after vanilla's force-main-thread gate, not on Netty.
-Velocity scales/cancels the actual incoming local-player packet; Knockback Delay
-queues only numeric motion values; Jump Reset consumes actual velocity events.
-Attack engine ticks run once per observed player age, never one decision per frame or
-a catch-up attack burst. Session changes discard pending state and packet refs.
-Settings imports validate local candidates before applying; enums/nonfinite
-numbers are rejected and reversed ranges are normalized.
+27 combat/utility/visual modülü `settings_store.hpp` üzerinden kilitli yayın
+ve kopya snapshot kullanır. Vape ve Chams mevcut kilitlerini, Jump Reset
+revision/iptal mekanizmasını korur. Aim/Trigger/Anchor modelleri ortak şemaya
+geçerken mevcut runtime sahipliklerini korur; bu taşıma bütün paylaşılan
+oyun durumlarının thread modelini yenilemez. HUD/Arraylist tercihleri render
+katmanında tutulur; HUD editörüyle mevcut referanslar korunur.
 
-Native attack pre/post hooks coordinate Hit Select, Hit Flick, Shield Breaker,
-Hit Swap, WTap and Block Hit. Weapon selection uses the supplied
-ItemStackScoreUtil, including actual Density/Breach enchantments. One shared
-Vape slot lease prevents preparations overwriting each other; restoration is
-conditional on continued ownership. Elytra/chestplate exchange uses vanilla
-SWAP transactions with an empty cursor and ownership-checked restoration.
+Block ESP blok seçicisi, Spotify'ın ekran boyutuna bağlı konum kontrolleri ve
+Jump Reset hazır ayarları özel panel olarak kalır; standart kontroller aynı
+renderer'ı kullanır. Önceden planlanmış oyun eylemlerinin genel iptali bu
+katmanın sorumluluğu değildir. Stable ID ve mevcut ayar alan adları korunur.
+Sayısal içe aktarmalar modülün mevcut runtime sınırlarına normalize edilir;
+yanlış tür, geçersiz enum ve aşırı büyük değerler reddedilir. Chest Stealer'ın
+yanında Auto Totem, Legit Auto Totem ve Fast EXP'nin de UI ve import limitleri
+ayrı tanımlanır; Auto Tool'un görünmeyen eski config alanı da korunur.
+Radar konumları geniş ekranlarda slider sınırlarıyla kırpılmaz.
 
-Silent Aura sends/replaces outgoing look/movement packets without changing the
-visible camera or rotating local movement physics; local input therefore stays
-in camera/world space rather than applying a second artificial strafe rotation.
-Hit Flick has a bounded movement-packet queue (32 packets / 300 ms), target-ID
-validation, forward-key/sprint ownership and ordered flush/restore. No Item
-Release guards both vanilla stopUsingItem and outgoing RELEASE_USE_ITEM.
-Block Hit uses a real main/offhand shield on 1.21.1; legacy sword blocking is
-not fabricated on this version.
+Mapping tanımları `sdk/minecraft/fabric_1_21_1/` altında Java tipleri, geometri,
+blok/world, inventory/network, entity tipleri, entity, client entity, input ve
+client başlıklarına ayrılır. Domain bağımlılıkları açık include zincirleriyle
+kurulur; JNI sınıf isimleri `manifest.json` ile denetlenir. `mappings.hpp` eski
+kullanıcılar için tüm SDK'yı sunar; yeni kod ihtiyaç duyduğu domain'i kullanmalı.
 
-Reach updates vanilla's crosshair with the supplied AABB/ray math, samples range
-once per tick and checks block occlusion. Vape Triggerbot revalidates that ray
-immediately before delivery when Vape Reach is enabled. Wolf Triggerbot keeps
-its original fresh-vanilla-ray validation. Crystal Aura evaluates live armor,
-toughness, resistance, blast protection, absorption and vanilla explosion
-exposure, validates occupied volumes and placement support, and uses vanilla
-block interaction. Its rotating scan is capped at 96 block candidates per tick.
-Server acceptance/damage is never inferred from a local send.
+## Config dosyaları
 
-Overlapping enabled Wolf attack modules take priority over Vape attack
-automation. Within Vape, autonomous Aura/Flick/Crystal pause the basic
-Triggerbot/Left Clicker; Aura takes priority over Crystal, and active Flick
-sequences finish before Aura. Bow Aimbot takes priority over visible Aim Assist.
-Modules are not silently toggled off. The original unused
-`ignoreActivationClick` Triggerbot field is still not advertised as a feature.
+Yeni config'ler sürüm etiketi taşımaz: kökte `modules` listesi; her kayıtta
+`id`, `enabled`, `keybind` ve `settings` bulunur. Eski sürüm alanı bulunan
+dosyalar da okunur; yeniden kaydedilen çıktı sade biçimdedir.
+Yükleyici JSON'un tamamını ve tüm modül ayarlarını değişiklik yapmadan önce
+doğrular. Beklenmeyen uygulama hatasında önceki ayarları geri yüklemeyi dener;
+etkinlik ve tuş atamaları ancak ayarlar uygulandıktan sonra değiştirilir.
+Bu işlem worker thread'lerine karşı modüller arası tek bir atomik yayın değildir.
+Dosya boyutu 96 KB, modül sayısı 128 ve JSON derinliği 32 ile sınırlıdır.
+Bozuk JSON, yinelenen alan/ID, geçersiz tuş kodu ve yanlış türler reddedilir;
+artık bulunmayan modüller atlanır. Genel config testi geri uyumluluğu,
+Unicode metinleri, tüm belge doğrulamasını ve hata durumunda geri almayı sınar.
 
-Vape attack ownership now requires a live target/action or an active Flick
-sequence; an idle enabled Flick/Aura/Crystal no longer blocks the basic
-Triggerbot/Clicker. An idle Bow Aimbot likewise does not disable visible aim.
-Mining protection reads the interaction manager's actual block-breaking state,
-not a crosshair merely pointing at terrain. Player snapshots validate the Java
-entity type before any player/living-only JNI call: crystal and other non-player
-manual attacks pass through without entering player-only pre/post-hit logic.
-Vape object construction checks constructor availability before JNI NewObject.
-Crystal armor details are read only on its decision tick; rejected vanilla block
-interactions no longer count as successful placements. Wolf Triggerbot
-calculations are unchanged. The focused offline decision
-check is `tests/vape_adapter_test.cpp`; gameplay remains unverified.
+## Geliştirme kuralları
 
-### Main Java source comparison
+- Proje başlıklarını precompiled header içine ekleme.
+- Modüllerde input işlemleri için `input_service`, hotbar işlemleri için
+  `hotbar_service` kullan.
+- JNI thread ve exception işlemlerini `jni_context` üzerinden yürüt.
+- Client/render thread gerektiren işleri `client_dispatcher` üzerinden sıraya al.
+- Yeni modülleri ilgili kategoriye ekle ve `module_catalog.cpp` içinde kaydet.
+- Düz JSON config biçimini ve mevcut modüllerin stable ID değerlerini koru.
 
-The recovered reference is `../6vb8h8/VapeV4.21-main/src/main/java/gg/vape/`,
-not the much shorter `../combat deobf/` rewrites. Its own README disclaims being
-official original source. Both directories remain read-only references; neither
-is blindly copied into the DLL. The working independent engine headers remain
-in `../combat cpp/`, outside the Wolf calculation engines.
-
-- Simple Aim Assist now runs a bounded 1 ms **numeric** solver on the client
-  thread instead of mistaking the Java worker interval for a 50 ms game tick.
-  Direct camera writes include vanilla's .15 mouse-to-degree conversion.
-  Target retention and complete history reset avoid repeated startup stalls.
-- Adaptive Aim Assist now has separate rate/bias/feed-forward and fractional
-  mouse state. It no longer sends its predictive point back through Simple.
-  Airborne compensation follows upward eye motion; horizontal lag is bounded.
-- Triggerbot reads vanilla cooldown at `-extraDelayTicks + earlyHitTicks`.
-  A tick is not a fixed 5% of every weapon's cooldown. One sample survives an
-  unconsumed attempt; only observed local cooldown consumption commits a hit.
-  `Minecraft.doAttack()`'s return is not treated as an entity-attack receipt.
-  New module defaults follow Java's automatic activation; imported settings
-  remain authoritative. Miss swings remain opt-in and do not claim damage.
-- Silent Aura resets on target changes, clamps jitter inside the target box,
-  bounds rotation steps and only treats shields as bypassable when an actual
-  axe/preparation path exists. It still has independent C++ control, not a claim
-  of feature-complete parity with Java's full rotation subsystem.
-- Crystal Aura supports offhand crystals, includes normal Protection along with
-  Blast Protection, and uses entity-position explosion distance. Accepted local
-  actions enter bounded waits for observed obsidian/crystal spawn/removal, rather
-  than repeating a placement/hit on every tick before world updates arrive.
-  Slot cleanup also runs on failed construction/interaction paths. No entities
-  are pre-deleted and no server acceptance is inferred from a local action.
-- Jump Reset applies immediate jumps **after** vanilla velocity, so the incoming
-  packet cannot overwrite the jump. Delayed intents expire upon leaving ground;
-  their configured delay no longer adds an extra tick.
-- Advanced decisions also have a client/render-thread pump after settings
-  publication. The shared player-age guard prevents Java callbacks and this
-  pump from issuing duplicate ticks. Packet/attack interception still requires
-  all hook checks. Snapshot failures show actionable errors only, never idle spam.
-
-The Java bridge ABI is now 2 (adds a post-velocity callback). If ABI 1 is already
-defined in the game loader, **restart Minecraft when ready before loading this
-DLL**; native unload cannot replace that helper. Builds never close the game.
-The left/right clicker calculations and Wolf gameplay source remain untouched.
-Offline decisions, transformer ABI and Release compilation are checks only;
-in-game verification of all module combinations is still required. See
-`tests/VAPE_SOURCE_AUDIT.md` for the reference paths and remaining parity limits.
-
-Shutdown first quiesces Java callbacks on the client thread, releases owned
-inputs/slots, deactivates native dispatch and restores transformed classes
-before unloading native code. If class restoration is refused, Java dispatch
-stays disabled so transformed call sites cannot enter an unloaded DLL.
-
-Build now also compiles the small Java helper (JDK 17+ javac on PATH), embedding
-both class files in resources. Pinned ASM 9.7.1 compile dependencies are fetched
-from Fabric Maven into `build/vape-deps`; runtime uses Fabric's existing ASM.
-Infrastructure checks, Release compilation and one offline transformer ABI
-smoke check (`tests/VapeBridgeSmoke.java`) passed. No injection, gameplay or
-server/anticheat validation was performed; controlled in-game testing remains
-the user's responsibility.
-
-## Development rules
-
-- Keep project headers out of the precompiled header.
-- Do not call `SendInput` directly from a module; use `input_service`.
-- Do not write `selectedSlot` directly; use `hotbar_service`.
-- Do not duplicate JNI environment or exception helpers; use `jni_context`.
-- Queue work that must run on Minecraft's render/client thread through
-  `client_dispatcher`.
-- Add a new module declaration to its category folder and add one stable entry
-  to `module_catalog.cpp`.
-- Public config format remains version 3. Stable module IDs must not be renamed.
-
-## Current target
-
-- Platform: Windows x64
-- Game: Fabric 1.21.1
-- Renderer: OpenGL
-- Language: C++20
-- Build: Visual Studio Build Tools / MSBuild
-- Output: `Thedorius-Lite.dll`
-
-This repository is intended for controlled development and testing. Server
-rules and applicable platform policies remain the user's responsibility.
+Üçüncü taraf kaynakları: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Gelecekteki auth kurulumu: [server/SECURITY_SETUP.md](server/SECURITY_SETUP.md).

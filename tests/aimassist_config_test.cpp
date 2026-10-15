@@ -41,5 +41,5 @@ int main()
         assert(fixture.export_config_settings() == saved && fixture.resets == resets);
     }
     assert(fixture.apply_config_settings("{}") && fixture.resets == resets + 1);
-    std::cout << "Aim config v3 fields, sparse enum values, zero strength, atomic import and resets passed.\n";
+    std::cout << "Aim config fields, sparse enum values, zero strength, atomic import and resets passed.\n";
 }

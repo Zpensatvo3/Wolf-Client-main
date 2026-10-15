@@ -4,7 +4,7 @@
 #include "blatant_aim_engine.hpp"
 #include "blatant_clickaimassist.hpp"
 #include "../ui_redirect.hpp"
-#include "../gui/gui.hpp"
+#include "../../gui/gui.hpp"
 
 void modules::blatant_clickaimassist::run(cache& cache)
 {

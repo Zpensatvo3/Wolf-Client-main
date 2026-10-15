@@ -1,6 +1,8 @@
 #pragma once
 
 #include "../module_support.hpp"
+#include "../core/settings_store.hpp"
+#include "settings/inventory_clicker_settings.hpp"
 
 namespace modules
 {
@@ -14,14 +16,10 @@ class inventory_clicker : public module
 		void on_disable(::cache& cache) override;
 		float get_options_height() override { return 200.0f; }
 		void visit_config(config_visitor& v) override
-		{
-			v.field("min_cps", min_cps); v.field("max_cps", max_cps); v.field("click_delay", click_delay);
-		}
+		{ settings_.visit(v, module_settings::inventory_clicker::schema()); }
 
 	private:
-		int min_cps = 4;
-		int max_cps = 7;
+        modules::settings::store<module_settings::inventory_clicker> settings_;
 		long long last_click_time = 0;
-		int click_delay = 150;
 	};
 }

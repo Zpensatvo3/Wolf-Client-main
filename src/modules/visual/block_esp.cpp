@@ -1,4 +1,5 @@
 #include "block_esp.hpp"
+#include "../../ui/settings_renderer.hpp"
 #include "../../cache/cache.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../../platform/adapter/game_adapter.hpp"
@@ -12,7 +13,7 @@
 
 #include <imgui/imgui.h>
 
-#include "../gui/gui.hpp"
+#include "../../gui/gui.hpp"
 
 
 namespace
@@ -87,6 +88,7 @@ namespace
 
 void modules::block_esp::run(::cache& cache)
 {
+    auto settings_snapshot = settings_.read();
 	if (!cache.is_valid() || !cache.player || !cache.world || !jni::get_env()) return;
 	try
 	{
@@ -118,13 +120,13 @@ void modules::block_esp::run(::cache& cache)
 		std::vector<std::string> selected_snapshot;
 		{
 			std::scoped_lock lock(marker_mutex);
-			selected_snapshot = selected_blocks;
+			selected_snapshot = settings_snapshot.selected_blocks;
 		}
 		const maths::vector3d player_pos = cache.player.get_position();
 		const int px = static_cast<int>(std::floor(player_pos.x));
 		const int py = static_cast<int>(std::floor(player_pos.y));
 		const int pz = static_cast<int>(std::floor(player_pos.z));
-		const int r = std::clamp(range, 3, 12);
+		const int r = std::clamp(settings_snapshot.range, 3, 12);
 		const int side = r * 2 + 1;
 		const int vertical = r * 2 + 1;
 		const int total = side * side * vertical;
@@ -193,6 +195,7 @@ void modules::block_esp::run(::cache& cache)
 
 void modules::block_esp::render_overlay()
 {
+    auto settings_snapshot = settings_.read();
 	if (!platform::jni_context::bind_current_thread()) return;
 	double cx = 0.0, cy = 0.0, cz = 0.0;
 	float yaw = 0.0f, pitch = 0.0f, fov = 70.0f;
@@ -217,11 +220,11 @@ void modules::block_esp::render_overlay()
 		const double dy = entry.y + 0.5 - cy;
 		const double dz = entry.z + 0.5 - cz;
 		const float distance = static_cast<float>(std::sqrt(dx * dx + dy * dy + dz * dz));
-		const float alpha = std::clamp(1.15f - distance / (std::clamp(range, 3, 12) * 1.55f), 0.12f, 0.92f);
+		const float alpha = std::clamp(1.15f - distance / (std::clamp(settings_snapshot.range, 3, 12) * 1.55f), 0.12f, 0.92f);
 		ImVec4 line_value = accent.Value;
 		line_value.w = alpha;
 		ImVec4 fill_value = accent.Value;
-		fill_value.w = std::clamp(fill_opacity, 0.0f, 0.35f) * alpha;
+		fill_value.w = std::clamp(settings_snapshot.fill_opacity, 0.0f, 0.35f) * alpha;
 
 		float min_x = (std::numeric_limits<float>::max)();
 		float min_y = (std::numeric_limits<float>::max)();
@@ -244,7 +247,7 @@ void modules::block_esp::render_overlay()
 		draw->AddRectFilled(ImVec2(min_x, min_y), ImVec2(max_x, max_y),
 			ImGui::ColorConvertFloat4ToU32(fill_value), 1.0f);
 		draw->AddRect(ImVec2(min_x, min_y), ImVec2(max_x, max_y),
-			ImGui::ColorConvertFloat4ToU32(line_value), 1.0f, 0, line_thickness);
+			ImGui::ColorConvertFloat4ToU32(line_value), 1.0f, 0, settings_snapshot.line_thickness);
 	}
 }
 
@@ -256,6 +259,7 @@ void modules::block_esp::on_disable(::cache&)
 
 void modules::block_esp::render_options()
 {
+    gui::settings::edit(settings_, module_settings::block_esp::schema(), [&](auto& candidate) {
 	bool needs_catalog = false;
 	{
 		std::scoped_lock lock(marker_mutex);
@@ -289,18 +293,14 @@ void modules::block_esp::render_options()
 		catch (...) { platform::jni_context::clear_exception(); }
 	}
 
-	ImGui::SliderInt(gui::text("Range", "Menzil"), &range, 3, 12, "%d blocks");
-	ImGui::SliderFloat(gui::text("Line Thickness", "Cizgi Kalinligi"),
-		&line_thickness, 0.5f, 3.0f, "%.1f");
-	ImGui::SliderFloat(gui::text("Fill Opacity", "Dolgu Saydamligi"),
-		&fill_opacity, 0.0f, 0.35f, "%.2f");
+    gui::settings::render(candidate, module_settings::block_esp::schema().first(3));
 
 	std::vector<std::string> catalog;
 	std::vector<std::string> selected;
 	{
 		std::scoped_lock lock(marker_mutex);
 		catalog = available_blocks;
-		selected = selected_blocks;
+		selected = candidate.selected_blocks;
 	}
 	ImGui::InputTextWithHint("##block_search", gui::text("Search blocks...", "Blok ara..."),
 		block_search, sizeof(block_search));
@@ -308,7 +308,7 @@ void modules::block_esp::render_options()
 	if (ImGui::Button(gui::text("Clear", "Temizle")))
 	{
 		std::scoped_lock lock(marker_mutex);
-		selected_blocks.clear(); markers.clear(); scan_index = 0;
+		candidate.selected_blocks.clear(); markers.clear(); scan_index = 0;
 		selected.clear();
 	}
 	ImGui::TextDisabled("%zu / %zu", selected.size(), catalog.size());
@@ -327,11 +327,13 @@ void modules::block_esp::render_options()
 		if (ImGui::Selectable((label + "##" + identifier).c_str(), is_selected))
 		{
 			std::scoped_lock lock(marker_mutex);
-			auto found = std::find(selected_blocks.begin(), selected_blocks.end(), identifier);
-			if (found == selected_blocks.end()) selected_blocks.push_back(identifier);
-			else selected_blocks.erase(found);
+			auto found = std::find(candidate.selected_blocks.begin(), candidate.selected_blocks.end(), identifier);
+			if (found == candidate.selected_blocks.end()) candidate.selected_blocks.push_back(identifier);
+			else candidate.selected_blocks.erase(found);
 			markers.clear(); scan_index = 0;
 		}
 	}
 	ImGui::EndChild();
+
+    });
 }

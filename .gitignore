@@ -21,6 +21,8 @@
 /server/signing-public.spki
 
 # Temporary exports and analysis artifacts
+__pycache__/
+*.py[cod]
 *.bak
 *.old
 *.orig

@@ -1,0 +1,190 @@
+"""Validate the active source/build boundaries without Windows or third-party Python packages."""
+from pathlib import Path
+import json
+import re
+import xml.etree.ElementTree as ET
+
+ROOT = Path(__file__).resolve().parent.parent
+KINDS = {"ClCompile", "ClInclude", "ResourceCompile", "None"}
+
+
+def validate_sdk():
+    errors = []
+    sdk = ROOT / "src/sdk/minecraft/fabric_1_21_1"
+    manifest = json.loads((sdk / "manifest.json").read_text(encoding="utf-8"))
+    if manifest.get("version") != "1.21.1" or manifest.get("loader") != "Fabric" or manifest.get("namespace") != "maps":
+        errors.append("Unexpected SDK target in mapping manifest")
+    if set(manifest["headers"]) != {p.name for p in sdk.glob("*.hpp")}:
+        errors.append("SDK header list and manifest differ")
+    classes = {}
+    for filename in manifest["headers"]:
+        source = (sdk / filename).read_text(encoding="utf-8")
+        if '#include "../../../mappings.hpp"' in source:
+            errors.append(f"SDK domain depends on compatibility umbrella: {filename}")
+        for name, java_name in re.findall(r'(?:BEGIN_KLASS_DEF(?:_EX)?|KLASS_DECLARATION)\(\s*([\w$]+),\s*"([^"]+)"', source):
+            if name in classes:
+                errors.append(f"Duplicate SDK mapping: {name}")
+            classes[name] = java_name
+        for include in re.findall(r'^\s*#include\s*"([^"]+)"', source, re.M):
+            if not (sdk / include).is_file():
+                errors.append(f"Missing SDK include: {filename}: {include}")
+    if classes != manifest["classes"]:
+        errors.append("SDK class names differ from the version manifest")
+    if len((ROOT / "src/mappings.hpp").read_text(encoding="utf-8").splitlines()) > 10:
+        errors.append("mappings.hpp must remain a compatibility umbrella")
+    return errors
+
+
+
+def validate_settings():
+    """Every catalog entry must declare its config and panel ownership explicitly."""
+    errors = []
+    path = ROOT / "src/modules/settings_manifest.json"
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    entries = manifest["modules"]
+    catalog = (ROOT / "src/modules/module_catalog.cpp").read_text(encoding="utf-8")
+    ids = re.findall(r'\{\s*"([a-z0-9_]+)"\s*,\s*&', catalog)
+    covered = [entry["id"] for entry in entries]
+    if manifest.get("version") != 1 or len(covered) != len(set(covered)) or set(covered) != set(ids):
+        errors.append("Settings manifest must cover each catalog ID exactly once")
+    no_config = {"friends_manager", "click_gui", "panic", "full_bright"}
+    if {e["id"] for e in entries if e["model"] is None} != no_config:
+        errors.append("Unexpected modules without settings models")
+    allowed = {"no_module_settings", "snapshot_store", "existing_lock", "revisioned_lock",
+               "client_thread_config", "existing_runtime", "render_preferences"}
+    inspected = set()
+    for entry in entries:
+        if entry["ownership"] not in allowed:
+            errors.append(f"Unknown config ownership: {entry['id']}")
+        owner = ROOT / entry["owner"]
+        if not owner.is_file():
+            errors.append(f"Missing config owner: {entry['id']}")
+            continue
+        header = owner.read_text(encoding="utf-8")
+        if entry["model"] is None:
+            if "visit_config(" in header:
+                errors.append(f"Untracked config on no-settings module: {entry['id']}")
+            continue
+        model, panel = ROOT / entry["model"], ROOT / entry["panel"]
+        if not model.is_file() or not panel.is_file():
+            errors.append(f"Missing config model/panel: {entry['id']}")
+            continue
+        pure = model.read_text(encoding="utf-8")
+        ui = panel.read_text(encoding="utf-8")
+        if "schema(" not in pure or "modules::settings::descriptor<" not in pure:
+            errors.append(f"Module model bypasses schema: {entry['id']}")
+        if not re.search(r"gui::settings::(?:render|edit)\(", ui):
+            errors.append(f"Panel bypasses shared settings: {entry['id']}")
+        if re.search(r"\b(?:v|visitor)\.(?:field|enum_field|bounded_enum)\(", header):
+            errors.append(f"Raw config fields remain in module owner: {entry['id']}")
+        if entry["ownership"] == "snapshot_store":
+            if "settings_.visit(" not in header or "settings_.read()" not in (ui + header):
+                # Glow ESP retains inactive legacy options, but never consumes them at runtime.
+                if entry["id"] != "glow_esp":
+                    errors.append(f"Module must use shared store and snapshots: {entry['id']}")
+        for source in (owner, model, panel):
+            if source in inspected:
+                continue
+            inspected.add(source)
+            for include in re.findall(r'^\s*#include\s*"([^"]+)"', source.read_text(encoding="utf-8"), re.M):
+                if not (source.parent / include).is_file():
+                    errors.append(f"Broken settings include: {source.relative_to(ROOT)}: {include}")
+        if any(term in pure for term in ("ImGui::", "gui::", "<Windows.h>", "<jni.h>", "mappings.hpp")):
+            errors.append(f"Settings model depends on UI/game/platform: {entry['id']}")
+    listed = {ROOT / e["model"] for e in entries if e["model"]}
+    for folder in ("misc", "combat", "visual", "render"):
+        for model in (ROOT / f"src/modules/{folder}/settings").glob("*_settings.hpp"):
+            if model not in listed:
+                errors.append(f"Untracked settings model: {model.relative_to(ROOT)}")
+    return errors
+
+def project_items(path):
+    result = set()
+    for node in ET.parse(path).iter():
+        kind = node.tag.rsplit("}", 1)[-1]
+        include = node.get("Include")
+        if kind in KINDS and include:
+            result.add((kind, include))
+    return result
+
+
+def validate():
+    errors = validate_sdk() + validate_settings()
+    project = project_items(ROOT / "custom-base.vcxproj")
+    filters = project_items(ROOT / "custom-base.vcxproj.filters")
+    if project != filters:
+        errors.append("Project/filter entries differ; run scripts/Refresh-ProjectFilters.py")
+    compiled = set()
+    for kind, include in sorted(project):
+        normalized = include.replace("\\", "/")
+        matches = list(ROOT.glob(normalized)) if any(c in normalized for c in "*?") else [ROOT / normalized]
+        if not matches or any(not path.is_file() for path in matches):
+            errors.append(f"Missing project input: {include}")
+        if kind == "ClCompile":
+            for path in matches:
+                path = path.resolve()
+                if path in compiled:
+                    errors.append(f"Source compiled twice: {include}")
+                compiled.add(path)
+
+    active_sources = set((ROOT / "src").rglob("*.cpp"))
+    for path in sorted(active_sources - compiled):
+        errors.append(f"Source missing from build: {path.relative_to(ROOT)}")
+
+    catalog = (ROOT / "src/modules/module_catalog.cpp").read_text(encoding="utf-8")
+    ids = re.findall(r'\{\s*"([a-z0-9_]+)"\s*,\s*&', catalog)
+    if not ids or len(ids) != len(set(ids)):
+        errors.append("Module catalog IDs must be nonempty and unique")
+    vape = {entry for entry in ids if entry.startswith("vape_")}
+    if vape != {"vape_aim_assist", "vape_left_clicker", "vape_right_clicker"}:
+        errors.append("Vape catalog must contain only the retained Aim Assist and two clickers")
+    if len((ROOT / "src/modules/modules.hpp").read_text(encoding="utf-8").splitlines()) > 80:
+        errors.append("modules.hpp must remain a small compatibility umbrella")
+
+    for path in (ROOT / "src").rglob("*.cpp"):
+        content = path.read_text(encoding="utf-8")
+        if re.search(r'bool\s+(clear_java_exception|ensure_client_jni_env)\s*\(', content):
+            errors.append(f"Duplicated JNI helper: {path.relative_to(ROOT)}")
+        if (ROOT / "src/modules") in path.parents:
+            if re.search(r'\bSendInput\s*\(', content):
+                errors.append(f"Direct module SendInput: {path.relative_to(ROOT)}")
+            if re.search(r'selectedSlot\.set\s*\(', content):
+                errors.append(f"Direct module hotbar write: {path.relative_to(ROOT)}")
+
+    main = (ROOT / "src/main.cpp").read_text(encoding="utf-8")
+    if len(main.splitlines()) > 60 or any(term in main for term in ("mappings.hpp", "cache.hpp", "auth.hpp")):
+        errors.append("DLL entry must delegate application logic to src/app")
+    pch = (ROOT / "include/pch.hpp").read_text(encoding="utf-8")
+    if re.search(r'^\s*#\s*include\s*"', pch, re.M):
+        errors.append("PCH must not include project headers")
+    setting_models = [ROOT / "src/modules/core/setting_schema.hpp", ROOT / "src/modules/core/settings_store.hpp",
+                      ROOT / "src/modules/vape/vape_config.hpp", *(ROOT / "src/modules/misc/settings").glob("*_settings.hpp")]
+    for path in setting_models:
+        content = path.read_text(encoding="utf-8")
+        if any(term in content for term in ("ImGui::", "gui::", "<Windows.h>", "<jni.h>", "mappings.hpp")):
+            errors.append(f"Settings model depends on UI/game/platform: {path.relative_to(ROOT)}")
+    for model in (ROOT / "src/modules/misc/settings").glob("*_settings.hpp"):
+        name = model.stem.removesuffix("_settings")
+        header = ROOT / f"src/modules/misc/{name}.hpp"
+        source = ROOT / f"src/modules/misc/{name}.cpp"
+        for path in (model, header, source):
+            for include in re.findall(r'^\s*#include\s*"([^"]+)"', path.read_text(encoding="utf-8"), re.M):
+                if not (path.parent / include).is_file():
+                    errors.append(f"Broken migrated module include: {path.relative_to(ROOT)}: {include}")
+        if "settings_.visit" not in header.read_text(encoding="utf-8"):
+            errors.append(f"Module config bypasses shared settings: {name}")
+        content = source.read_text(encoding="utf-8")
+        if "settings_.read()" not in content or "gui::settings::render(settings_," not in content:
+            errors.append(f"Module must use settings snapshots and common UI: {name}")
+    for path in [*(ROOT / "src/app").rglob("*.cpp"), *(ROOT / "src/app").rglob("*.hpp"), ROOT / "src/platform/jni/jvm_session.cpp"]:
+        for include in re.findall(r'^\s*#include\s*"([^"]+)"', path.read_text(encoding="utf-8"), re.M):
+            if not (path.parent / include).is_file():
+                errors.append(f"Broken application include: {path.relative_to(ROOT)}: {include}")
+    return errors, len(ids), len(compiled)
+
+
+if __name__ == "__main__":
+    errors, modules, sources = validate()
+    if errors:
+        raise SystemExit("\n".join(errors))
+    print(f"Infrastructure passed: {modules} module IDs, {sources} compile inputs, matching filters, SDK manifest and settings/service boundaries.")
