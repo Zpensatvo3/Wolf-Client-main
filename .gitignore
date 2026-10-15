@@ -1,0 +1,30 @@
+# Visual Studio / MSBuild outputs
+/build/
+/dist/
+/out/
+/aqtinstall.log
+/Release/
+/Debug/
+/custom-base/
+/.vs/
+*.user
+*.suo
+*.VC.db
+*.VC.opendb
+
+# Cloudflare Wrangler local state
+/server/.wrangler/
+
+# Local signing material must never be committed
+/server/signing-ec.pem
+/server/signing-private.pk8
+/server/signing-public.spki
+
+# Temporary exports and analysis artifacts
+*.bak
+*.old
+*.orig
+*.tmp
+*-bytes.txt
+*-disassembly.txt
+

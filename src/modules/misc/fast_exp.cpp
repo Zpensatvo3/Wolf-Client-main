@@ -1,0 +1,202 @@
+#include <Windows.h>
+#include "../../cache/cache.hpp"
+#include "../../platform/jni/jni_context.hpp"
+#include "../../services/input/input_service.hpp"
+
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <random>
+
+#include <imgui/imgui.h>
+
+#include "fast_exp.hpp"
+#include "../ui_redirect.hpp"
+#include "../gui/gui.hpp"
+#include "../mappings.hpp"
+
+namespace
+{
+	using steady_clock = std::chrono::steady_clock;
+
+	bool stack_is_exp(const maps::ItemStack& stack, const maps::Item& exp)
+	{
+		if (!stack || !exp || stack.isEmpty.call() == JNI_TRUE || platform::jni_context::clear_exception())
+			return false;
+		return stack.isOf.call(exp) == JNI_TRUE && !platform::jni_context::clear_exception();
+	}
+}
+
+void modules::fast_exp::notify_manual_right_click(bool pressed)
+{
+	fast_exp* instance = active_instance.load();
+	if (instance)
+	{
+		instance->manual_right_down.store(pressed);
+	}
+}
+
+void modules::fast_exp::schedule_next_click(steady_clock::time_point now)
+{
+	const int low = std::clamp((std::min)(min_cps, max_cps), 1, 50);
+	const int high = std::clamp((std::max)(min_cps, max_cps), low, 50);
+	std::uniform_int_distribution<int> cps_distribution(low, high);
+	const double selected_cps = static_cast<double>(cps_distribution(gen));
+
+	// Convert CPS into milliseconds interval
+	const double base_interval_ms = 1000.0 / (std::max)(1.0, selected_cps);
+
+	// Subtle micro-jitter (+/- 1.5ms) to keep intervals natural and anti-cheat safe
+	std::uniform_real_distribution<double> jitter_distribution(-1.5, 1.5);
+	const int interval_ms = (std::max)(10, static_cast<int>(std::lround(base_interval_ms + jitter_distribution(gen))));
+
+	next_click = now + std::chrono::milliseconds(interval_ms);
+}
+
+void modules::fast_exp::stop()
+{
+	was_held = false;
+	next_click = {};
+	platform::jni_context::clear_exception();
+	// No owned DOWN survives a pulse. Never release the user's right hold when
+	// EXP is absent: doing so also interrupts potions, Fast Place and Right Clicker.
+}
+
+void modules::fast_exp::run(::cache&)
+{
+	// Item use execution runs from render_overlay() on Minecraft's client/render thread.
+}
+
+void modules::fast_exp::render_overlay()
+{
+	const HWND minecraft_window = gui::get_window();
+	const bool held = manual_right_down.load() || (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
+
+	// Safety check: Physical right-click must be held
+	if (!held)
+	{
+		manual_right_down.store(false);
+		blocked_until_release = false;
+		stop();
+		return;
+	}
+
+	// Safety check: Don't click if Wolf UI/Loader is active or game window is not in foreground
+	if (gui::draw || gui::loader_visible || !minecraft_window ||
+		GetForegroundWindow() != minecraft_window || !platform::jni_context::bind_current_thread())
+	{
+		stop();
+		return;
+	}
+
+	// Safety check: If previously blocked (e.g., ran out of EXP), wait until user releases the button
+	if (blocked_until_release)
+		return;
+
+	try
+	{
+		jni::frame frame{ 64 };
+		maps::MinecraftClient instance = maps::MinecraftClient{}.instance.get();
+		maps::ClientPlayerEntity player = instance ? instance.player.get() : maps::ClientPlayerEntity{};
+		if (!instance || !player || platform::jni_context::clear_exception())
+		{
+			stop();
+			return;
+		}
+
+		// Safety check: Don't click when any in-game screen (chat, inventory, container, pause menu) is open
+		if (instance.currentScreen.get() || platform::jni_context::clear_exception())
+		{
+			blocked_until_release = false;
+			stop();
+			return;
+		}
+
+		// Safety check: Ensure the player is actively holding an Experience Bottle in main hand or off hand
+		maps::Item exp_item = maps::Items{}.EXPERIENCE_BOTTLE.get();
+		if (!exp_item || platform::jni_context::clear_exception())
+		{
+			blocked_until_release = true;
+			stop();
+			return;
+		}
+
+		maps::ItemStack main_hand = player.getMainHandStack.call();
+		maps::ItemStack off_hand = player.getOffHandStack.call();
+		if (platform::jni_context::clear_exception())
+		{
+			blocked_until_release = true;
+			stop();
+			return;
+		}
+
+		const bool holding_exp = stack_is_exp(main_hand, exp_item) ||
+			stack_is_exp(off_hand, exp_item);
+		if (!holding_exp)
+		{
+			// Prevent accidental usage of other items once EXP runs out
+			blocked_until_release = true;
+			stop();
+			return;
+		}
+
+		const auto now = steady_clock::now();
+		if (!was_held)
+		{
+			was_held = true;
+			next_click = now;
+		}
+
+		if (now < next_click)
+			return;
+
+		// Clear vanilla 4-tick right-click delay so SendInput clicks process without throttling
+		instance.itemUseCooldown.set(0);
+		platform::jni_context::clear_exception();
+
+		// Directly send right click using Windows API SendInput with physical press preserved
+		services::input::mouse_click(services::input::mouse_button::right, nullptr, true);
+
+		// Execute doItemUse directly on client thread for 100% reliable bottle throws
+		instance.doItemUse.call();
+		platform::jni_context::clear_exception();
+
+		schedule_next_click(now);
+	}
+	catch (...)
+	{
+		platform::jni_context::clear_exception();
+		manual_right_down.store(false);
+		blocked_until_release = false;
+		stop();
+	}
+}
+
+void modules::fast_exp::on_disable(::cache& cache)
+{
+	manual_right_down.store(false);
+	blocked_until_release = false;
+	stop();
+}
+
+void modules::fast_exp::render_options()
+{
+	ImGui::SetNextItemWidth(210.0f);
+	if (ImGui::SliderInt(gui::text("Minimum CPS", "Minimum CPS"), &min_cps, 5, 40, "%d CPS"))
+	{
+		if (min_cps > max_cps)
+			max_cps = min_cps;
+	}
+
+	ImGui::SetNextItemWidth(210.0f);
+	if (ImGui::SliderInt(gui::text("Maximum CPS", "Maksimum CPS"), &max_cps, 5, 40, "%d CPS"))
+	{
+		if (max_cps < min_cps)
+			min_cps = max_cps;
+	}
+
+	ImGui::Spacing();
+	ImGui::TextDisabled("%s", gui::text("Input: Windows API (SendInput)", "Girdi: Windows API (SendInput)"));
+	ImGui::TextDisabled("%s", gui::text("Hold right-click with EXP bottle to fire.", "EXP elindeyken sag tika basili tutarak atesleyin."));
+	ImGui::TextDisabled("%s", gui::text("Safety checks active (GUI, screens, EXP detection).", "Guvenlik kontrolleri aktif (Menu, ekranlar, EXP kontrolu)."));
+}
