@@ -75,6 +75,8 @@ def validate_settings():
             errors.append(f"Module model bypasses schema: {entry['id']}")
         if not re.search(r"gui::settings::(?:render|edit)\(", ui):
             errors.append(f"Panel bypasses shared settings: {entry['id']}")
+        if '#include "../../ui/settings_renderer.hpp"' not in ui:
+            errors.append(f"Panel must explicitly include the settings renderer: {entry['id']}")
         if re.search(r"\b(?:v|visitor)\.(?:field|enum_field|bounded_enum)\(", header):
             errors.append(f"Raw config fields remain in module owner: {entry['id']}")
         if entry["ownership"] == "snapshot_store":

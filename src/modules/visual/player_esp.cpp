@@ -1,4 +1,5 @@
 #include "../modules.hpp"
+#include "../../ui/settings_renderer.hpp"
 #include "../../gui/gui.hpp"
 #include "../../platform/adapter/game_adapter.hpp"
 #include <imgui/imgui.h>

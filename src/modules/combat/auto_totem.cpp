@@ -157,7 +157,7 @@ void modules::auto_totem::run(::cache& cache)
         jni::frame frame{ 64 };
         const auto now = steady_clock::now();
 
-        const auto schedule_action = [this, now](int base_delay)
+        const auto schedule_action = [this, now, &settings_snapshot](int base_delay)
         {
             next_action_time = now + std::chrono::milliseconds(
                 humanized_delay(base_delay, settings_snapshot.timing_randomness_ms));
