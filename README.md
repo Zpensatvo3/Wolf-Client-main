@@ -125,9 +125,9 @@ SDK testi 127 sınıf adını, temel JNI imzalarını ve dokuz domain başlığ�
 tek başına derlenmesini kontrol eder; JVM başlatmaz veya oyuna bağlanmaz.
 Windows'a bağlı UI tercihleri ve görsel arayüz testleri bu pakete dahil değildir.
 
-Kaynak kontrolleri ve offline testler, Windows DLL derlemesi veya oyun içi
-doğrulama anlamına gelmez. Yeni uygulama ve ayar arayüzü katmanlarının Windows
-DLL derlemesi ve oyun içi doğrulaması henüz yapılmadı.
+Kaynak kontrolleri ve offline testler tek başına oyun içi doğrulama değildir.
+Windows Release x64 DLL derlemesi de GitHub Actions üzerinde başarıyla tamamlandı.
+Oyun içi doğrulama henüz yapılmadı; gerçek bir Minecraft oturumunda ayrıca denenmelidir.
 
 ## Uygulama yaşam döngüsü
 

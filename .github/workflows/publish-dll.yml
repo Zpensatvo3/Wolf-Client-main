@@ -1,0 +1,40 @@
+name: Publish verified Onestep DLL
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download the verified Windows build
+        uses: actions/download-artifact@v4
+        with:
+          name: Onestep-Windows-x64
+          path: verified
+          repository: Zpensatvo3/Wolf-Client-main
+          run-id: 38767338328
+          github-token: ${{ github.token }}
+      - name: Verify and publish the exact tested binary
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          echo "fa0bf59e2f6a82211b7a4dd766fdc6113c7453b307f7731d57a908787d22ee29  verified/Onestep.dll" | sha256sum --check
+          file verified/Onestep.dll
+          tag=onestep-20261015-9a1d7d4
+          if gh release view "$tag" >/dev/null 2>&1; then
+            # Resume a draft from a previously interrupted upload, without replacing assets.
+            gh release upload "$tag" verified/Onestep.dll
+            gh release edit "$tag" --draft=false --latest
+          else
+            gh release create "$tag" verified/Onestep.dll \
+              --target 9a1d7d437d2745c39d8c6ba1279ec4b6ce661f0e \
+              --title "Onestep — Windows x64" \
+              --notes "Plain JSON configs without a version label; legacy configs remain readable. Includes the infrastructure migration and previous cleanup. All 17 offline tests and the Windows MSVC Release x64 build passed. DLL is unsigned; in-game testing has not been performed. Source commit: 9a1d7d437d2745c39d8c6ba1279ec4b6ce661f0e. SHA-256: fa0bf59e2f6a82211b7a4dd766fdc6113c7453b307f7731d57a908787d22ee29. Build: https://github.com/Zpensatvo3/Wolf-Client-main/actions/runs/38767338328"
+          fi
