@@ -1,5 +1,6 @@
 #include "grim_ui.hpp"
 #include "hud_editor.hpp"
+#include "menu_background.hpp"
 
 #include "../gui/gui.hpp"
 #include "../gui/module_descriptions.hpp"
@@ -956,6 +957,7 @@ void gui::grim::reset_runtime_state()
 void gui::grim::render(const ImGuiViewport* viewport, const page_callbacks& callbacks)
 {
     if (!viewport) return;
+    gui::background::update();
     accent = gui::get_dynamic_color();
     accent_hover = blend(accent, primary, 0.16f);
     if (gui::hud_layout_editor_active)
@@ -1025,6 +1027,7 @@ void gui::grim::render(const ImGuiViewport* viewport, const page_callbacks& call
         if (preview_requested)
             render_player_preview(root_origin);
         draw->AddRectFilled(origin, ImVec2(origin.x + main_size.x, origin.y + main_size.y), shell, 20.0f);
+        gui::background::render(draw, origin, main_size, gui::aegis::get_preferences().menu_background);
         draw->AddRect(origin, ImVec2(origin.x + main_size.x, origin.y + main_size.y), IM_COL32(255, 255, 255, 12), 20.0f);
         draw->AddRectFilled(origin, ImVec2(origin.x + sidebar_width, origin.y + main_size.y), sidebar, 20.0f, ImDrawFlags_RoundCornersLeft);
         draw->AddRectFilledMultiColor(ImVec2(origin.x + 1.0f, origin.y + 1.0f),

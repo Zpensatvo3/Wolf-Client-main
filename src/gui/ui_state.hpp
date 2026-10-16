@@ -2,6 +2,7 @@
 
 #include <imgui/imgui.h>
 #include <array>
+#include "../ui/menu_background.hpp"
 
 namespace gui::aegis
 {
@@ -30,6 +31,7 @@ namespace gui::aegis
         layout_mode layout = layout_mode::horizontal_workspace;
         energy_quality energy = energy_quality::medium;
         bool reduce_motion = false;
+        background::options menu_background{};
         bool has_geometry = false;
         ImVec2 window_position = ImVec2(0.0f, 0.0f);
         ImVec2 window_size = ImVec2(1280.0f, 620.0f);

@@ -10,6 +10,9 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parent.parent
 TESTS = {
+    "menu_background": ["tests/menu_background_test.cpp"],
+    "menu_background_renderer": ["tests/menu_background_renderer_test.cpp", "src/ui/menu_background.cpp",
+                                 "include/imgui/imgui.cpp", "include/imgui/imgui_draw.cpp", "include/imgui/imgui_widgets.cpp", "include/imgui/imgui_tables.cpp"],
     "auth_policy": ["tests/auth_policy_test.cpp"],
     "module_runtime": ["tests/module_runtime_test.cpp"],
     "vape_adapter": ["tests/vape_adapter_test.cpp"],
@@ -67,7 +70,7 @@ def main():
                 command += ["/nologo", "/std:c++20", "/EHsc", "/UNDEBUG", "/W4", f"/Fe:{output}"]
             else:
                 command += ["-std=c++20", "-UNDEBUG", "-Wall", "-Wextra", "-pedantic", "-pthread", "-o", str(output)]
-            if name in ("settings_renderer", "notification_renderer"):
+            if name in ("settings_renderer", "notification_renderer", "menu_background", "menu_background_renderer"):
                 command += [f"/I{ROOT / 'include'}"] if msvc else ["-I", str(ROOT / "include")]
             if name == "sdk_mappings":
                 platform = "win32" if os.name == "nt" else "linux"

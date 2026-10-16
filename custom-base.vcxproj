@@ -180,6 +180,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="src\ui\grim_ui.hpp" />
+    <ClInclude Include="src\ui\menu_background.hpp" />
     <ResourceCompile Include="assets.rc" />
   </ItemGroup>
   <ItemGroup>
@@ -203,6 +204,7 @@
     <ClCompile Include="src\gui\ui_state.cpp" />
     <ClCompile Include="src\gui\gui.cpp" />
     <ClCompile Include="src\ui\grim_ui.cpp" />
+    <ClCompile Include="src\ui\menu_background.cpp" />
     <ClCompile Include="src\ui\hud_editor.cpp" />
     <ClCompile Include="src\ui\config_page.cpp" />
     <ClCompile Include="src\ui\notification_renderer.cpp" />

@@ -76,6 +76,15 @@ istemcisi içerir.
   kılıç aşamasına döner; sınırsız paket serisi göndermez. Oyun içi doğrulama yapılmadı.
   Native/Vape clicker'ların araya saldırı sokması ortak sahiplikle engellenir;
   Triggerbot önceliklidir. Diğer blok/slot makrolarıyla birlikte kullanım doğrulanmadı.
+- Temalar sayfasında menü arka planı seçilebilir: Klasik (eski görünüm), Hisar,
+  Pamuk Alacakaranlığı, Nebula ve Aurora. Hazır görseller DLL'e gömülüdür; indirme
+  gerektirmez. **Görsel ekle** ile PNG/JPG seçilebilir (16 MB, kenar başına 8192
+  piksel ve toplam 16 megapiksel sınırı). Görsel oranı korunarak ortadan kırpılır;
+  yoğunluk ve karartma ayarlanır. Özel görselin yerel kopyası
+  `%LOCALAPPDATA%\onestep\menu-background.image` içinde saklanır; kaynak dosya
+  değiştirilmez. Seçim UI tercihlerine kaydedilir, paylaşılan oyun configlerine
+  eklenmez. Eski tercihler klasik görünümü korur; kayıp görselde klasik görünüm
+  kullanılır. Windows dosya seçicisi ve oyun içi görünüm ayrıca denenmelidir.
 - Eski UI/Qt kaynakları ve arayüz ses sistemi kaldırıldı.
 - Player > Auto Totem artık tek modüldür: Normal / Legit seçimi aynı paneldedir.
   Normal otomatik envanter açmayı, Legit yalnızca açık envanterde çalışmayı ve

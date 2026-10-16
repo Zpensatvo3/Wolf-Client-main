@@ -11,9 +11,11 @@
 #include "../ui/grim_ui.hpp"
 #include "../ui/hud_editor.hpp"
 #include "../ui/config_page.hpp"
+#include "../ui/menu_background.hpp"
 #include <Windows.h>
 #include <gl/GL.h>
 #include <wincodec.h>
+#include <commdlg.h>
 #include "../imgui/imgui_impl_opengl3.h"
 #include "../imgui/imgui_impl_win32.h"
 #include "../modules/core/module_registry.hpp"
@@ -40,8 +42,13 @@
 #include <limits>
 #include <thread>
 #include <vector>
+#include <filesystem>
+#include <fstream>
+#include <memory>
+#include <mutex>
 
 #pragma comment(lib, "windowscodecs.lib")
+#pragma comment(lib, "comdlg32.lib")
 
 namespace
 {
@@ -68,6 +75,72 @@ namespace
 	std::vector<unsigned char> icon_font_data{};
 	std::array<GLuint, 3> icon_textures{};
 	std::array<bool, 3> icon_texture_attempted{};
+	struct background_texture { GLuint id = 0; ImVec2 size{}; bool attempted = false; };
+	std::array<background_texture, static_cast<std::size_t>(gui::background::style::count)> backgrounds{};
+	std::mutex background_import_mutex;
+	gui::background::import_state background_import_status = gui::background::import_state::idle;
+	std::vector<unsigned char> pending_background;
+	unsigned background_generation = 0;
+	struct picker_job { HMODULE module; HWND owner; unsigned generation; };
+
+	std::filesystem::path custom_background_path()
+	{
+		wchar_t directory[32768]{};
+		const DWORD length = GetEnvironmentVariableW(L"LOCALAPPDATA", directory, static_cast<DWORD>(std::size(directory)));
+		if (!length || length >= std::size(directory)) return {};
+		return std::filesystem::path(directory) / L"onestep" / L"menu-background.image";
+	}
+
+	bool read_background_file(const std::filesystem::path& path, std::vector<unsigned char>& bytes)
+	{
+		std::ifstream input(path, std::ios::binary | std::ios::ate);
+		if (!input) return false;
+		const auto size = input.tellg();
+		if (size <= 0 || size > static_cast<std::streamoff>(gui::background::max_file_bytes)) return false;
+		bytes.resize(static_cast<std::size_t>(size));
+		input.seekg(0);
+		return static_cast<bool>(input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size())));
+	}
+
+	DWORD WINAPI choose_background_file(void* parameter)
+	{
+		const HMODULE reference = static_cast<picker_job*>(parameter)->module;
+		{
+			std::unique_ptr<picker_job> job(static_cast<picker_job*>(parameter));
+			try
+			{
+				wchar_t path[32768]{};
+				OPENFILENAMEW dialog{};
+				dialog.lStructSize = sizeof(dialog);
+				dialog.hwndOwner = job->owner;
+				dialog.lpstrFilter = L"PNG / JPEG\0*.png;*.jpg;*.jpeg\0\0";
+				dialog.lpstrFile = path;
+				dialog.nMaxFile = static_cast<DWORD>(std::size(path));
+				dialog.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST |
+					OFN_NOCHANGEDIR | OFN_HIDEREADONLY | OFN_DONTADDTORECENT;
+				const bool chosen = GetOpenFileNameW(&dialog) != FALSE;
+				const bool dialog_failed = !chosen && CommDlgExtendedError() != 0;
+				std::vector<unsigned char> bytes;
+				const bool valid = chosen && read_background_file(path, bytes);
+				std::lock_guard lock(background_import_mutex);
+				if (job->generation == background_generation)
+				{
+					pending_background = valid ? std::move(bytes) : std::vector<unsigned char>{};
+					background_import_status = (chosen && !valid) || dialog_failed
+						? gui::background::import_state::failed : gui::background::import_state::idle;
+				}
+			}
+			catch (...)
+			{
+				std::lock_guard lock(background_import_mutex);
+				if (job->generation == background_generation)
+					background_import_status = gui::background::import_state::failed;
+			}
+		}
+		// A picker can outlive menu unload. Keep the DLL loaded until no picker
+		// code or C++ objects are executing, then release it atomically with exit.
+		FreeLibraryAndExitThread(reference, 0);
+	}
 
 	int icon_resource(gui::icon_asset asset)
 	{
@@ -107,7 +180,7 @@ namespace
 		return true;
 	}
 
-	bool load_png_texture(const void* encoded_data, std::size_t encoded_size, GLuint& texture)
+	bool load_image_texture(const void* encoded_data, std::size_t encoded_size, GLuint& texture, ImVec2* dimensions = nullptr)
 	{
 		IWICImagingFactory* factory = nullptr;
 		IWICStream* stream = nullptr;
@@ -116,8 +189,12 @@ namespace
 		IWICFormatConverter* converter = nullptr;
 		UINT width = 0;
 		UINT height = 0;
+		GLint maximum_texture_size = 0;
+		GLint uploaded_width = 0;
+		GUID container{};
 		std::vector<BYTE> pixels;
 		bool success = false;
+		const HRESULT com = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 
 		if (!encoded_data || encoded_size == 0 || encoded_size > static_cast<std::size_t>((std::numeric_limits<DWORD>::max)()))
 			goto cleanup;
@@ -131,13 +208,19 @@ namespace
 		if (FAILED(factory->CreateDecoderFromStream(stream, nullptr,
 			WICDecodeMetadataCacheOnLoad, &decoder)) || !decoder)
 			goto cleanup;
+		if (FAILED(decoder->GetContainerFormat(&container)) ||
+			(!IsEqualGUID(container, GUID_ContainerFormatPng) && !IsEqualGUID(container, GUID_ContainerFormatJpeg)))
+			goto cleanup;
 		if (FAILED(decoder->GetFrame(0, &frame)) || !frame ||
 			FAILED(factory->CreateFormatConverter(&converter)) || !converter ||
 			FAILED(converter->Initialize(frame, GUID_WICPixelFormat32bppRGBA, WICBitmapDitherTypeNone,
 				nullptr, 0.0, WICBitmapPaletteTypeCustom)))
 			goto cleanup;
 
-		if (FAILED(converter->GetSize(&width, &height)) || width == 0 || height == 0)
+		if (FAILED(converter->GetSize(&width, &height)) || !gui::background::valid_dimensions(width, height))
+			goto cleanup;
+		glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maximum_texture_size);
+		if (width > static_cast<UINT>(maximum_texture_size) || height > static_cast<UINT>(maximum_texture_size))
 			goto cleanup;
 
 		pixels.resize(static_cast<size_t>(width) * static_cast<size_t>(height) * 4u);
@@ -152,12 +235,21 @@ namespace
 #endif
 
 		glGenTextures(1, &texture);
+		if (!texture) goto cleanup;
 		glBindTexture(GL_TEXTURE_2D, texture);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, static_cast<GLsizei>(width), static_cast<GLsizei>(height),
 			0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+		glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &uploaded_width);
+		if (!texture || uploaded_width != static_cast<GLint>(width))
+		{
+			if (texture) glDeleteTextures(1, &texture);
+			texture = 0;
+			glBindTexture(GL_TEXTURE_2D, 0);
+			goto cleanup;
+		}
 
 		typedef void (APIENTRY* PFNGLGENERATEMIPMAPPROC)(GLenum target);
 		static PFNGLGENERATEMIPMAPPROC pfn_glGenerateMipmap = nullptr;
@@ -182,6 +274,7 @@ namespace
 
 		glBindTexture(GL_TEXTURE_2D, 0);
 		success = texture != 0;
+		if (success && dimensions) *dimensions = ImVec2(static_cast<float>(width), static_cast<float>(height));
 
 	cleanup:
 		if (converter) converter->Release();
@@ -189,6 +282,7 @@ namespace
 		if (decoder) decoder->Release();
 		if (stream) stream->Release();
 		if (factory) factory->Release();
+		if (SUCCEEDED(com)) CoUninitialize();
 		return success;
 	}
 
@@ -358,6 +452,11 @@ void gui::render_click_gui_options()
 void gui::render_theme_selection()
 {
 	ImGui::PushID("theme_selection");
+	gui::background::render_settings(gui::get_dynamic_color());
+	ImGui::Spacing();
+	ImGui::Separator();
+	ImGui::Spacing();
+	ImGui::TextUnformatted(gui::text("Accent themes", "Vurgu temaları"));
 	settings_theme_grid();
 	ImGui::PopID();
 }
@@ -633,6 +732,7 @@ static void uninit(HWND hWnd, HDC device)
 	if (new_context)
 	{
 		wglMakeCurrent(device, new_context);
+		gui::background::shutdown();
 		for (GLuint& texture : icon_textures)
 		{
 			if (texture)
@@ -1081,13 +1181,122 @@ ImTextureID gui::get_icon_texture(icon_asset asset)
 	if (!icon_texture_attempted[index])
 	{
 		icon_texture_attempted[index] = true;
-		CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 		std::vector<unsigned char> encoded_icon;
 		if (read_resource_bytes(icon_resource(asset), encoded_icon))
-			load_png_texture(encoded_icon.data(), encoded_icon.size(), icon_textures[index]);
+			load_image_texture(encoded_icon.data(), encoded_icon.size(), icon_textures[index]);
 	}
 
 	return reinterpret_cast<ImTextureID>(static_cast<intptr_t>(icon_textures[index]));
+}
+
+gui::background::texture_view gui::background::texture(style selected)
+{
+	if (selected <= style::classic || selected >= style::count) return {};
+	auto& image = backgrounds[static_cast<std::size_t>(selected)];
+	if (!image.attempted)
+	{
+		image.attempted = true;
+		std::vector<unsigned char> bytes;
+		const int resources[] = { 0, IDR_BACKGROUND_MAIN, IDR_SKY_CANDY_DUSK, IDR_SKY_NEBULA, IDR_SKY_AURORA, 0 };
+		if (selected == style::custom ? read_background_file(custom_background_path(), bytes) :
+			read_resource_bytes(resources[static_cast<std::size_t>(selected)], bytes))
+			load_image_texture(bytes.data(), bytes.size(), image.id, &image.size);
+	}
+	return { reinterpret_cast<ImTextureID>(static_cast<intptr_t>(image.id)), image.size };
+}
+
+gui::background::import_state gui::background::status()
+{
+	std::lock_guard lock(background_import_mutex);
+	return background_import_status;
+}
+
+void gui::background::begin_import()
+{
+	std::lock_guard lock(background_import_mutex);
+	if (background_import_status == import_state::choosing) return;
+	HMODULE reference = nullptr;
+	if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
+		reinterpret_cast<LPCWSTR>(&choose_background_file), &reference))
+	{
+		background_import_status = import_state::failed;
+		return;
+	}
+	auto job = std::make_unique<picker_job>(picker_job{reference, window, background_generation});
+	background_import_status = import_state::choosing;
+	const HANDLE thread = CreateThread(nullptr, 0, choose_background_file, job.get(), 0, nullptr);
+	if (thread)
+	{
+		job.release();
+		CloseHandle(thread);
+	}
+	else
+	{
+		FreeLibrary(reference);
+		background_import_status = import_state::failed;
+	}
+}
+
+void gui::background::update()
+{
+	std::vector<unsigned char> bytes;
+	{
+		std::lock_guard lock(background_import_mutex);
+		bytes.swap(pending_background);
+	}
+	if (bytes.empty()) return;
+	background_texture candidate;
+	if (!load_image_texture(bytes.data(), bytes.size(), candidate.id, &candidate.size))
+	{
+		std::lock_guard lock(background_import_mutex);
+		background_import_status = import_state::failed;
+		return;
+	}
+	// Store a private copy, not a fragile path to the original. Never overwrite
+	// either the source image or the last good copy on decode/write failure.
+	const auto destination = custom_background_path();
+	std::error_code error;
+	if (!destination.empty()) std::filesystem::create_directories(destination.parent_path(), error);
+	bool saved = false;
+	if (!destination.empty() && !error)
+	{
+		const auto temporary = std::filesystem::path(destination.wstring() + L".tmp");
+		{
+			std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+			output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+			output.close();
+			saved = !output.fail();
+		}
+		if (saved) saved = MoveFileExW(temporary.c_str(), destination.c_str(),
+			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != FALSE;
+		if (!saved) std::filesystem::remove(temporary, error);
+	}
+	if (saved)
+	{
+		auto& previous = backgrounds[static_cast<std::size_t>(style::custom)];
+		if (previous.id) glDeleteTextures(1, &previous.id);
+		candidate.attempted = true;
+		previous = candidate;
+		gui::aegis::get_preferences().menu_background.selected = style::custom;
+		gui::aegis::mark_preferences_dirty();
+		gui::aegis::flush_preferences(true);
+	}
+	else glDeleteTextures(1, &candidate.id);
+	std::lock_guard lock(background_import_mutex);
+	background_import_status = saved ? import_state::imported : import_state::save_failed;
+}
+
+void gui::background::shutdown()
+{
+	for (auto& image : backgrounds)
+	{
+		if (image.id) glDeleteTextures(1, &image.id);
+		image = {};
+	}
+	std::lock_guard lock(background_import_mutex);
+	++background_generation;
+	pending_background.clear();
+	background_import_status = import_state::idle;
 }
 
 void gui::shutdown()

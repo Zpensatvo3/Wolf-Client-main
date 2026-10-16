@@ -456,6 +456,9 @@
     <ClCompile Include="src\ui\grim_ui.cpp">
       <Filter>Source Files\src\ui</Filter>
     </ClCompile>
+    <ClCompile Include="src\ui\menu_background.cpp">
+      <Filter>Source Files\src\ui</Filter>
+    </ClCompile>
     <ClCompile Include="src\ui\hud_editor.cpp">
       <Filter>Source Files\src\ui</Filter>
     </ClCompile>
@@ -579,6 +582,9 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\ui\grim_ui.hpp">
+      <Filter>Header Files\src\ui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ui\menu_background.hpp">
       <Filter>Header Files\src\ui</Filter>
     </ClInclude>
     <ClInclude Include="src\platform\adapter\game_adapter.hpp">

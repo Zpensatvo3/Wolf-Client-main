@@ -107,6 +107,7 @@ namespace
 
     void normalize(gui::aegis::preferences& value)
     {
+        gui::background::normalize(value.menu_background);
         if (!std::isfinite(value.window_position.x)) value.window_position.x = 0.0f;
         if (!std::isfinite(value.window_position.y)) value.window_position.y = 0.0f;
         if (!std::isfinite(value.window_size.x)) value.window_size.x = 1280.0f;
@@ -172,6 +173,11 @@ void gui::aegis::load_preferences()
     state.layout = static_cast<layout_mode>(layout);
     state.energy = static_cast<energy_quality>(energy);
     state.reduce_motion = reduce_motion;
+    int background_style = 0;
+    read_integer(source, "menu_background", background_style);
+    state.menu_background.selected = static_cast<gui::background::style>(background_style);
+    read_number(source, "menu_background_opacity", state.menu_background.opacity);
+    read_number(source, "menu_background_dimming", state.menu_background.dimming);
     state.has_geometry = has_geometry;
     state.window_position = ImVec2(x, y);
     state.window_size = ImVec2(width, height);
@@ -220,6 +226,9 @@ void gui::aegis::flush_preferences(bool force)
             << "  \"theme\": " << gui::active_theme << ",\n"
             << "  \"language\": " << gui::active_language << ",\n"
             << "  \"reduce_motion\": " << (state.reduce_motion ? "true" : "false") << ",\n"
+            << "  \"menu_background\": " << static_cast<int>(state.menu_background.selected) << ",\n"
+            << "  \"menu_background_opacity\": " << state.menu_background.opacity << ",\n"
+            << "  \"menu_background_dimming\": " << state.menu_background.dimming << ",\n"
             << "  \"has_geometry\": " << (state.has_geometry ? "true" : "false") << ",\n"
             << std::fixed << std::setprecision(1)
             << "  \"window_x\": " << state.window_position.x << ",\n"

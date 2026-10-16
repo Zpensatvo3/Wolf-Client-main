@@ -21,6 +21,12 @@ int main()
     test.window_position = ImVec2(std::numeric_limits<float>::quiet_NaN(), -std::numeric_limits<float>::infinity());
     normalize(test);
     check(test.window_size.x == 1280 && test.window_size.y == 620, "invalid dimensions must normalize");
+    check(test.menu_background.selected == gui::background::style::classic, "old preferences retain classic background");
+    test.menu_background = {static_cast<gui::background::style>(999), NAN, INFINITY};
+    normalize(test);
+    check(test.menu_background.selected == gui::background::style::classic &&
+        test.menu_background.opacity == .85f && test.menu_background.dimming == .48f,
+        "invalid background preferences normalize safely");
     check(test.window_position.x == 0 && test.window_position.y == 0, "invalid position must normalize");
     test.hud_layout[0].x = std::numeric_limits<float>::quiet_NaN();
     test.hud_layout[1].scale = 10.f;
