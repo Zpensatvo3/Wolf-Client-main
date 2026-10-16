@@ -2,6 +2,7 @@
 #include "hud_editor.hpp"
 
 #include "../gui/gui.hpp"
+#include "../gui/module_descriptions.hpp"
 #include "../gui/surface_style.hpp"
 #include "../gui/control_draw.hpp"
 #include "../gui/ui_state.hpp"
@@ -89,6 +90,7 @@ namespace
         std::unordered_map<ImGuiID, float> nav_active_animation;
         std::unordered_map<ImGuiID, float> card_selected_animation;
         std::unordered_map<ImGuiID, float> card_enabled_animation;
+        std::unordered_map<modules::module*, float> options_content_height;
         float page_fade = 1.0f;
     } state;
 
@@ -111,7 +113,7 @@ namespace
     constexpr navigation_entry other_navigation[] = {
         { page::friends, "Friends", "\xEF\x83\x80" },
         { page::configs, "Configs", "\xEF\x81\xBB" },
-        { page::themes,  "Themes",  "\xEF\x87\xBC" },
+        { page::themes,  "Themes",  "\xEF\x94\xBF" }, // palette (f53f)
         { page::hud,     "Hud",     "\xEF\x84\x88" },
     };
 
@@ -159,66 +161,7 @@ namespace
 
     const char* description(const char* name)
     {
-        if (!name) return "Client module";
-        struct item { const char* id; const char* text; };
-        static constexpr item values[] = {
-            { "vape aim assist", "Independent Vape aim physics and target sorting" },
-            { "vape bow aimbot", "Vape ballistic aim and movement prediction" },
-            { "vape left clicker", "Vape Normal, Extra and Extra+ click timing" },
-            { "vape right clicker", "Vape use-click timing with offhand support" },
-            { "vape sprint", "Vape sprint eligibility rules" },
-            { "vape triggerbot", "Vape crosshair attack timing and critical checks" },
-            { "legit click aim assist", "Smooth aim assistance while clicking" },
-            { "blatant click aim assist", "Strong target tracking while clicking" },
-            { "aim assist", "Guides the crosshair toward valid targets" },
-            { "triggerbot", "Attacks valid targets under the crosshair" },
-            { "anti bot", "Shared UUID/player-list bot filter; enabled by default" },
-            { "notifications", "Silent animated module and operation cards using the active theme" },
-            { "mace swap", "Swaps to a mace at the moment of impact" },
-            { "anchor macro", "Places, charges and detonates an anchor" },
-            { "blatant anchor macro", "Executes the anchor sequence at maximum speed" },
-            { "safe anchor", "Runs anchor actions with additional safety checks" },
-            { "hit crystal", "Places and breaks crystals after a manual hit" },
-            { "jump reset", "Times jumps to reduce incoming knockback" },
-            { "shield breaker", "Breaks blocking shields with an axe" },
-            { "auto totem", "Moves available totems into protected slots" },
-            { "legit auto totem", "Refills totems with human-like input" },
-            { "sprint", "Keeps sprint active while moving" },
-            { "no jump delay", "Removes the cooldown between repeated jumps" },
-            { "inv walk", "Movement in item screens, with typing and focus guards" },
-            { "item esp", "Shows loaded dropped items, names, counts and distances" },
-            { "bridge assist", "Sneaks automatically near block edges" },
-            { "elytra swapper", "Switches between elytra and chestplate" },
-            { "auto armor", "Equips the strongest available armor" },
-            { "inventory clicker", "Accelerates repeated inventory clicks" },
-            { "right clicker", "Generates configurable right clicks" },
-            { "left clicker", "Generates configurable left clicks" },
-            { "mouse tweaks", "Improves inventory dragging and movement" },
-            { "pot refill", "Refills Instant Health potions" },
-            { "chest stealer", "Moves chest contents into the inventory" },
-            { "auto tool", "Selects the best tool for the targeted block" },
-            { "pearl macro", "Throws a pearl and returns to the previous slot" },
-            { "fast place", "Reduces delay between block placements" },
-            { "fast exp", "Uses experience bottles at adjustable speed" },
-            { "watermark", "Displays the onestep logo watermark" },
-            { "arraylist", "Displays enabled modules on the game overlay" },
-            { "glow esp", "Highlights visible players with glow" },
-            { "chams", "Colored player model overlay" },
-            { "player esp", "Displays configurable player highlights" },
-            { "storage esp", "Highlights nearby storage blocks" },
-            { "block esp", "Highlights selected block types" },
-            { "radar", "Displays nearby players on a compact radar" },
-            { "full bright", "Brightens dark areas" },
-            { "nametag", "Replaces player labels with detailed nametags" },
-            { "trajectories", "Previews projectile flight paths" },
-            { "spotify hud", "Displays Spotify now playing track and lyrics" },
-            { "click gui", "Controls the client interface" },
-            { "panic", "Safely closes the client" },
-        };
-        for (const item& value : values)
-            if (std::strcmp(value.id, name) == 0) return value.text;
-        if (std::strncmp(name,"vape ",5)==0) return gui::text("Independent Vape engine","Bağımsız Vape motoru");
-        return "Client module";
+        return gui::module_description(name);
     }
 
     const char* page_label(page value)
@@ -744,7 +687,13 @@ namespace
 
         modules::module* module = state.animated_module;
         const float eased = state.inspector_animation * state.inspector_animation * (3.0f - 2.0f * state.inspector_animation);
-        const float desired_height = std::clamp(module->get_options_height() + 138.0f, 150.0f, 560.0f);
+        const auto measured = state.options_content_height.find(module);
+        const float options_height = measured != state.options_content_height.end()
+            ? measured->second : module->get_options_height();
+        const ImGuiViewport* viewport = ImGui::GetMainViewport();
+        const float maximum_height = std::max(150.0f, std::min(620.0f,
+            viewport->WorkPos.y + viewport->WorkSize.y - position.y - 12.0f));
+        const float desired_height = std::clamp(options_height + 142.0f, 150.0f, maximum_height);
         const float visible_height = 50.0f + (desired_height - 50.0f) * eased;
         const float slide_x = (1.0f - eased) * 12.0f;
         const ImVec2 anim_pos(position.x - slide_x, position.y);
@@ -773,10 +722,10 @@ namespace
             draw->AddCircleFilled(close, 11.0f, alpha(IM_COL32(255, 255, 255, 14), eased));
         gui::control_draw::close_icon(draw, close, alpha(ImGui::IsItemHovered() ? primary : secondary, eased));
 
-        draw_text(draw, gui::ui_font, 13.5f, ImVec2(anim_pos.x + 15.0f, anim_pos.y + 62.0f), alpha(secondary, eased), "Enabled");
+        draw_text(draw, gui::ui_font, 13.5f, ImVec2(anim_pos.x + 16.0f, anim_pos.y + 62.0f), alpha(secondary, eased), gui::text("Enabled", "Etkin"));
         toggle("##module_enabled", &module->enabled, ImVec2(anim_pos.x + 251.0f, anim_pos.y + 57.0f));
 
-        draw_text(draw, gui::ui_font, 13.5f, ImVec2(anim_pos.x + 15.0f, anim_pos.y + 95.0f), alpha(secondary, eased), "Keybind");
+        draw_text(draw, gui::ui_font, 13.5f, ImVec2(anim_pos.x + 16.0f, anim_pos.y + 95.0f), alpha(secondary, eased), gui::text("Keybind", "Tuş"));
         ImGui::SetCursorScreenPos(ImVec2(anim_pos.x + 215.0f, anim_pos.y + 87.0f));
         ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * eased);
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(1.0f, 1.0f, 1.0f, 0.045f));
@@ -789,8 +738,8 @@ namespace
 
         if (visible_height > 128.0f)
         {
-            ImGui::SetCursorScreenPos(ImVec2(anim_pos.x + 9.0f, anim_pos.y + 122.0f));
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(7.0f, 7.0f));
+            ImGui::SetCursorScreenPos(ImVec2(anim_pos.x + 6.0f, anim_pos.y + 126.0f));
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 4.0f));
             ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 3.0f);
             ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 4.0f));
             ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * eased);
@@ -798,11 +747,19 @@ namespace
             const ImVec4 control_accent = gui::get_dynamic_color().Value;
             ImGui::PushStyleColor(ImGuiCol_CheckMark, control_accent);
             ImGui::PushStyleColor(ImGuiCol_SliderGrabActive, control_accent);
-            if (ImGui::BeginChild("##inspector_options", ImVec2(286.0f, visible_height - 130.0f)))
+            if (ImGui::BeginChild("##inspector_options", ImVec2(292.0f, std::max(1.0f, visible_height - 134.0f)),
+                ImGuiChildFlags_AlwaysUseWindowPadding))
             {
+                const ImGuiWindow* options_window = ImGui::GetCurrentWindow();
+                const float content_start = options_window->DC.CursorStartPos.y;
                 ImGui::PushItemWidth(-8.0f);
                 module->render_options();
                 ImGui::PopItemWidth();
+                // Include off-screen rows, so scrolling and conditional settings
+                // never change the measured height or leave a guessed empty tail.
+                state.options_content_height[module] = std::max(0.0f,
+                    std::max(options_window->DC.CursorMaxPos.y,
+                        options_window->DC.CursorPos.y - ImGui::GetStyle().ItemSpacing.y) - content_start);
             }
             ImGui::EndChild();
             ImGui::PopStyleColor(3);

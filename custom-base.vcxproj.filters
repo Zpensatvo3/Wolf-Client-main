@@ -555,6 +555,15 @@
     <ClCompile Include="src\auth\auth.cpp">
       <Filter>Source Files\src\auth</Filter>
     </ClCompile>
+    <ClCompile Include="src\auth\client.cpp">
+      <Filter>Source Files\src\auth</Filter>
+    </ClCompile>
+    <ClCompile Include="src\auth\device_proof.cpp">
+      <Filter>Source Files\src\auth</Filter>
+    </ClCompile>
+    <ClCompile Include="src\gui\auth_screen.cpp">
+      <Filter>Source Files\src\gui</Filter>
+    </ClCompile>
     <ClCompile Include="src\configs\configs.cpp">
       <Filter>Source Files\src\configs</Filter>
     </ClCompile>
@@ -1586,6 +1595,9 @@
     <ClInclude Include="src\gui\language.hpp">
       <Filter>Header Files\src\gui</Filter>
     </ClInclude>
+    <ClInclude Include="src\gui\module_descriptions.hpp">
+      <Filter>Header Files\src\gui</Filter>
+    </ClInclude>
     <ClInclude Include="src\gui\control_draw.hpp">
       <Filter>Header Files\src\gui</Filter>
     </ClInclude>
@@ -1659,6 +1671,12 @@
       <Filter>Header Files\src\modules\core</Filter>
     </ClInclude>
     <ClInclude Include="src\modules\core\anchor_config_migration.hpp">
+      <Filter>Header Files\src\modules\core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\modules\core\config_migration_fields.hpp">
+      <Filter>Header Files\src\modules\core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\modules\core\totem_config_migration.hpp">
       <Filter>Header Files\src\modules\core</Filter>
     </ClInclude>
     <ClInclude Include="src\modules\core\module_registry.hpp">

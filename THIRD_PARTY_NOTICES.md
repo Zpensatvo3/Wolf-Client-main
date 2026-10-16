@@ -16,6 +16,27 @@ Kaynak bağlantıları:
 - Spartan Helmet: https://www.flaticon.com/free-icon/spartan_11280819
 - Fluent System Icons: https://github.com/microsoft/fluentui-system-icons
 
+## Gökyüzü panoramaları
+
+Sky modülünde kullanılan Greg Zaal / Poly Haven görselleri CC0 lisanslıdır.
+Kaynak tonemapped JPEG dosyaları 4096×2048 boyutuna küçültülüp JPEG olarak
+paketlenmiştir; Samanyolu çiziminde yalnızca üstteki gökyüzü bölümü örneklenir.
+
+| Yerel dosya | Kaynak |
+| --- | --- |
+| assets/skies/kloppenheim_02_puresky.jpg | [Kloppenheim 02 (Pure Sky)](https://polyhaven.com/a/kloppenheim_02_puresky) |
+| assets/skies/rogland_clear_night.jpg | [Rogland Clear Night](https://polyhaven.com/a/rogland_clear_night) |
+| assets/skies/kloppenheim_06_puresky.jpg | [Kloppenheim 06 (Pure Sky)](https://polyhaven.com/a/kloppenheim_06_puresky) |
+
+[Poly Haven CC0 lisansı](https://polyhaven.com/license). Görseller DLL içine
+gömülür; oyun çalışırken internet bağlantısı veya indirme yapılmaz.
+Kaynak dosyalar `scripts/Fetch-SkyPanoramas.ps1` ile yeniden hazırlanabilir.
+
+Stilize `candy_dusk.png`, `nebula.png` ve `aurora.png` dosyaları bu proje için
+yerleşik görsel üretme aracıyla üretildi; Poly Haven fotoğraflarından türetilmedi.
+Üretim istemleri ve paketleme bilgileri [assets/skies/README.md](assets/skies/README.md)
+içindedir. Bu dosyalar da DLL'e gömülür.
+
 ## Fontlar
 
 | Font | Kaynak | Yerel lisans metni |

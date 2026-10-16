@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS license_keys (
     key_encrypted TEXT,
     hwid_hash TEXT,
     hwid_hint TEXT,
+    device_key_hash TEXT,
     license_epoch INTEGER DEFAULT 1,
     expires_at DATETIME,
     status TEXT DEFAULT 'unused',
@@ -35,6 +36,14 @@ CREATE TABLE IF NOT EXISTS admin_audit_logs (
 
 CREATE INDEX IF NOT EXISTS idx_auth_logs_timestamp ON auth_logs(timestamp);
 CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_timestamp ON admin_audit_logs(timestamp);
+
+-- One-use launcher grants belong in strongly consistent D1, never KV.
+CREATE TABLE IF NOT EXISTS launcher_tickets (
+    ticket_hash TEXT PRIMARY KEY, key_hash TEXT NOT NULL, hwid_hash TEXT NOT NULL,
+    device_key_hash TEXT NOT NULL, license_epoch INTEGER NOT NULL, pid INTEGER NOT NULL,
+    release_sha256 TEXT NOT NULL, exp INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_launcher_tickets_exp ON launcher_tickets(exp);
 
 -- Public, license-owned client configurations. Payloads intentionally contain
 -- client preferences only; license keys, HWIDs and session data never enter

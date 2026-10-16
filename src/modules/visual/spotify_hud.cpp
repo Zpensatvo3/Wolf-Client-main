@@ -3,6 +3,7 @@
 #endif
 
 #include <algorithm>
+#include <array>
 #include <cfloat>
 #include <cmath>
 #include <cstdint>
@@ -26,6 +27,7 @@
 #include "spotify_source.hpp"
 #include "../ui_redirect.hpp"
 #include "../../gui/gui.hpp"
+#include "../../gui/ui_state.hpp"
 
 namespace
 {
@@ -34,7 +36,6 @@ namespace
 	constexpr ImU32 color_label = IM_COL32(30, 215, 96, 255);
 	constexpr ImU32 color_time = IM_COL32(137, 143, 152, 255);
 	constexpr ImU32 color_brand = IM_COL32(30, 215, 96, 255);
-	constexpr ImU32 color_brand_mark = IM_COL32(10, 14, 12, 240);
 
 	struct card_layout
 	{
@@ -110,7 +111,7 @@ namespace
 		// Times and the short rail share one row beneath the right column.
 		const float header_h = l.time_y + l.time_font + std::round(6.0f * size_scale);
 
-		l.brand_radius = std::round((std::max)(6.0f, 7.0f * size_scale));
+		l.brand_radius = std::round((std::max)(10.0f, 12.0f * size_scale));
 
 		if (show_lyrics)
 		{
@@ -227,74 +228,85 @@ namespace
 			ImVec2(maximum.x - radius, minimum.y + 1.0f), IM_COL32(223, 255, 234, 58));
 	}
 
-	void draw_visualizer(ImDrawList* draw, float left, float right, float center_y,
-		float font_size, const modules::spotify::now_playing& info, float size_scale)
+	void draw_progress_bar(ImDrawList* draw, float left, float right, float center_y,
+		float progress, float size_scale)
 	{
 		const float width = right - left;
-		if (width <= 16.0f || !draw) return;
-
-		const float bar_step = (std::max)(3.0f, 4.0f * size_scale);
-		const int bars = std::clamp(static_cast<int>(width / bar_step), 4, 8);
-		const float step = width / static_cast<float>(bars);
-		const float bar_width = (std::max)(1.2f, step * 0.55f);
-		const float max_half = (std::max)(2.0f, font_size * 0.50f);
-
-		static float visual_time = 0.0f;
-		static double last_tick = 0.0;
-		const double now = ImGui::GetTime();
-		if (last_tick != 0.0)
+		if (!draw || width <= 8.f) return;
+		progress = std::clamp(progress, 0.f, 1.f);
+		const float fill_x = left + width * progress;
+		const float half_height = 1.f * size_scale;
+		draw->AddRectFilled(ImVec2(left, center_y - half_height), ImVec2(right, center_y + half_height),
+			IM_COL32(255, 255, 255, 42), half_height);
+		if (fill_x > left)
 		{
-			const float delta = static_cast<float>(now - last_tick);
-			if (delta > 0.0f && delta < 0.5f)
+			for (int layer = 3; layer > 0; --layer)
 			{
-				visual_time += info.playing ? delta : (delta * 0.18f);
+				const float spread = layer * size_scale;
+				draw->AddRectFilled(ImVec2(left - spread, center_y - half_height - spread),
+					ImVec2(fill_x + spread, center_y + half_height + spread),
+					IM_COL32(30, 215, 96, 10), half_height + spread);
+			}
+			draw->AddRectFilled(ImVec2(left, center_y - half_height), ImVec2(fill_x, center_y + half_height),
+				color_brand, half_height);
+		}
+		const ImVec2 marker(fill_x, center_y);
+		draw->AddCircleFilled(marker, 5.f * size_scale, IM_COL32(30, 215, 96, 22), 32);
+		draw->AddCircleFilled(marker, 3.5f * size_scale, IM_COL32(30, 215, 96, 45), 24);
+		draw->AddCircleFilled(marker, 2.f * size_scale, IM_COL32(242, 255, 246, 255), 24);
+	}
+
+	void draw_visualizer(ImDrawList* draw, float left, float center_y,
+		const modules::spotify::now_playing& info, float size_scale)
+	{
+		if (!draw) return;
+		const bool reduce_motion = gui::aegis::get_preferences().reduce_motion;
+		static int last_frame = -1;
+		static float phase = 0.f;
+		static std::array<float, 6> heights{};
+		static std::string track_key;
+		const std::string key = info.title + "\n" + info.artist;
+		if (key != track_key)
+		{
+			track_key = key;
+			phase = hash_unit(key) * 6.2831853f;
+		}
+		if (last_frame != ImGui::GetFrameCount())
+		{
+			last_frame = ImGui::GetFrameCount();
+			const float dt = std::clamp(ImGui::GetIO().DeltaTime, 0.f, .05f);
+			if (info.playing && !reduce_motion)
+				phase = std::fmod(phase + dt * 4.8f, 6.2831853f);
+			for (int index = 0; index < static_cast<int>(heights.size()); ++index)
+			{
+				const float envelope = .55f + .45f * std::sin((index + .5f) / static_cast<float>(heights.size()) * 3.14159265f);
+				const float movement = reduce_motion ? .65f : .5f + .5f * std::sin(phase + index * 1.35f);
+				const float target = info.playing ? 1.f + 4.5f * envelope * movement : .8f;
+				heights[index] = reduce_motion ? target
+					: heights[index] + (target - heights[index]) * (1.f - std::exp(-14.f * dt));
 			}
 		}
-		last_tick = now;
-
-		const float phase = hash_unit(info.title) * 6.2831853f;
-		constexpr ImU32 left_color = IM_COL32(30, 215, 96, 255);
-		constexpr ImU32 right_color = IM_COL32(65, 240, 145, 240);
-
-		for (int index = 0; index < bars; ++index)
+		for (int index = 0; index < static_cast<int>(heights.size()); ++index)
 		{
-			const float position = (static_cast<float>(index) + 0.5f) / static_cast<float>(bars);
-			const float envelope = std::sin(3.14159265f * position);
-			const float wobble = 0.55f + 0.45f * std::sin(visual_time * 5.3f + index * 1.3f + phase);
-			const float ripple = 0.80f + 0.20f * std::sin(visual_time * 9.7f - index * 0.7f);
-			const float magnitude = info.playing
-				? std::clamp(envelope * wobble * ripple, 0.10f, 1.0f)
-				: (0.10f + 0.04f * std::sin(visual_time * 2.0f + index * 0.5f));
-
-			const float half = (std::max)(1.0f, std::round(magnitude * max_half));
-			const float bar_left = std::round(left + static_cast<float>(index) * step);
-			draw->AddRectFilled(
-				ImVec2(bar_left, std::round(center_y - half)),
-				ImVec2(bar_left + bar_width, std::round(center_y + half)),
-				lerp_color(left_color, right_color, position), bar_width * 0.5f);
+			const float bar_left = std::round(left + index * 4.f * size_scale);
+			const float bar_width = 2.f * size_scale;
+			const float half = (std::max)(.8f, heights[index]) * size_scale;
+			draw->AddRectFilled(ImVec2(bar_left - size_scale, center_y - half - size_scale),
+				ImVec2(bar_left + bar_width + size_scale, center_y + half + size_scale),
+				IM_COL32(30, 215, 96, 18), bar_width);
+			draw->AddRectFilled(ImVec2(bar_left, center_y - half),
+				ImVec2(bar_left + bar_width, center_y + half), color_brand, bar_width * .5f);
 		}
 	}
 
 	void draw_spotify_logo(ImDrawList* draw, const ImVec2& center, float mark_radius)
 	{
-		if (const ImTextureID icon = gui::get_icon_texture(gui::icon_asset::spotify))
-		{
-			const ImVec2 p_min(std::round(center.x - mark_radius), std::round(center.y - mark_radius));
-			const ImVec2 p_max(std::round(center.x + mark_radius), std::round(center.y + mark_radius));
-			draw->AddImage(icon, p_min, p_max);
-			return;
-		}
-
-		draw->AddCircleFilled(center, mark_radius, color_brand, 0);
-		const float stroke = (std::max)(1.4f, mark_radius * 0.14f);
-		constexpr float from = 0.95f;
-		constexpr float to = 3.30f;
-		const float rings[3] = { 0.58f, 0.40f, 0.22f };
-		for (const float ring : rings)
-		{
-			draw->PathArcTo(center, mark_radius * ring, from, to, 20);
-			draw->PathStroke(color_brand_mark, 0, stroke);
-		}
+		if (!draw) return;
+		const ImTextureID icon = gui::get_icon_texture(gui::icon_asset::spotify);
+		if (!icon) return;
+		const ImVec2 minimum(std::round(center.x - mark_radius), std::round(center.y - mark_radius));
+		const float diameter = std::round(mark_radius * 2.f);
+		draw->AddImage(icon, minimum, ImVec2(minimum.x + diameter, minimum.y + diameter));
 	}
 
 	void draw_card(ImDrawList* draw, float x, float y, float size_scale,
@@ -321,7 +333,7 @@ namespace
 			draw_glass_panel(draw, cmin, cmax, radius, background_opacity);
 
 			// Spotify mark
-			const float logo_r = std::round((std::max)(9.0f, 14.0f * size_scale));
+			const float logo_r = std::round((std::max)(9.0f, 16.0f * size_scale));
 			const ImVec2 logo_center(std::round(cmin.x + (std::max)(18.0f, 24.0f * size_scale)), std::round(cmin.y + idle_h * 0.5f));
 			if (show_brand) draw_spotify_logo(draw, logo_center, logo_r);
 
@@ -441,8 +453,11 @@ namespace
 		const float label_pos_y = std::round(y_base + layout.label_y);
 		const float dot_y = std::round(label_pos_y + layout.label_font * 0.5f);
 		const float label_left = dot_x + dot_r + (std::max)(3.5f, 4.5f * size_scale);
-		const float label_right = card_max.x - layout.pad -
-			(show_brand ? layout.brand_radius * 2.0f + 6.0f * size_scale : 0.0f);
+		const float logo_left = card_max.x - layout.pad - (show_brand ? layout.brand_radius * 2.f : 0.f);
+		const float visualizer_right = logo_left - (show_brand ? 7.f * size_scale : 0.f);
+		const float visualizer_left = visualizer_right - 22.f * size_scale;
+		const float label_right = show_visualizer ? visualizer_left - 7.f * size_scale
+			: logo_left - (show_brand ? 6.f * size_scale : 0.f);
 		const std::string status_text = fit_text(bold_font, layout.label_font,
 			info.playing ? gui::text("PLAYING", "\xc3\x87\x41LIYOR") : gui::text("PAUSED", "DURAKLATILDI"),
 			label_right - label_left);
@@ -464,12 +479,14 @@ namespace
 		if (show_brand)
 		{
 			const ImVec2 brand_center(std::round(card_max.x - layout.pad - layout.brand_radius),
-				std::round(label_pos_y + layout.label_font * 0.5f));
+				std::round(card_min.y + layout.pad + layout.brand_radius));
 			draw_spotify_logo(draw, brand_center, layout.brand_radius);
 		}
+		if (show_visualizer)
+			draw_visualizer(draw, visualizer_left, std::round(card_min.y + layout.pad + layout.brand_radius), info, size_scale);
 
 		const float title_pos_y = std::round(y_base + layout.title_y);
-		const float title_right_edge = card_max.x - layout.pad;
+		const float title_right_edge = label_right;
 		const float title_max_w = (std::max)(20.0f, title_right_edge - (card_min.x + layout.text_left));
 		const std::string title = fit_text(bold_font, layout.title_font, info.title, title_max_w);
 		draw->AddText(bold_font, layout.title_font,
@@ -523,32 +540,11 @@ namespace
 		{
 			const ImVec2 bar_min(std::round(card_min.x + layout.text_left + elapsed_width + 8.0f), std::round(y_base + layout.bar_y));
 			const ImVec2 bar_max(std::round(card_min.x + layout.text_right - remaining_width - 8.0f), std::round(bar_min.y + layout.bar_height));
-			const float bar_radius = std::round(layout.bar_height * 0.5f);
-
-			// Translucent groove
-			draw->AddRectFilled(bar_min, bar_max, IM_COL32(255, 255, 255, 30), bar_radius);
-
-			if (visual_progress > 0.001f)
-			{
-				const float fill_x = std::round(bar_min.x + (bar_max.x - bar_min.x) * visual_progress);
-				const ImVec2 fill_max(fill_x, bar_max.y);
-				draw->AddRectFilled(ImVec2(bar_min.x, bar_min.y - 2.0f), ImVec2(fill_x, bar_max.y + 2.0f),
-					IM_COL32(30, 215, 96, 24), 3.0f);
-
-				// Neon emerald Spotify fill
-				draw->AddRectFilled(bar_min, fill_max, IM_COL32(30, 215, 96, 255), bar_radius);
-
-				// Glowing playhead thumb
-				const float thumb_radius = (std::max)(2.0f, layout.bar_height * 0.70f);
-				const ImVec2 thumb_center(fill_x, std::round((bar_min.y + bar_max.y) * 0.5f));
-				draw->AddCircleFilled(thumb_center, thumb_radius + 3.0f, IM_COL32(75, 255, 140, 35), 0);
-
-				// Pure white center
-				draw->AddCircleFilled(thumb_center, thumb_radius, IM_COL32(255, 255, 255, 255), 0);
-			}
+			draw_progress_bar(draw, bar_min.x, bar_max.x, (bar_min.y + bar_max.y) * .5f,
+				visual_progress, size_scale);
 		}
 
-		// ---- Times + visualizer ---------------------------------------------
+		// ---- Times ---------------------------------------------------------
 		const float times_y = std::round(y_base + layout.time_y);
 		const float text_left_x = std::round(card_min.x + layout.text_left);
 		draw->AddText(small_font, layout.time_font, ImVec2(text_left_x, times_y), color_time, elapsed_text.c_str());
@@ -556,19 +552,6 @@ namespace
 		const float remaining_x = std::round(card_min.x + layout.text_right - remaining_width);
 		draw->AddText(small_font, layout.time_font, ImVec2(remaining_x, times_y), color_time,
 			remaining_text.c_str());
-
-		if (show_visualizer)
-		{
-			const float wave_right = std::round(card_max.x - layout.pad -
-				(show_brand ? layout.brand_radius * 2.0f + 10.0f * size_scale : 0.0f));
-			const float wave_left = wave_right - (std::max)(18.0f, 24.0f * size_scale);
-			const float status_end = label_left + bold_font->CalcTextSizeA(layout.label_font, FLT_MAX, 0.0f, status_text.c_str()).x;
-			if (wave_left > status_end + 8.0f)
-			{
-				draw_visualizer(draw, wave_left, wave_right, dot_y,
-					layout.label_font, info, size_scale);
-			}
-		}
 
 		// Exactly one current lyric; fade the new line in without exposing neighbours.
 		if (show_lyrics)

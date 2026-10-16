@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- Public deployment metadata only. Server secrets never enter the client. -->
+  <PropertyGroup>
+    <AuthRequired Condition="'$(AuthRequired)' == ''">true</AuthRequired>
+    <AuthServerDomain>onestep-auth.gogogamesas.workers.dev</AuthServerDomain>
+    <AuthPublicKeySpkiBase64>MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE35Iq5GCPT9XOiYFAssM0MsGY3yYhh1c02V8mY8vifG39uzQBzzKVIM4JN4P-MgTC5HScLZhrWSfVJdNw570CMg</AuthPublicKeySpkiBase64>
+  </PropertyGroup>
+</Project>

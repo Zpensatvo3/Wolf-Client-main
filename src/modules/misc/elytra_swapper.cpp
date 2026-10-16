@@ -117,10 +117,11 @@ void modules::elytra_swapper::render_overlay()
 			finish();
 			return;
 		}
-		// The player's own ScreenHandler exists even while the inventory GUI is
-		// closed, so a bound one-shot swap can work directly during gameplay.
-		// Reject only unrelated open screens whose slot layout is different.
-		if (screen && !screen.is_instance_of<maps::InventoryScreen>())
+		// The player's own ScreenHandler exists with the inventory GUI closed.
+		// Other open screens have a different slot layout and are always rejected.
+		if (!screen && !settings_snapshot.work_without_inventory)
+			return; // Keep the one-shot armed until the inventory is opened.
+		if ((screen && !screen.is_instance_of<maps::InventoryScreen>()) || platform::jni_context::clear_exception())
 		{
 			platform::jni_context::clear_exception();
 			finish();

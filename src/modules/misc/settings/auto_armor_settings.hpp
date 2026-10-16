@@ -8,6 +8,7 @@ namespace module_settings
     {
         int action_delay_ms = 120;
         bool protect_elytra = true;
+        bool work_without_inventory = false;
         bool operator==(const auto_armor&) const = default;
 
         static std::span<const modules::settings::descriptor<auto_armor>> schema()
@@ -16,6 +17,7 @@ namespace module_settings
             using setting = modules::settings::descriptor<model>;
             static const setting fields[]{
                 setting::toggle("protect_elytra", {"Protect Elytra", "Elytra'yi Koru"}, &model::protect_elytra),
+                setting::toggle("work_without_inventory", {"Work Without Inventory", "Envanter Acik Olmadan Calis"}, &model::work_without_inventory),
                 setting::integer("action_delay_ms", {"Click Delay", "Tik Gecikmesi"}, &model::action_delay_ms, 40, 500, "%d ms"),
             };
             return fields;

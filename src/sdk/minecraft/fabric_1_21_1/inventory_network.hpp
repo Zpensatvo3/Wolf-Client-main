@@ -61,6 +61,10 @@ namespace maps
         jni::method<jint, "method_7947"> getCount{ *this };
         jni::method<Text, "method_7964"> getName{ *this };
         jni::method<jint, "method_7914"> getMaxCount{ *this };
+        // Yarn 1.21.1 ItemStack: remaining durability and enchantment indicator.
+        jni::method<jint, "method_7919"> getDamage{ *this };
+        jni::method<jint, "method_7936"> getMaxDamage{ *this };
+        jni::method<jboolean, "method_7942"> hasEnchantments{ *this };
 		jni::method<jfloat, "method_7924", jni::NOT_STATIC, BlockState> getMiningSpeedMultiplier{ *this };
 		jni::method<jboolean, "method_7951", jni::NOT_STATIC, BlockState> isSuitableFor{ *this };
 		jni::method<Object, "method_57824", jni::NOT_STATIC, ComponentType> getComponent{ *this };

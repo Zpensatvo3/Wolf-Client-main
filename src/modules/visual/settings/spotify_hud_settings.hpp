@@ -29,7 +29,7 @@ namespace module_settings
                 setting::toggle("show_when_idle", {"Show When Idle", "Boştayken Göster"}, &model::show_when_idle),
                 setting::toggle("show_artwork", {"Album Art", "Albüm Kapağı"}, &model::show_artwork),
                 setting::toggle("show_progress", {"Progress Bar", "İlerleme Çubuğu"}, &model::show_progress),
-                setting::toggle("show_visualizer", {"Visualizer", "Görselleştirici"}, &model::show_visualizer),
+                setting::toggle("show_visualizer", {"Visualizer", "Ses Dalgası"}, &model::show_visualizer),
                 setting::toggle("show_brand", {"Spotify Logo", "Spotify Logosu"}, &model::show_brand),
                 setting::toggle("show_lyrics", {"Lyrics", "Şarkı Sözleri"}, &model::show_lyrics),
                 setting::toggle("enable_lyrics", {"Fetch Lyrics Online", "Sözleri İnternetten Çek"}, &model::enable_lyrics).when([](const model& c) { return c.show_lyrics; }),

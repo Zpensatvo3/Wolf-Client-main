@@ -37,6 +37,13 @@
       "panel": "src/modules/combat/anti_bot.cpp"
     },
     {
+      "id": "nameprotect",
+      "owner": "src/modules/client/nameprotect.hpp",
+      "model": "src/modules/client/settings/nameprotect_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/client/nameprotect.cpp"
+    },
+    {
       "id": "legit_click_aim_assist",
       "owner": "src/modules/combat/aimassist.hpp",
       "model": "src/modules/combat/legit_aim_config.hpp",
@@ -128,6 +135,41 @@
       "panel": "src/modules/visual/chams.cpp"
     },
     {
+      "id": "china_hat",
+      "owner": "src/modules/visual/china_hat.hpp",
+      "model": "src/modules/visual/settings/china_hat_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/visual/china_hat.cpp"
+    },
+    {
+      "id": "wings",
+      "owner": "src/modules/visual/wings.hpp",
+      "model": "src/modules/visual/settings/wings_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/visual/wings.cpp"
+    },
+    {
+      "id": "cape",
+      "owner": "src/modules/visual/cape.hpp",
+      "model": "src/modules/visual/settings/cape_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/visual/cape.cpp"
+    },
+    {
+      "id": "sky",
+      "owner": "src/modules/visual/sky.hpp",
+      "model": "src/modules/visual/settings/sky_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/visual/sky.cpp"
+    },
+    {
+      "id": "trails",
+      "owner": "src/modules/visual/trails.hpp",
+      "model": "src/modules/visual/settings/trails_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/visual/trails.cpp"
+    },
+    {
       "id": "player_esp",
       "owner": "src/modules/visual/player_esp.hpp",
       "model": "src/modules/visual/settings/player_esp_settings.hpp",
@@ -203,13 +245,6 @@
       "model": "src/modules/combat/settings/auto_totem_settings.hpp",
       "ownership": "snapshot_store",
       "panel": "src/modules/combat/auto_totem.cpp"
-    },
-    {
-      "id": "legit_auto_totem",
-      "owner": "src/modules/combat/legit_auto_totem.hpp",
-      "model": "src/modules/combat/settings/legit_auto_totem_settings.hpp",
-      "ownership": "snapshot_store",
-      "panel": "src/modules/combat/legit_auto_totem.cpp"
     },
     {
       "id": "pearl_macro",
@@ -336,6 +371,13 @@
       "model": "src/modules/misc/settings/mouse_tweaks_settings.hpp",
       "ownership": "snapshot_store",
       "panel": "src/modules/misc/mouse_tweaks.cpp"
+    },
+    {
+      "id": "target_hud",
+      "owner": "src/modules/visual/target_hud.hpp",
+      "model": "src/modules/visual/settings/target_hud_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/visual/target_hud.cpp"
     },
     {
       "id": "vape_aim_assist",

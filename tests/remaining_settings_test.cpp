@@ -8,7 +8,6 @@
 #include "../src/modules/combat/settings/hit_crystal_settings.hpp"
 #include "../src/modules/combat/settings/crystal_aura_settings.hpp"
 #include "../src/modules/combat/settings/auto_totem_settings.hpp"
-#include "../src/modules/combat/settings/legit_auto_totem_settings.hpp"
 #include "../src/modules/misc/settings/left_clicker_settings.hpp"
 #include "../src/modules/misc/settings/right_clicker_settings.hpp"
 #include "../src/modules/misc/settings/inventory_clicker_settings.hpp"
@@ -127,8 +126,8 @@ int main()
     check_contract<shield_breaker>({"switch_delay","return_delay","axe_slot"});
     check_contract<mace_swap>({"preferred_mace_slot","return_delay"});
     check_contract<hit_crystal>({"auto_switch","restore_slot","place_delay","break_delay"});
-    check_contract<auto_totem>({"fill_offhand","fill_hotbar","auto_open_inventory","offhand_first","pause_with_cursor_item","hotbar_slot","delay_ms","timing_randomness_ms","initial_reaction_ms","confirmation_timeout_ms"});
-    check_contract<legit_auto_totem>({"reaction_delay_ms","action_delay_ms","timing_variation_ms","confirmation_timeout_ms","hotbar_slot","health_threshold","fill_offhand","fill_hotbar","offhand_first","low_health_only","cursor_guided_swap","cursor_travel_ms","pause_with_cursor_item","preserve_hotbar"});
+    check_contract<auto_totem>({"mode","fill_offhand","fill_hotbar","auto_open_inventory","offhand_first","pause_with_cursor_item","hotbar_slot","delay_ms","timing_randomness_ms","initial_reaction_ms","confirmation_timeout_ms",
+        "legit_reaction_delay_ms","legit_action_delay_ms","legit_timing_variation_ms","legit_confirmation_timeout_ms","legit_hotbar_slot","legit_health_threshold","legit_fill_offhand","legit_fill_hotbar","legit_offhand_first","legit_low_health_only","legit_cursor_guided_swap","legit_cursor_travel_ms","legit_pause_with_cursor_item","legit_preserve_hotbar"});
     check_contract<left_clicker>({"min_cps","max_cps","jitter_percent","jitter_camera","jitter_amount","fatigue_enabled","fatigue_factor","glfw_input"});
     check_contract<right_clicker>({"min_cps","max_cps","jitter_percent","jitter_camera","jitter_amount","fatigue_enabled","fatigue_factor","glfw_input","only_blocks"});
     check_contract<inventory_clicker>({"min_cps","max_cps","click_delay"});
@@ -187,10 +186,10 @@ int main()
     assert(totem.apply_config_settings(R"({"delay_ms":900,"initial_reaction_ms":800,"timing_randomness_ms":220})"));
     assert(totem.settings.read().delay_ms == 900 && totem.settings.read().initial_reaction_ms == 800 &&
         totem.settings.read().timing_randomness_ms == 220);
-    settings_fixture<legit_auto_totem> legit_totem;
-    assert(legit_totem.apply_config_settings(R"({"reaction_delay_ms":1100,"action_delay_ms":45,"timing_variation_ms":240})"));
-    assert(legit_totem.settings.read().reaction_delay_ms == 1100 && legit_totem.settings.read().action_delay_ms == 45 &&
-        legit_totem.settings.read().timing_variation_ms == 240);
+    settings_fixture<auto_totem> legit_totem;
+    assert(legit_totem.apply_config_settings(R"({"mode":1,"legit_reaction_delay_ms":1100,"legit_action_delay_ms":45,"legit_timing_variation_ms":240})"));
+    assert(legit_totem.settings.read().legit_reaction_delay_ms == 1100 && legit_totem.settings.read().legit_action_delay_ms == 45 &&
+        legit_totem.settings.read().legit_timing_variation_ms == 240);
     settings_fixture<radar> radar_overlay;
     assert(radar_overlay.apply_config_settings(R"({"position_x":2100,"position_y":1300})"));
     assert(radar_overlay.settings.read().position_x == 2100 && radar_overlay.settings.read().position_y == 1300);

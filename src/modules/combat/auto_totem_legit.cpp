@@ -1,8 +1,6 @@
-#include "legit_auto_totem.hpp"
-#include "../../ui/settings_renderer.hpp"
+#include "auto_totem.hpp"
 #include "../../cache/cache.hpp"
 #include "../../platform/jni/jni_context.hpp"
-#include "../ui_redirect.hpp"
 #include <Windows.h>
 
 #include <algorithm>
@@ -10,8 +8,6 @@
 #include <cmath>
 #include <random>
 #include <thread>
-
-#include <imgui/imgui.h>
 
 #include "../../gui/gui.hpp"
 
@@ -168,16 +164,9 @@ int varied_delay(int base_ms, int variation_ms)
 	}
 }
 
-void modules::legit_auto_totem::run(::cache& cache)
+void modules::auto_totem::run_legit(::cache& cache, const module_settings::auto_totem& settings_snapshot)
 {
-    auto settings_snapshot = settings_.read();
-	const auto reset = [this]()
-	{
-		inventory_seen = false;
-		pending_destination = -1;
-		next_action_time = {};
-		pending_action_time = {};
-	};
+	const auto reset = [this]() { reset_runtime(); };
 
 	if (gui::draw || !cache.is_valid() || !cache.instance || !cache.player || !jni::get_env())
 	{
@@ -198,11 +187,11 @@ void modules::legit_auto_totem::run(::cache& cache)
 		}
 
 		const auto now = steady_clock::now();
-		if (!inventory_seen)
+		if (!inventory_was_open)
 		{
-			inventory_seen = true;
+			inventory_was_open = true;
 			next_action_time = now + std::chrono::milliseconds(
-				varied_delay(settings_snapshot.reaction_delay_ms, settings_snapshot.timing_variation_ms));
+				varied_delay(settings_snapshot.legit_reaction_delay_ms, settings_snapshot.legit_timing_variation_ms));
 			return;
 		}
 		if (now < next_action_time)
@@ -219,16 +208,16 @@ void modules::legit_auto_totem::run(::cache& cache)
 		if (!offhand || !main || platform::jni_context::clear_exception())
 			return;
 
-		const int target_hotbar_index = std::clamp(settings_snapshot.hotbar_slot, 1, 9) - 1;
+		const int target_hotbar_index = std::clamp(settings_snapshot.legit_hotbar_slot, 1, 9) - 1;
 		const bool offhand_has_totem = item_at_is_totem(offhand, 0, totem);
 		const bool hotbar_has_totem = item_at_is_totem(main, target_hotbar_index, totem);
 		const float health = cache.player.getHealth.call();
 		if (platform::jni_context::clear_exception())
 			return;
 
-		const bool need_offhand = settings_snapshot.fill_offhand && !offhand_has_totem &&
-			(!settings_snapshot.low_health_only || health <= std::clamp(settings_snapshot.health_threshold, 1.0f, 20.0f));
-		const bool need_hotbar = settings_snapshot.fill_hotbar && !hotbar_has_totem;
+		const bool need_offhand = settings_snapshot.legit_fill_offhand && !offhand_has_totem &&
+			(!settings_snapshot.legit_low_health_only || health <= std::clamp(settings_snapshot.legit_health_threshold, 1.0f, 20.0f));
+		const bool need_hotbar = settings_snapshot.legit_fill_hotbar && !hotbar_has_totem;
 
 		if (pending_destination >= 0)
 		{
@@ -240,13 +229,13 @@ void modules::legit_auto_totem::run(::cache& cache)
 				pending_destination = -1;
 				pending_action_time = {};
 				next_action_time = now + std::chrono::milliseconds(
-					varied_delay(settings_snapshot.action_delay_ms, settings_snapshot.timing_variation_ms));
+					varied_delay(settings_snapshot.legit_action_delay_ms, settings_snapshot.legit_timing_variation_ms));
 				return;
 			}
 
 			if (pending_action_time != steady_clock::time_point{} &&
 				now - pending_action_time < std::chrono::milliseconds(
-					std::clamp(settings_snapshot.confirmation_timeout_ms, 120, 1800)))
+					std::clamp(settings_snapshot.legit_confirmation_timeout_ms, 120, 1800)))
 			{
 				return;
 			}
@@ -256,20 +245,20 @@ void modules::legit_auto_totem::run(::cache& cache)
 			pending_destination = -1;
 			pending_action_time = {};
 			next_action_time = now + std::chrono::milliseconds(
-				varied_delay(settings_snapshot.reaction_delay_ms, settings_snapshot.timing_variation_ms));
+				varied_delay(settings_snapshot.legit_reaction_delay_ms, settings_snapshot.legit_timing_variation_ms));
 			return;
 		}
 
 		if (!need_offhand && !need_hotbar)
 			return;
 
-		if (settings_snapshot.pause_with_cursor_item)
+		if (settings_snapshot.legit_pause_with_cursor_item)
 		{
 			maps::ItemStack cursor = handler.getCursorStack.call();
 			if (!cursor || platform::jni_context::clear_exception() || cursor.isEmpty.call() != JNI_TRUE)
 			{
 				next_action_time = now + std::chrono::milliseconds(
-					varied_delay(settings_snapshot.action_delay_ms, settings_snapshot.timing_variation_ms));
+					varied_delay(settings_snapshot.legit_action_delay_ms, settings_snapshot.legit_timing_variation_ms));
 				return;
 			}
 		}
@@ -284,14 +273,14 @@ void modules::legit_auto_totem::run(::cache& cache)
 		{
 			const int destination = for_offhand ? 40 : target_hotbar_index;
 			const int excluded = for_offhand ? -1 : target_hotbar_index;
-			const int source = find_source(main, totem, settings_snapshot.preserve_hotbar, excluded);
+			const int source = find_source(main, totem, settings_snapshot.legit_preserve_hotbar, excluded);
 			const int screen_slot = screen_slot_from_inventory_slot(source);
 			if (screen_slot < 0)
 				return false;
-			if (settings_snapshot.cursor_guided_swap)
+			if (settings_snapshot.legit_cursor_guided_swap)
 			{
 				const int target_screen_slot = for_offhand ? 45 : 36 + target_hotbar_index;
-				if (!guide_cursor_through_slots(screen, screen_slot, target_screen_slot, settings_snapshot.cursor_travel_ms))
+				if (!guide_cursor_through_slots(screen, screen_slot, target_screen_slot, settings_snapshot.legit_cursor_travel_ms))
 					return false;
 			}
 
@@ -304,7 +293,7 @@ void modules::legit_auto_totem::run(::cache& cache)
 			return true;
 		};
 
-		const bool action_sent = settings_snapshot.offhand_first
+		const bool action_sent = settings_snapshot.legit_offhand_first
 			? (need_offhand && try_swap(true)) || (need_hotbar && try_swap(false))
 			: (need_hotbar && try_swap(false)) || (need_offhand && try_swap(true));
 		if (action_sent)
@@ -315,38 +304,11 @@ void modules::legit_auto_totem::run(::cache& cache)
 		}
 
 		next_action_time = now + std::chrono::milliseconds(
-			varied_delay(settings_snapshot.reaction_delay_ms, settings_snapshot.timing_variation_ms));
+			varied_delay(settings_snapshot.legit_reaction_delay_ms, settings_snapshot.legit_timing_variation_ms));
 	}
 	catch (...)
 	{
 		platform::jni_context::clear_exception();
-		inventory_seen = false;
-		pending_destination = -1;
-		next_action_time = {};
-		pending_action_time = {};
+		reset_runtime();
 	}
-}
-
-void modules::legit_auto_totem::on_disable(::cache&)
-{
-	inventory_seen = false;
-	pending_destination = -1;
-	next_action_time = {};
-	pending_action_time = {};
-}
-
-void modules::legit_auto_totem::render_options()
-{
-    gui::settings::edit(settings_, module_settings::legit_auto_totem::schema(), [&](auto& candidate) {
-        const auto schema = module_settings::legit_auto_totem::schema();
-        ImGui::TextDisabled("Operates only while your Inventory screen is visibly open.");
-        gui::option_section("Destination");
-        gui::settings::render(candidate, schema.first(4));
-        gui::option_section("Safety");
-        gui::settings::render(candidate, schema.subspan(4, 7));
-        ImGui::TextDisabled("Every swap waits for visible inventory confirmation before another action.");
-        gui::option_section(gui::text("Human Timing", "Insan Zamanlamasi"));
-        gui::settings::render(candidate, schema.subspan(11));
-        ImGui::TextDisabled("It never opens or closes inventory and performs one confirmed swap at a time.");
-    });
 }

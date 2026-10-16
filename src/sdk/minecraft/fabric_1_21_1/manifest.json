@@ -12,6 +12,7 @@
     "entities.hpp",
     "client_entities.hpp",
     "input.hpp",
+    "item_render.hpp",
     "client.hpp"
   ],
   "classes": {
@@ -160,6 +161,16 @@
     "ServerInfo": "net/minecraft/class_642",
     "UUID": "java/util/UUID",
     "Session": "net/minecraft/class_320",
-    "MinecraftClient": "net/minecraft/class_310"
+    "MinecraftClient": "net/minecraft/class_310",
+    "ModelVector3f": "org/joml/Vector3f",
+    "ItemTransformation": "net/minecraft/class_804",
+    "ItemModelTransformation": "net/minecraft/class_809",
+    "ModelRandom": "net/minecraft/class_5819",
+    "ItemSprite": "net/minecraft/class_1058",
+    "ItemBakedQuad": "net/minecraft/class_777",
+    "ItemBakedModel": "net/minecraft/class_1087",
+    "ItemColors": "net/minecraft/class_325",
+    "ItemModels": "net/minecraft/class_763",
+    "ItemRenderer": "net/minecraft/class_918"
   }
 }

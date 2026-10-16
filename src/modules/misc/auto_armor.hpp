@@ -14,7 +14,7 @@ class auto_armor : public module
 		void run(::cache& cache) override;
 		void on_disable(::cache& cache) override;
 		void render_options() override;
-		float get_options_height() override { return 180.0f; }
+		float get_options_height() override { return 205.0f; }
 		void visit_config(config_visitor& v) override
 		{ settings_.visit(v, module_settings::auto_armor::schema()); }
 

@@ -1,0 +1,12 @@
+{
+  "service": "onestep-auth",
+  "account_id": "cfc4f3db5e820039a59aa5c480a6b866",
+  "database_id": "0ae81f68-142f-4be8-a0d8-c224a02cc96a",
+  "hostname": "onestep-auth.gogogamesas.workers.dev",
+  "public_key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE35Iq5GCPT9XOiYFAssM0MsGY3yYhh1c02V8mY8vifG39uzQBzzKVIM4JN4P-MgTC5HScLZhrWSfVJdNw570CMg",
+  "deployment_id": "411880c4ac684e2580faba8df31d7afa",
+  "release_namespace_id": "bbdeabd4eb8e428e8dc8704d59619a03",
+  "device_proof": "cng-p256-v1",
+  "created_on": "2026-10-16",
+  "allow_device_configs": false
+}

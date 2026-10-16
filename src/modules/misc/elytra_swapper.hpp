@@ -15,7 +15,7 @@ class elytra_swapper : public module
 		void render_overlay() override;
 		void on_disable(::cache& cache) override;
 		void render_options() override;
-		float get_options_height() override { return 205.0f; }
+		float get_options_height() override { return 230.0f; }
 		void visit_config(config_visitor& v) override
 		{ settings_.visit(v, module_settings::elytra_swapper::schema()); }
 

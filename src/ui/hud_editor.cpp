@@ -9,6 +9,7 @@
 #include "../modules/core/module_registry.hpp"
 #include "../modules/render/arraylist.hpp"
 #include "../modules/visual/spotify_hud.hpp"
+#include "../modules/visual/target_hud.hpp"
 #include <algorithm>
 #include <array>
 #include <cfloat>
@@ -19,9 +20,10 @@
 namespace
 {
     namespace layout = gui::hud_editor_layout;
-    using snapshot = std::array<gui::aegis::hud_placement, 3>;
-    constexpr const char* ids[] = { "watermark", "arraylist", "spotify_hud" };
-    constexpr const char* names[] = { "Watermark", "ArrayList", "Spotify" };
+    constexpr int overlay_count = 4;
+    using snapshot = std::array<gui::aegis::hud_placement, overlay_count>;
+    constexpr const char* ids[] = { "watermark", "arraylist", "spotify_hud", "target_hud" };
+    constexpr const char* names[] = { "Watermark", "ArrayList", "Spotify", "Target HUD" };
     int selected = 0, dragging = -1;
     bool grid = false, snap = true, restored = false;
     ImVec2 drag_offset{};
@@ -31,12 +33,21 @@ namespace
     {
         return dynamic_cast<modules::spotify_hud*>(modules::find_module_by_id(ids[2]));
     }
+    modules::target_hud* target_module()
+    {
+        return dynamic_cast<modules::target_hud*>(modules::find_module_by_id(ids[3]));
+    }
     snapshot capture()
     {
         snapshot result{{ {gui::hud_pos_x, gui::hud_pos_y, gui::hud_scale},
-            {gui::arraylist_pos_x, gui::arraylist_pos_y, gui::arraylist_scale}, {22, 60, 1.2f} }};
+            {gui::arraylist_pos_x, gui::arraylist_pos_y, gui::arraylist_scale}, {22, 60, 1.2f}, {360, 260, 1, false} }};
         if (auto* spotify = spotify_module()) { result[2].x = spotify->get_pos_x(); result[2].y = spotify->get_pos_y(); }
-        for (int index = 0; index < 3; ++index)
+        if (auto* target = target_module())
+        {
+            const auto settings = target->get_settings();
+            result[3].x = settings.position_x; result[3].y = settings.position_y; result[3].scale = settings.scale;
+        }
+        for (int index = 0; index < overlay_count; ++index)
             if (auto* module = modules::find_module_by_id(ids[index])) result[index].visible = module->enabled;
         return result;
     }
@@ -45,7 +56,8 @@ namespace
         gui::hud_pos_x = value[0].x; gui::hud_pos_y = value[0].y; gui::hud_scale = value[0].scale;
         gui::arraylist_pos_x = value[1].x; gui::arraylist_pos_y = value[1].y; gui::arraylist_scale = value[1].scale;
         if (auto* spotify = spotify_module()) { spotify->set_pos_x(value[2].x); spotify->set_pos_y(value[2].y); }
-        for (int index = 0; index < 3; ++index)
+        if (auto* target = target_module()) target->set_placement(value[3].x, value[3].y, value[3].scale);
+        for (int index = 0; index < overlay_count; ++index)
             if (auto* module = modules::find_module_by_id(ids[index])) module->enabled = value[index].visible;
     }
     void save()
@@ -70,6 +82,7 @@ namespace
         if (index == 0) { gui::hud_pos_x = position.x; gui::hud_pos_y = position.y; }
         if (index == 1) { gui::arraylist_pos_x = std::max(8.f, canvas.x - position.x - size.x); gui::arraylist_pos_y = position.y; }
         if (index == 2) if (auto* spotify = spotify_module()) { spotify->set_pos_x(position.x); spotify->set_pos_y(position.y); }
+        if (index == 3) if (auto* target = target_module()) target->set_placement(position.x, position.y, target->get_settings().scale);
         save();
     }
     void draw_editor_text(ImDrawList* draw, const ImVec2& position, float size, ImU32 color, const char* value)
@@ -103,7 +116,7 @@ namespace
 
 void gui::hud_editor::restore_saved_layout()
 {
-    if (restored || !modules::find_module_by_id(ids[2])) return;
+    if (restored || !modules::find_module_by_id(ids[2]) || !modules::find_module_by_id(ids[3])) return;
     restored = true;
     const auto& preferences = gui::aegis::get_preferences();
     if (preferences.has_hud_layout) apply(preferences.hud_layout);
@@ -147,9 +160,9 @@ void gui::hud_editor::render(const ImGuiViewport* viewport)
             gui::text("Drag / arrows: 1px / Shift: 10px / Alt: free / Ctrl+Z: undo", "Sürükle / oklar: 1px / Shift: 10px / Alt: serbest / Ctrl+Z: geri al"));
 
         struct item { ImVec2 position{}, size{}; int first = 0, last = 0; modules::module* module = nullptr; };
-        std::array<item, 3> items{};
+        std::array<item, overlay_count> items{};
         // Capture actual drawing bounds once. The editor never substitutes mock shapes.
-        for (int index = 0; index < 3; ++index)
+        for (int index = 0; index < overlay_count; ++index)
         {
             auto& item = items[index]; item.module = modules::find_module_by_id(ids[index]);
             item.first = draw->VtxBuffer.Size;
@@ -172,9 +185,15 @@ void gui::hud_editor::render(const ImGuiViewport* viewport)
                 item.position = {bounds.x, bounds.y}; item.size = {bounds.w, bounds.h};
                 spotify->render_hud_preview(draw, item.position.x, item.position.y);
             }
+            if (index == 3) if (auto* target = target_module())
+            {
+                const auto bounds = target->get_bounds(canvas.x, canvas.y);
+                item.position = {bounds.x, bounds.y}; item.size = {bounds.w, bounds.h};
+                target->render_hud_preview(draw, item.position.x, item.position.y);
+            }
             item.last = draw->VtxBuffer.Size;
         }
-        for (int index = 0; index < 3; ++index)
+        for (int index = 0; index < overlay_count; ++index)
         {
             auto& item = items[index];
             if (!item.module || item.size.x < 1 || item.size.y < 1) continue;
@@ -198,7 +217,7 @@ void gui::hud_editor::render(const ImGuiViewport* viewport)
             if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left))
             {
                 std::vector<layout::rect> neighbours;
-                for (int other = 0; other < 3; ++other) if (other != index && items[other].size.x > 0)
+                for (int other = 0; other < overlay_count; ++other) if (other != index && items[other].size.x > 0)
                     neighbours.push_back({items[other].position.x, items[other].position.y, items[other].size.x, items[other].size.y});
                 const auto placed = layout::place({mouse.x - origin.x - drag_offset.x, mouse.y - origin.y - drag_offset.y},
                     {item.size.x, item.size.y}, {canvas.x, canvas.y}, snap, grid, neighbours, ImGui::GetIO().KeyAlt);
@@ -245,27 +264,29 @@ void gui::hud_editor::render(const ImGuiViewport* viewport)
         // Fixed controls are drawn last and cannot be covered by a dragged overlay.
         draw->AddRectFilled(toolbar, toolbar_max, IM_COL32(14, 17, 23, 244), 12);
         draw->AddRect(toolbar, toolbar_max, IM_COL32(255, 255, 255, 26), 12);
-        const float slot = std::max(1.f, (toolbar_width - 24 - 30) / 6);
+        const float slot = std::max(1.f, (toolbar_width - 24 - 36) / 7);
         auto location = [&](int column, int row) { return ImVec2(toolbar.x + 12 + column * (slot + 6), toolbar.y + 10 + row * 34); };
         const ImVec2 button_size(slot, 28);
-        for (int index = 0; index < 3; ++index)
+        for (int index = 0; index < overlay_count; ++index)
             if (button(ids[index], names[index], location(index, 0), button_size, selected == index, !items[index].module)) selected = index;
-        if (button("##grid", gui::text("Grid", "Izgara"), location(3, 0), button_size, grid)) grid = !grid;
-        if (button("##snap", gui::text("Snap", "Hizala"), location(4, 0), button_size, snap)) snap = !snap;
-        if (button("##done", gui::text("Done", "Tamam"), location(5, 0), button_size, true)) close();
+        if (button("##grid", gui::text("Grid", "Izgara"), location(4, 0), button_size, grid)) grid = !grid;
+        if (button("##snap", gui::text("Snap", "Hizala"), location(5, 0), button_size, snap)) snap = !snap;
+        if (button("##done", gui::text("Done", "Tamam"), location(6, 0), button_size, true)) close();
         auto* selected_module = items[selected].module;
-        const bool scalable = selected < 2 && selected_module;
-        float* scale = selected == 0 ? &gui::hud_scale : &gui::arraylist_scale;
+        const bool scalable = selected != 2 && selected_module;
+        auto value = capture();
+        float scale = value[selected].scale;
+        auto apply_scale = [&](float next) { remember(); value[selected].scale = next; apply(value); save(); };
         if (button("##visible", selected_module && selected_module->enabled ? gui::text("Visible", "Görünür") : gui::text("Hidden", "Gizli"),
             location(0, 1), button_size, selected_module && selected_module->enabled, !selected_module))
         { remember(); selected_module->enabled = !selected_module->enabled; save(); }
-        if (button("##scale_down", "-", location(1, 1), button_size, false, !scalable || *scale <= .5f))
-        { remember(); *scale = std::max(.5f, *scale - .05f); save(); }
+        if (button("##scale_down", "-", location(1, 1), button_size, false, !scalable || scale <= .5f))
+        { scale = std::max(.5f, scale - .05f); apply_scale(scale); }
         char scale_text[24]{};
-        std::snprintf(scale_text, sizeof(scale_text), selected == 2 ? "1.20x" : "%.2fx", *scale);
+        std::snprintf(scale_text, sizeof(scale_text), "%.2fx", scale);
         button("##scale_value", scale_text, location(2, 1), button_size, false, true);
-        if (button("##scale_up", "+", location(3, 1), button_size, false, !scalable || *scale >= 2.f))
-        { remember(); *scale = std::min(2.f, *scale + .05f); save(); }
+        if (button("##scale_up", "+", location(3, 1), button_size, false, !scalable || scale >= 2.f))
+        { scale = std::min(2.f, scale + .05f); apply_scale(scale); }
         if (button("##undo", gui::text("Undo", "Geri al"), location(4, 1), button_size, false, history.empty())) undo();
         if (button("##reset", gui::text("Reset", "Sıfırla"), location(5, 1), button_size, false, !selected_module))
         {

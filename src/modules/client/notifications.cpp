@@ -1,7 +1,6 @@
 #include "notifications.hpp"
 #include "../../services/notifications/notification_service.hpp"
 #include "../../ui/settings_renderer.hpp"
-#include "../../gui/gui.hpp"
 #include "../ui_redirect.hpp"
 
 modules::notifications::notifications() : module("notifications", "Client", "notifications")
@@ -15,6 +14,4 @@ void modules::notifications::on_disable(::cache&) { services::notifications::con
 void modules::notifications::render_options()
 {
     gui::settings::render(settings_, module_settings::notifications::schema());
-    ImGui::TextWrapped("%s", gui::text("Uses the active theme and Reduce Motion preference. Always silent.",
-        "Aktif temayi ve Azaltilmis Hareket tercihini kullanir. Her zaman sessizdir."));
 }

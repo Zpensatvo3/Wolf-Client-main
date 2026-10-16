@@ -93,7 +93,7 @@ namespace
     void write_hud_preferences(std::ostream& output, const gui::aegis::preferences& value)
     {
         output << "{\n  \"has_hud_layout\": " << (value.has_hud_layout ? "true" : "false") << ",\n";
-        const char* ids[] = { "watermark", "arraylist", "spotify" };
+        const char* ids[] = { "watermark", "arraylist", "spotify", "target_hud" };
         for (std::size_t index = 0; index < value.hud_layout.size(); ++index)
         {
             const auto& item = value.hud_layout[index];
@@ -176,7 +176,7 @@ void gui::aegis::load_preferences()
     state.window_position = ImVec2(x, y);
     state.window_size = ImVec2(width, height);
     read_boolean(source, "has_hud_layout", state.has_hud_layout);
-    const char* ids[] = { "watermark", "arraylist", "spotify" };
+    const char* ids[] = { "watermark", "arraylist", "spotify", "target_hud" };
     for (std::size_t index = 0; index < state.hud_layout.size(); ++index)
     {
         auto& item = state.hud_layout[index];

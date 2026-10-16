@@ -65,13 +65,13 @@ int main()
     check_contract<inv_walk>({"allow_containers", "allow_jump", "allow_sneak"});
     assert(inv_walk{}.allow_containers && inv_walk{}.allow_jump && !inv_walk{}.allow_sneak);
     check_contract<fast_place>({"delay"});
-    check_contract<auto_armor>({"action_delay_ms", "protect_elytra"});
+    check_contract<auto_armor>({"action_delay_ms", "protect_elytra", "work_without_inventory"});
     check_contract<auto_tool>({"require_left_click", "prefer_hotbar_only"});
     check_contract<pearl_macro>({"switch_delay", "return_delay"});
     check_contract<mouse_tweaks>({"right_click_tweak", "left_click_with_item", "left_click_without_item"});
     check_contract<bridge_assist>({"edge_offset", "unsneak_delay", "require_block_item", "only_while_moving"});
     check_contract<chest_stealer>({"min_delay_ms", "max_delay_ms", "open_reaction_ms", "random_slot_order"});
-    check_contract<elytra_swapper>({"target_mode", "swap_delay_ms", "use_hotbar"});
+    check_contract<elytra_swapper>({"target_mode", "swap_delay_ms", "use_hotbar", "work_without_inventory"});
     check_contract<pot_refill>({"delay_ms", "random_delay", "max_delay_ms", "slot_order"});
 
     assert(sprint{}.stop_while_using_item && fast_place{}.delay == 0);

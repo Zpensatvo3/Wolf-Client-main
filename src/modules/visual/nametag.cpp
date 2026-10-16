@@ -1,4 +1,5 @@
 #include "nametag.hpp"
+#include "../../services/game/name_protect.hpp"
 #include "../../services/game/anti_bot_service.hpp"
 #include "../../ui/settings_renderer.hpp"
 #include "../../cache/cache.hpp"
@@ -764,7 +765,8 @@ void modules::nametag::render_overlay()
 		char health_text[32]{};
 		std::snprintf(health_text, sizeof(health_text), "%.0f HP", entry.health);
 
-		const ImVec2 name_size = font->CalcTextSizeA(font_size, FLT_MAX, 0.0f, entry.name.c_str());
+		const auto display_name=services::privacy::display_name(entry.name);
+		const ImVec2 name_size = font->CalcTextSizeA(font_size, FLT_MAX, 0.0f, display_name.c_str());
 		const ImVec2 health_size = settings_snapshot.show_health
 			? font->CalcTextSizeA(small_font_size, FLT_MAX, 0.0f, health_text)
 			: ImVec2{};
@@ -793,9 +795,9 @@ void modules::nametag::render_overlay()
 
 		// Drop shadow for text (Vanilla font shadow style)
 		draw_list->AddText(font, font_size, ImVec2(name_pos.x + 1.0f * scale, name_pos.y + 1.0f * scale),
-			IM_COL32(32, 32, 32, 220), entry.name.c_str());
+			IM_COL32(32, 32, 32, 220), display_name.c_str());
 		draw_list->AddText(font, font_size, name_pos,
-			IM_COL32(255, 255, 255, 255), entry.name.c_str());
+			IM_COL32(255, 255, 255, 255), display_name.c_str());
 
 		top_x += name_size.x + top_gap;
 		if (settings_snapshot.show_health)

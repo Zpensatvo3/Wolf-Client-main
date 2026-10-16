@@ -1,4 +1,5 @@
 #include "module_loop.hpp"
+#include "../auth/client.hpp"
 #include "../cache/cache.hpp"
 #include "../gui/gui.hpp"
 #include "../modules/core/module_registry.hpp"
@@ -29,11 +30,12 @@ namespace
 
 void app::module_loop::tick(::cache& game)
 {
+    if (!auth::client::access_allowed()) return;
     game.update();
     const bool allow_input = gameplay_input_allowed(game);
     for (modules::module* entry : modules::get_modules())
     {
-        if (gui::should_unload) break;
+        if (gui::should_unload || !auth::client::access_allowed()) break;
         const int binding = entry->get_keybind();
         bool pressed = binding > 0 && binding != gui::menu_key &&
             (GetAsyncKeyState(binding) & 0x8000) != 0;

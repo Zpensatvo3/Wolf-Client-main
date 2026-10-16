@@ -98,7 +98,9 @@ void modules::auto_armor::run(::cache& cache)
 	{
 		jni::frame frame{ 112 };
 		maps::Screen screen = cache.instance.currentScreen.get();
-		if (!screen || platform::jni_context::clear_exception() || !screen.is_instance_of<maps::InventoryScreen>())
+		if (platform::jni_context::clear_exception() ||
+			(screen && !screen.is_instance_of<maps::InventoryScreen>()) || platform::jni_context::clear_exception() ||
+			(!screen && !settings_snapshot.work_without_inventory))
 		{
 			reset_runtime();
 			return;
@@ -183,6 +185,6 @@ void modules::auto_armor::render_options()
 {
 	gui::settings::render(settings_, module_settings::auto_armor::schema());
 	ImGui::TextDisabled("%s", gui::text(
-		"Only works in your open inventory and equips one better armor piece at a time.",
-		"Yalnizca acik envanterde calisir, bir seferde tek daha iyi zirh takar."));
+		"Equips one better armor piece at a time.",
+		"Her seferinde bir daha iyi zirh parcasi takar."));
 }

@@ -1,0 +1,24 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "onestep-auth",
+  "account_id": "cfc4f3db5e820039a59aa5c480a6b866",
+  "main": "worker.js",
+  "compatibility_date": "2026-10-16",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "vars": { "ALLOW_DEVICE_CONFIGS": "false" },
+  "kv_namespaces": [{ "binding": "RELEASES", "id": "bbdeabd4eb8e428e8dc8704d59619a03" }],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.1,
+    "logs": { "enabled": true, "invocation_logs": false }
+  },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "onestep-licenses",
+    "database_id": "0ae81f68-142f-4be8-a0d8-c224a02cc96a"
+  }],
+  "durable_objects": { "bindings": [{ "name": "RATE_LIMITER", "class_name": "RateLimiter" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RateLimiter"] }]
+}

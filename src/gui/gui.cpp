@@ -3,6 +3,9 @@
 #endif
 
 #include "gui.hpp"
+#include "auth_screen.hpp"
+#include "../auth/client.hpp"
+#include "module_descriptions.hpp"
 #include "ui_state.hpp"
 #include "theme_palette.hpp"
 #include "surface_style.hpp"
@@ -23,6 +26,7 @@
 #include "../modules/misc/fast_exp.hpp"
 #include "../modules/misc/left_clicker.hpp"
 #include "../modules/misc/right_clicker.hpp"
+#include "../modules/misc/inv_walk.hpp"
 #include "../friends/friends.hpp"
 #include "../configs/configs.hpp"
 #include "../loader/loader_ui.hpp"
@@ -527,54 +531,7 @@ namespace
 
 	const char* module_description(const char* name)
 	{
-		if (!name) return "";
-		struct description_entry { const char* name; const char* english; const char* turkish; };
-		static const description_entry entries[] = {
-			{ "click gui", "Controls the client language", "Client dilini ayarlar" },
-			{ "panic", "Safely closes the client", "Clienti guvenli bicimde kapatir" },
-			{ "triggerbot", "Attacks valid targets under the crosshair", "Nişangâhtaki geçerli hedeflere saldırır" },
-			{ "mace swap", "Swaps to a mace for the impact, then returns", "Vuruş anında topuza geçip önceki slota döner" },
-			{ "anchor macro", "Places, charges and detonates a respawn anchor", "Yeniden doğma çapasını kurar, şarj eder ve patlatır" },
-			{ "blatant anchor macro", "Executes the anchor sequence at maximum speed", "Çapa dizisini maksimum hızda uygular" },
-			{ "safe anchor", "Runs anchor actions with additional safety checks", "Çapa işlemlerini ek güvenlik kontrolleriyle uygular" },
-			{ "hit crystal", "Places and breaks crystals after a manual hit", "Manuel vuruştan sonra kristal koyup kırar" },
-			{ "legit click aim assist", "Smooth aim assistance while clicking", "Tıklarken yumuşak nişan desteği sağlar" },
-			{ "blatant click aim assist", "Strong target tracking while clicking", "Tıklarken güçlü hedef takibi sağlar" },
-			{ "aim assist", "Smoothly guides the crosshair toward targets", "Nişangâhı hedeflere yumuşakça yönlendirir" },
-			{ "jump reset", "Times jumps to reduce incoming knockback", "Geri tepmeyi azaltmak için zıplamayı zamanlar" },
-			{ "shield breaker", "Switches to an axe against blocking players", "Kalkan kullanan oyunculara karşı baltaya geçer" },
-			{ "auto totem", "Moves available totems to protected slots", "Mevcut totemleri korumalı slotlara taşır" },
-			{ "legit auto totem", "Refills totems with human-like inventory input", "Totemleri doğal envanter hareketleriyle doldurur" },
-			{ "watermark", "Shows the Thedorius Lite status overlay", "Thedorius Lite durum göstergesini ekrana çizer" },
-			{ "arraylist", "Shows enabled modules on the game overlay", "Etkin modülleri oyun ekranında gösterir" },
-			{ "glow esp", "Highlights visible players with a glow effect", "Görünür oyuncuları parlama efektiyle vurgular" },
-			{ "chams", "Colored player model overlay", "Oyuncu modeli renkli kaplamasi" },
-			{ "player esp", "Displays configurable player highlights", "Oyuncuları ayarlanabilir vurgularla gösterir" },
-			{ "storage esp", "Highlights nearby storage blocks", "Yakındaki depolama bloklarını vurgular" },
-			{ "block esp", "Highlights only the block types you select", "Yalnızca seçtiğin blok türlerini vurgular" },
-			{ "radar", "Shows nearby players on a compact radar", "Yakındaki oyuncuları kompakt radarda gösterir" },
-			{ "full bright", "Brightens dark areas without changing the world", "Dünyayı değiştirmeden karanlık alanları aydınlatır" },
-			{ "nametag", "Replaces player labels with detailed nametags", "Oyuncu etiketlerini ayrıntılı nametaglerle değiştirir" },
-			{ "pearl macro", "Throws a pearl and returns to the previous slot", "İnci atıp önceki slota geri döner" },
-			{ "chest stealer", "Moves chest contents into the inventory", "Sandık içeriğini envantere taşır" },
-			{ "elytra swapper", "Switches between an elytra and chestplate", "Elytra ile göğüslük arasında geçiş yapar" },
-			{ "auto tool", "Selects the best tool for the targeted block", "Bakılan blok için en uygun aleti seçer" },
-			{ "auto armor", "Equips the strongest available armor", "Mevcut en güçlü zırhı kuşanır" },
-			{ "bridge assist", "Sneaks automatically near block edges", "Blok kenarlarında otomatik olarak eğilir" },
-			{ "sprint", "Keeps sprint active while moving", "Hareket ederken koşmayı etkin tutar" },
-			{ "trajectories", "Previews projectile flight paths", "Fırlatılabilir eşyaların uçuş yolunu gösterir" },
-			{ "right clicker", "Generates configurable right clicks", "Ayarlanabilir sağ tıklamalar üretir" },
-			{ "left clicker", "Generates configurable left clicks", "Ayarlanabilir sol tıklamalar üretir" },
-			{ "inventory clicker", "Accelerates repeated inventory clicks", "Tekrarlanan envanter tıklamalarını hızlandırır" },
-			{ "fast place", "Reduces delay between block placements", "Blok yerleştirmeleri arasındaki gecikmeyi azaltır" },
-			{ "fast exp", "Throws experience bottles at adjustable speed", "Tecrübe şişelerini ayarlanabilir hızda kullanır" },
-			{ "mouse tweaks", "Improves inventory dragging and item movement", "Envanter sürükleme ve eşya taşıma işlemlerini iyileştirir" },
-			{ "pot refill", "Refills the hotbar with Instant Health potions", "Hotbarı Anında Sağlık iksirleriyle doldurur" }
-		};
-		for (const description_entry& entry : entries)
-			if (std::strcmp(entry.name, name) == 0)
-				return gui::text(entry.english, entry.turkish);
-		return gui::text("Client module", "Client modülü");
+		return gui::module_description(name);
 	}
 
 	std::string ellipsize_text(ImFont* font, float size, const char* text, float maximum_width)
@@ -2775,6 +2732,7 @@ static LRESULT CALLBACK detour_WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			return;
 		previous = pressed;
 		services::input::observe_physical(left ? services::input::mouse_button::left : services::input::mouse_button::right, pressed);
+		if (!auth::client::access_allowed()) return;
 		if (left)
 		{
 			modules::left_clicker::notify_manual_click(pressed);
@@ -2918,6 +2876,8 @@ static LRESULT CALLBACK detour_WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 static void uninit(HWND hWnd, HDC device)
 {
+    for (auto* module : modules::get_modules())
+        module->on_render_shutdown();
 	// Release owned jump input while client-thread JNI and the input guard are
 	// still available, before module destruction/unhooking on the worker.
 	if (auto* jump = dynamic_cast<modules::jump_reset*>(modules::find_module_by_id("jump_reset")))
@@ -2940,6 +2900,7 @@ static void uninit(HWND hWnd, HDC device)
 		}
 		icon_texture_attempted.fill(false);
 	}
+	gui::clear_auth_screen();
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplWin32_Shutdown();
 	ImGui::DestroyContext(imGuiContext);
@@ -3072,6 +3033,8 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 		icon_range_builder.AddChar(0xF234);
 		icon_range_builder.AddChar(0xF503);
 		icon_range_builder.AddChar(0xF554);
+		icon_range_builder.AddChar(0xF0E7); // bolt: Vape
+		icon_range_builder.AddChar(0xF53F); // palette: Themes
 		icon_range_builder.AddChar(0xF007);
 		icon_range_builder.AddChar(0xF013);
 		icon_range_builder.AddChar(0xF07B);
@@ -3169,6 +3132,16 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 
 	wglMakeCurrent(device, new_context);
 
+	const bool auth_open = auth::client::login_required();
+	static bool previous_auth_open = false;
+	if (auth_open) gui::draw = true;
+	else if (previous_auth_open)
+	{
+		gui::draw = false;
+		gui::suppress_menu_key_until_release = true;
+	}
+	previous_auth_open = auth_open;
+
 	// Poll the fixed Right Shift shortcut every frame. GLFW does not reliably
 	// expose every Windows virtual key through the hooked WndProc path.
 	{
@@ -3180,7 +3153,7 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 				gui::suppress_menu_key_until_release = false;
 		}
 		else if (current_menu_key && !previous_menu_key && !gui::menu_key_scanning &&
-			!gui::should_unload && !gui::loader_visible)
+			!gui::should_unload && !gui::loader_visible && !auth_open)
 		{
 			gui::draw = !gui::draw;
 			ClipCursor(NULL);
@@ -3213,7 +3186,8 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 		ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Right, (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0);
 	}
 	ImGui::NewFrame();
-	platform::client_dispatcher::drain();
+	if (auth::client::access_allowed()) platform::client_dispatcher::drain();
+	else platform::client_dispatcher::clear();
 
 
 	// Update dynamic accent colors in style
@@ -3272,10 +3246,11 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 	// Render HUD and ArrayList overlays
 	gui::hud_editor::restore_saved_layout();
 	gui::hud_editor_active = gui::draw && gui::hud_layout_editor_active;
-	if (!gui::loader_visible)
+	if (!gui::loader_visible && auth::client::access_allowed())
 	{
 		for (modules::module* module : modules::get_modules())
 		{
+			if (!auth::client::access_allowed()) break;
 			if (module->enabled || module->render_when_disabled())
 				module->render_overlay();
 		}
@@ -3288,7 +3263,7 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 			walk->cancel_on_client_thread();
 	}
 
-	if (gui::draw && !gui::loader_visible)
+	if (gui::draw && !gui::loader_visible && auth::client::access_allowed())
 	{
 		const ImGuiViewport* reference_viewport = ImGui::GetMainViewport();
 
@@ -3299,7 +3274,8 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 
 
 	}
-	gui::render_notifications();
+	if (auth::client::access_allowed()) gui::render_notifications();
+	if (!gui::loader_visible) gui::render_auth_screen();
 	gui::aegis::flush_preferences();
 	ImGui::EndFrame();
 	ImGui::Render();

@@ -1,4 +1,7 @@
-// Enterprise Cloudflare Worker API & Admin Dashboard for Wolf-Client Licensing System
+// Onestep license API and admin dashboard.
+import { licenseExpiryMs, sessionExpiryMs, validSessionTimes } from "./session-policy.mjs";
+import { verifyDeviceProof } from "./device-proof.mjs";
+import { handleLauncher } from "./launcher.mjs";
 
 const AUTH_AUDIENCE = "wolf-client-v1";
 const MAX_JSON_BYTES = 4096;
@@ -11,7 +14,6 @@ const MINECRAFT_NAME = /^[A-Za-z0-9_]{3,16}$/;
 // The client renews this token in the background.  A longer window protects a
 // legitimate session from short Cloudflare/ISP interruptions without changing
 // the actual licence expiry or the server-side HWID/epoch checks.
-const SESSION_TTL_MS = 45 * 60 * 1000;
 
 function requiredSecret(env, name) {
     const value = env[name];
@@ -115,6 +117,9 @@ async function ensureLicenseSchema(env) {
             if (!columns.has("hwid_hint")) {
                 await env.DB.prepare("ALTER TABLE license_keys ADD COLUMN hwid_hint TEXT").run();
             }
+            if (!columns.has("device_key_hash")) {
+                await env.DB.prepare("ALTER TABLE license_keys ADD COLUMN device_key_hash TEXT").run();
+            }
             licenseSchemaReady = true;
             return;
         }
@@ -129,6 +134,7 @@ async function ensureLicenseSchema(env) {
             "key_encrypted TEXT, " +
             "hwid_hash TEXT, " +
             "hwid_hint TEXT, " +
+            "device_key_hash TEXT, " +
             "license_epoch INTEGER DEFAULT 1, " +
             "expires_at DATETIME, " +
             "status TEXT DEFAULT 'unused', " +
@@ -276,11 +282,11 @@ function generateRandomKey() {
         return bytes[0] % chars.length;
     };
     const seg = (len) => Array.from({ length: len }, () => chars[randomIndex()]).join('');
-    return `WOLF-${seg(4)}-${seg(4)}-${seg(4)}`;
+    return `ONESTEP-${seg(4)}-${seg(4)}-${seg(4)}`;
 }
 
 function jsonResponse(data, status = 200) {
-    return new Response(JSON.stringify(data), {
+    return new Response(status === 204 ? null : JSON.stringify(data), {
         status: status,
         headers: {
             "Content-Type": "application/json; charset=utf-8",
@@ -315,29 +321,39 @@ function writeAdminAudit(ctx, env, request, action, keyId, reason) {
     } catch (_) { }
 }
 
-async function readJson(request) {
+async function readBoundedJson(request, maximum) {
     const contentType = request.headers.get("Content-Type") || "";
     if (!contentType.toLowerCase().includes("application/json")) {
         throw new Error("Content-Type must be application/json");
     }
     const contentLength = Number(request.headers.get("Content-Length") || "0");
-    if (contentLength > MAX_JSON_BYTES) throw new Error("Request body too large");
-    const text = await request.text();
-    if (text.length === 0 || text.length > MAX_JSON_BYTES) throw new Error("Request body too large");
-    return JSON.parse(text);
+    if (contentLength > maximum || !request.body) throw new Error("Request body too large or empty");
+    const reader = request.body.getReader();
+    const chunks = [];
+    let length = 0;
+    try {
+        for (;;) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            length += value.byteLength;
+            if (length > maximum) {
+                await reader.cancel();
+                throw new Error("Request body too large");
+            }
+            chunks.push(value);
+        }
+    } finally { reader.releaseLock(); }
+    if (!length) throw new Error("Request body empty");
+    const body = new Uint8Array(length);
+    let offset = 0;
+    for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.byteLength; }
+    const parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(body));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Invalid request object");
+    return parsed;
 }
 
-async function readConfigJson(request) {
-    const contentType = request.headers.get("Content-Type") || "";
-    if (!contentType.toLowerCase().includes("application/json")) {
-        throw new Error("Content-Type must be application/json");
-    }
-    const contentLength = Number(request.headers.get("Content-Length") || "0");
-    if (contentLength > MAX_CONFIG_JSON_BYTES) throw new Error("Request body too large");
-    const text = await request.text();
-    if (text.length === 0 || text.length > MAX_CONFIG_JSON_BYTES) throw new Error("Request body too large");
-    return JSON.parse(text);
-}
+async function readJson(request) { return readBoundedJson(request, MAX_JSON_BYTES); }
+async function readConfigJson(request) { return readBoundedJson(request, MAX_CONFIG_JSON_BYTES); }
 
 async function importSigningPrivateKey(env) {
     const der = base64UrlDecode(requiredSecret(env, "SIGNING_PRIVATE_KEY_PKCS8"));
@@ -381,7 +397,7 @@ async function verifySessionToken(token, env) {
     const payload = JSON.parse(new TextDecoder().decode(payloadBytes));
     if (!payload || payload.aud !== AUTH_AUDIENCE || !HEX_64.test(String(payload.key_hash || "")) ||
         !HEX_64.test(String(payload.hwid_hash || "")) || !Number.isInteger(payload.license_epoch) ||
-        !Number.isFinite(payload.exp) || payload.exp < Date.now()) {
+        payload.license_epoch <= 0 || !validSessionTimes(payload, Date.now())) {
         throw new Error("Expired or malformed session token");
     }
     return payload;
@@ -394,6 +410,7 @@ async function requireActiveConfigSession(body, env) {
     // a licence or access the admin API.
     const suppliedToken = String(body && body.session_token || "");
     if (!suppliedToken) {
+        if (env.ALLOW_DEVICE_CONFIGS !== "true") throw new Error("Missing license session");
         const deviceId = String(body && body.device_id || "");
         if (!HEX_64.test(deviceId)) {
             throw new Error("Missing config device identity");
@@ -409,16 +426,18 @@ async function requireActiveConfigSession(body, env) {
 
     const claims = await verifySessionToken(suppliedToken, env);
     const license = await env.DB.prepare(
-        "SELECT key_hash, hwid_hash, license_epoch, status, expires_at FROM license_keys WHERE key_hash = ? LIMIT 1"
+        "SELECT key_hash, hwid_hash, device_key_hash, license_epoch, status, expires_at FROM license_keys WHERE key_hash = ? LIMIT 1"
     ).bind(claims.key_hash).first();
     if (!license || String(license.status || "").toLowerCase() !== "active") {
         throw new Error("License session is not active");
     }
     if (Number(license.license_epoch || 1) !== claims.license_epoch ||
-        !constantTimeEqual(String(license.hwid_hash || ""), claims.hwid_hash)) {
+        !constantTimeEqual(String(license.hwid_hash || ""), claims.hwid_hash) ||
+        (license.device_key_hash && !constantTimeEqual(license.device_key_hash, claims.device_key_hash || ""))) {
         throw new Error("License session was revoked");
     }
-    if (license.expires_at && Date.now() > new Date(license.expires_at).getTime()) {
+    const licenseExpiry = licenseExpiryMs(license.expires_at);
+    if (licenseExpiry !== null && (!Number.isFinite(licenseExpiry) || Date.now() >= licenseExpiry)) {
         throw new Error("License session expired");
     }
     return claims;
@@ -484,9 +503,26 @@ export default {
     async fetch(request, env, ctx) {
         const url = new URL(request.url);
 
+        if (url.pathname === "/health" && request.method === "GET") {
+            try {
+                for (const name of ["KEY_PEPPER", "HWID_PEPPER", "ADMIN_TOKEN_HASH", "SIGNING_PRIVATE_KEY_PKCS8", "SIGNING_PUBLIC_KEY_SPKI"])
+                    requiredSecret(env, name);
+                if (!env.RATE_LIMITER) throw new Error("Missing rate limiter");
+                await env.DB.prepare("SELECT 1").first();
+                return jsonResponse({ status: "ok", service: "onestep-auth" });
+            } catch (_) { return jsonResponse({ status: "unavailable" }, 503); }
+        }
+
         if (request.method === "OPTIONS") {
             return jsonResponse(null, 204);
         }
+
+        const launcherResponse = await handleLauncher(request, env, ctx, {
+            json: jsonResponse, read: readBoundedJson, rate: enforceRateLimit,
+            admin: verifyAdminAuth, session: requireActiveConfigSession,
+            hash: sha256, secret: requiredSecret, sign: signPayload
+        });
+        if (launcherResponse) return launcherResponse;
 
         // ----------------------------------------------------
         // 1. ADMIN DASHBOARD HTML WEB UI (/admin)
@@ -498,7 +534,7 @@ export default {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#090b10">
-    <title>Wolf Client - Admin Panel</title>
+    <title>Onestep - Admin Panel</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -716,7 +752,7 @@ export default {
                     <svg viewBox="0 0 24 24" fill="none"><path d="M4 4.5 8.2 7l3.8-3 3.8 3L20 4.5l-1.1 8.6a7 7 0 0 1-13.8 0L4 4.5Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M8.3 12.1 10 11l2 1.2 2-1.2 1.7 1.1M9.2 15.1c1.7 1.2 3.9 1.2 5.6 0" stroke="currentColor" stroke-width="1.55" stroke-linecap="round"/></svg>
                 </div>
                 <div>
-                    <h1>Wolf Client</h1>
+                    <h1>Onestep</h1>
                     <p>Licensing Control Center</p>
                 </div>
             </div>
@@ -753,7 +789,7 @@ export default {
                         <svg viewBox="0 0 24 24" fill="none"><path d="M4 4.5 8.2 7l3.8-3 3.8 3L20 4.5l-1.1 8.6a7 7 0 0 1-13.8 0L4 4.5Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M8.3 12.1 10 11l2 1.2 2-1.2 1.7 1.1M9.2 15.1c1.7 1.2 3.9 1.2 5.6 0" stroke="currentColor" stroke-width="1.55" stroke-linecap="round"/></svg>
                     </div>
                     <div>
-                        <strong>Wolf Client</strong>
+                        <strong>Onestep</strong>
                         <span>Admin Panel</span>
                     </div>
                 </div>
@@ -775,7 +811,7 @@ export default {
             <header class="topbar">
                 <div class="page-title">
                     <h1 id="page-title">Genel Bakis</h1>
-                    <p id="page-subtitle">Wolf Client lisans altyapisinin guncel durumu.</p>
+                    <p id="page-subtitle">Onestep lisans altyapisinin guncel durumu.</p>
                 </div>
                 <div class="topbar-actions">
                     <div class="api-status">
@@ -836,7 +872,7 @@ export default {
                         <div class="form-group">
                             <label class="field-label" for="new-key-name">OZEL KEY</label>
                             <input type="text" id="new-key-name" placeholder="Bos birakirsaniz otomatik uretilir" autocomplete="off" spellcheck="false">
-                            <p class="field-help">Ornek: WOLF-VIP-1234. Bos alan mevcut otomatik key uretimini kullanir.</p>
+                            <p class="field-help">Ornek: ONESTEP-VIP-1234. Bos alan otomatik lisans olusturur.</p>
                         </div>
                         <div class="form-group">
                             <label class="field-label" for="new-key-expiry">GECERLILIK SURESI</label>
@@ -1207,7 +1243,7 @@ export default {
                 if (title) title.textContent = isLicenses ? 'Lisanslar' : 'Genel Bakis';
                 if (subtitle) subtitle.textContent = isLicenses
                     ? 'Tum lisans anahtarlarini, durumlarini ve HWID kilitlerini yonetin.'
-                    : 'Wolf Client lisans altyapisinin guncel durumu.';
+                    : 'Onestep lisans altyapisinin guncel durumu.';
 
                 document.querySelectorAll('.nav-item[data-view]').forEach(function (item) {
                     var active = item.dataset.view === currentView;
@@ -1630,7 +1666,7 @@ export default {
                     if (!Number.isSafeInteger(keyId) || keyId <= 0) {
                         return jsonResponse({ success: false, message: "Invalid license id." }, 400);
                     }
-                    await env.DB.prepare("UPDATE license_keys SET hwid_hash = NULL, hwid_hint = NULL, status = 'unused', license_epoch = license_epoch + 1 WHERE id = ?")
+                    await env.DB.prepare("UPDATE license_keys SET hwid_hash = NULL, hwid_hint = NULL, device_key_hash = NULL, status = 'unused', license_epoch = license_epoch + 1 WHERE id = ?")
                         .bind(keyId)
                         .run();
 
@@ -1894,6 +1930,22 @@ export default {
                     return jsonResponse({ success: false, message: "Invalid License Key" }, 401);
                 }
 
+                let deviceKeyHash = "";
+                if (body.device_key || body.device_signature) {
+                    try { deviceKeyHash = await verifyDeviceProof(body); }
+                    catch (_) { return jsonResponse({ success: false, message: "Device verification failed." }, 403); }
+                }
+                if (license.device_key_hash && !constantTimeEqual(license.device_key_hash, deviceKeyHash)) {
+                    return jsonResponse({ success: false, message: "License belongs to another device key. Reset HWID to change devices." }, 403);
+                }
+                if (requestType === "heartbeat" && deviceKeyHash && !license.device_key_hash) {
+                    return jsonResponse({ success: false, message: "Sign in again to register this device." }, 403);
+                }
+                if (heartbeatClaims && license.device_key_hash &&
+                    !constantTimeEqual(license.device_key_hash, heartbeatClaims.device_key_hash || "")) {
+                    return jsonResponse({ success: false, message: "Device session was revoked." }, 403);
+                }
+
                 const status = String(license.status || "unused").toLowerCase();
 
                 if (status === "banned") {
@@ -1910,9 +1962,9 @@ export default {
                     }, 403);
                 }
 
-                if (license.expires_at) {
-                    const expiryTime = new Date(license.expires_at).getTime();
-                    if (!Number.isFinite(expiryTime) || now > expiryTime) {
+                const licenseExpiry = licenseExpiryMs(license.expires_at);
+                if (licenseExpiry !== null) {
+                    if (!Number.isFinite(licenseExpiry) || now >= licenseExpiry) {
                         try {
                             await env.DB.prepare(
                                 "UPDATE license_keys SET status = 'expired', license_epoch = license_epoch + 1 WHERE id = ? AND status != 'expired'"
@@ -2066,13 +2118,20 @@ export default {
 
                 // Re-read the epoch after any activation write so the token reflects
                 // the current server state instead of the earlier SELECT snapshot.
-                let currentEpoch = Number(license.license_epoch || 1);
-                try {
+                if (deviceKeyHash && !license.device_key_hash && requestType === "activate") {
+                    await env.DB.prepare(
+                        "UPDATE license_keys SET device_key_hash = ? WHERE id = ? AND status = 'active' AND hwid_hash = ? AND license_epoch = ? AND (device_key_hash IS NULL OR device_key_hash = '')"
+                    ).bind(deviceKeyHash, license.id, hwidHash, Number(license.license_epoch || 1)).run();
+                }
+                let currentEpoch;
+                {
                     const epochRow = await env.DB.prepare(
-                        "SELECT license_epoch, status FROM license_keys WHERE id = ? LIMIT 1"
+                        "SELECT license_epoch, status, hwid_hash, device_key_hash FROM license_keys WHERE id = ? LIMIT 1"
                     ).bind(license.id).first();
 
-                    if (!epochRow || String(epochRow.status).toLowerCase() !== "active") {
+                    if (!epochRow || String(epochRow.status).toLowerCase() !== "active" ||
+                        !constantTimeEqual(epochRow.hwid_hash || "", hwidHash) ||
+                        !constantTimeEqual(epochRow.device_key_hash || "", deviceKeyHash)) {
                         return jsonResponse({
                             success: false,
                             message: "Session Revoked",
@@ -2080,7 +2139,7 @@ export default {
                     }
 
                     currentEpoch = Number(epochRow.license_epoch || 1);
-                } catch (_) { }
+                }
 
                 if (!Number.isInteger(currentEpoch) || currentEpoch <= 0) {
                     return jsonResponse({
@@ -2097,7 +2156,10 @@ export default {
                 }
 
                 const issuedAt = Date.now();
-                const sessionExpiresAt = issuedAt + SESSION_TTL_MS;
+                const sessionExpiresAt = sessionExpiryMs(issuedAt, licenseExpiry);
+                if (sessionExpiresAt === null) {
+                    return jsonResponse({ success: false, message: "License Expired" }, 403);
+                }
 
                 const payload = {
                     success: true,
@@ -2106,6 +2168,7 @@ export default {
                     ),
                     key_hash: keyHash,
                     hwid_hash: hwidHash,
+                    device_key_hash: deviceKeyHash || undefined,
                     nonce_hash: nonceHash,
                     aud: AUTH_AUDIENCE,
                     license_epoch: currentEpoch,

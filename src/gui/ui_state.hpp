@@ -34,7 +34,7 @@ namespace gui::aegis
         ImVec2 window_position = ImVec2(0.0f, 0.0f);
         ImVec2 window_size = ImVec2(1280.0f, 620.0f);
         bool has_hud_layout = false;
-        std::array<hud_placement, 3> hud_layout{{ {10, 10, 1}, {10, 10, 1.12f}, {22, 60, 1.2f} }};
+        std::array<hud_placement, 4> hud_layout{{ {10, 10, 1}, {10, 10, 1.12f}, {22, 60, 1.2f}, {360, 260, 1, false} }};
     };
 
     preferences& get_preferences();

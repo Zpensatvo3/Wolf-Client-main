@@ -1,5 +1,6 @@
 #pragma once
 #include "input.hpp"
+#include "item_render.hpp"
 
 // Fabric 1.21.1 intermediary bindings; original member definitions preserved.
 namespace maps
@@ -89,6 +90,7 @@ namespace maps
     jni::method<ClientPlayNetworkHandler, "method_1562"> getNetworkHandler{ *this };
     jni::method<Window, "method_22683"> getWindow{ *this };
     jni::method<TextureManager, "method_1531"> getTextureManager{ *this };
+    jni::method<ItemRenderer, "method_1480"> getItemRenderer{ *this };
     jni::field<TextRenderer, "field_1772"> textRenderer{ *this };
     jni::field<EntityRenderDispatcher, "field_1731"> entityRenderDispatcher{ *this };
     jni::field<GameRenderer, "field_1773"> gameRenderer{ *this };

@@ -1,6 +1,8 @@
 #include "runtime.hpp"
 #include "module_loop.hpp"
 #include "../auth/auth.hpp"
+#include "../auth/client.hpp"
+#include "../auth/config.hpp"
 #include "../cache/cache.hpp"
 #include "../configs/configs.hpp"
 #include "../gui/gui.hpp"
@@ -18,7 +20,6 @@
 namespace
 {
     constexpr auto worker_interval = std::chrono::milliseconds(5);
-    constexpr char config_endpoint[] = "wolf-auth-api.gogogamesas.workers.dev";
 
     // Declared after the game cache, so renderer/modules stop before its JNI refs die.
     struct runtime_services
@@ -32,7 +33,7 @@ namespace
         {
             gui::should_unload.store(true, std::memory_order_release);
             if (configs_started) configs::shutdown();
-            auth::controlled_shutdown();
+            auth::client::shutdown();
             loader_ui::closing();
             gui::draw = false;
             if (renderer_started) gui::shutdown();
@@ -46,7 +47,6 @@ void app::run()
     loader_ui::initialize();
     try
     {
-        auth::configure_config_service(config_endpoint);
         loader_ui::stage(0, "Locating Minecraft JVM runtime");
         while (!GetModuleHandleW(L"jvm.dll"))
         {
@@ -66,6 +66,8 @@ void app::run()
 
         cache game;
         runtime_services services{game};
+        auth::configure_config_service(auth::config::server_domain);
+        auth::client::initialize();
         // Register before enabling render callbacks: the module list stays fixed
         // until gui::shutdown has joined the render side.
         loader_ui::stage(3, "Registering client modules");
@@ -75,12 +77,21 @@ void app::run()
         loader_ui::stage(4, "Installing OpenGL render hook");
         if (!gui::init()) { loader_ui::fail("OpenGL renderer hook could not be installed"); return; }
         services.renderer_started = true;
-        services.configs_started = true;
-        configs::initialize();
         loader_ui::ready();
 
+        // Only the renderer/input UI exists during login. Module ticks and
+        // public config work start after successful signed authentication.
+        while (!auth::client::access_allowed())
+        {
+            if (gui::should_unload || (GetAsyncKeyState(VK_END) & 0x8000)) return;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        if (gui::should_unload) return;
+        services.configs_started = true;
+        configs::initialize();
+
         module_loop loop;
-        while (!(GetAsyncKeyState(VK_END) & 0x8000) && !gui::should_unload)
+        while (!(GetAsyncKeyState(VK_END) & 0x8000) && !gui::should_unload && auth::client::access_allowed())
         {
             loop.tick(game);
             std::this_thread::sleep_for(worker_interval);

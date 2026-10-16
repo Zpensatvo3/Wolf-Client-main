@@ -1,5 +1,6 @@
 #include "../modules.hpp"
 #include "../../services/game/anti_bot_service.hpp"
+#include "../../services/game/name_protect.hpp"
 #include "../../ui/settings_renderer.hpp"
 #include "../../gui/gui.hpp"
 #include "../../platform/adapter/game_adapter.hpp"
@@ -763,13 +764,14 @@ void modules::player_esp::render_overlay()
         // ---- Sleek Name tag (above box) ----
         if (settings_snapshot.show_names && !b.name.empty())
         {
-            const ImVec2 ts = ImGui::CalcTextSize(b.name.c_str());
+            const auto display_name=services::privacy::display_name(b.name);
+            const ImVec2 ts = ImGui::CalcTextSize(display_name.c_str());
             const float tx = (x0 + x1) * 0.5f - ts.x * 0.5f;
             const float ty = y0 - ts.y - 5.0f;
 
             dl->AddRectFilled(ImVec2(tx - 4.0f, ty - 2.0f), ImVec2(tx + ts.x + 4.0f, ty + ts.y + 1.0f),
                 IM_COL32(12, 14, 18, 200), 3.0f);
-            dl->AddText(ImVec2(tx, ty), IM_COL32(240, 242, 248, 255), b.name.c_str());
+            dl->AddText(ImVec2(tx, ty), IM_COL32(240, 242, 248, 255), display_name.c_str());
         }
 
         // ---- Sleek Distance indicator (below box) ----

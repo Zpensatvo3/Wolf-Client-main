@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include "../../services/game/anti_bot_service.hpp"
+#include "../../services/game/name_protect.hpp"
 #include "../../cache/cache.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../../services/game/overlay_context.hpp"
@@ -253,9 +254,10 @@ void modules::radar::render_overlay()
 		draw->AddCircleFilled(point, 2.4f, color, 0);
 		if (settings_snapshot.show_names && !player.name.empty())
 		{
-			const ImVec2 text_size = ImGui::CalcTextSize(player.name.c_str());
+			const auto display_name=services::privacy::display_name(player.name);
+			const ImVec2 text_size = ImGui::CalcTextSize(display_name.c_str());
 			draw->AddText(ImVec2(point.x - text_size.x * 0.5f, point.y + 5.0f),
-				IM_COL32(226, 229, 238, 220), player.name.c_str());
+				IM_COL32(226, 229, 238, 220), display_name.c_str());
 		}
 	}
 

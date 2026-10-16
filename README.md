@@ -6,10 +6,32 @@ istemcisi içerir.
 
 ## Güncel durum
 
+- Terminal tarzı native **Onestep Launcher** hazır: key girişi, imzalı sürüm
+  kontrolü, lisanslı internetten indirme ve seçilen açık Minecraft'a başlatma.
+  EXE: `build/launcher/Onestep-Launcher.exe`. DLL launcher keyini almaz; hedef
+  işlem/cihaz/sürüme bağlı 120 saniyelik tek kullanımlık izni sunucuda doğrular.
+  Kullanım/derleme ve sınırlar: [launcher/README.md](launcher/README.md).
 - Ürün adı **Onestep**.
-- Lisans girişi ve lisans heartbeat akışı şu an devre dışı; auth gelecekte eklenecek.
-- Public config bağlantısı lisans girişinden ayrı çalışacak şekilde korunuyor.
-  Uzak servisin bu ortamda erişilebilirliği doğrulanmadı.
+- Auth servisi `https://onestep-auth.gogogamesas.workers.dev` adresinde yayında.
+  Worker, ayrı `onestep-licenses` D1 veritabanı ve rate limiter kullanır.
+  `server/AuthDeployment.props` normal x64 derlemelerde lisans girişini açar;
+  doğrulamadan önce modüller/HUD/config işleri bekler. Native HTTPS giriş,
+  imza/nonce kontrolü, hatalı anahtar reddi, lisanslı config listesi ve heartbeat
+  gerçek serviste doğrulandı; oyun içi giriş ekranı henüz denenmedi.
+- `Onestep-Auth.cmd`, yönetici parolasını ve ilk client lisansını kullanıcı
+  isteğiyle panoya kopyalayan küçük yerel yardımcıyı açar (PowerShell 7 gerekir).
+  Kaynakta parola bulunmaz; yedek `server/.credentials` altında Windows hesabına
+  bağlı şifreli saklanır ve git dışında tutulur. Eski Wolf admin adresi Onestep'e
+  yönlenir; sahibinin isteğiyle eski 10 lisans şifreli yedeklenip silinmiştir.
+- Yeni serviste public config çağrıları da lisanslı oturum ister; eski Wolf
+  servisinin ayrı lisanssız config yolu değiştirilmedi.
+- HWID'ye ek olarak Windows CNG cihaz anahtarıyla imzalı giriş/heartbeat vardır.
+  TPM destekleniyorsa kullanılır; bu bilgisayarda TPM yolu doğrulandı. İlk yeni
+  sürüm girişi lisansı bu public key'e bağlar; bundan sonra eski/imzasız DLL
+  kabul edilmez. HWID Reset cihaz anahtarı bağını da sıfırlar. Eski HWID özeti
+  değiştirilmedi. VMProtect kurulu değil; gerçek `.vmp` projesi ve console sürümü
+  için ayrı korumalı çıktı/sonradan imzalama akışı hazırdır, henüz uygulanmadı.
+  Ayrıntılar: [server/PROTECTION.md](server/PROTECTION.md).
 - Vape sayfasında yalnızca Aim Assist (Simple/Adaptive), Left Clicker ve Right Clicker var.
 - Anchor Macro artık tek modüldür: Legit ve Blatant arasında seçim yapılır; Safe Anchor
   ayrı kalır. İki modun slot geçişi, anchor koyma, glowstone basma, patlatma, geri dönüş,
@@ -51,6 +73,13 @@ istemcisi içerir.
   Native/Vape clicker'ların araya saldırı sokması ortak sahiplikle engellenir;
   Triggerbot önceliklidir. Diğer blok/slot makrolarıyla birlikte kullanım doğrulanmadı.
 - Eski UI/Qt kaynakları ve arayüz ses sistemi kaldırıldı.
+- Player > Auto Totem artık tek modüldür: Normal / Legit seçimi aynı paneldedir.
+  Normal otomatik envanter açmayı, Legit yalnızca açık envanterde çalışmayı ve
+  imleç hareketini korur. İki profilin ayarları ayrı saklanır; mod veya ayar
+  değişiminde bekleyen işlem sıfırlanır. Eski `auto_totem` / `legit_auto_totem`
+  config kayıtları tek modüle taşınır. Yalnızca Legit açıksa Legit seçilir;
+  ikisi de açıksa Normal önceliklidir. Seçilen eski modülün tuşu korunur;
+  yeni birleşik config kaydı varsa önceliklidir.
 - Client > Notifications, modül açma/kapatma ve işlem sonuçlarını menü kapalıyken
   de gösterir. Kartlar aktif temanın geçişli renklerini, giriş/çıkış ve dizilme
   animasyonlarını kullanır; Azaltılmış Hareket tercihini izler ve ses üretmez.
@@ -76,6 +105,97 @@ istemcisi içerir.
   modülün kapanması veya elle envanter işlemi bekleyen işi iptal eder.
 - Item ESP, yere düşmüş yüklenmiş eşyaları kutu, isim, adet ve mesafe etiketiyle gösterir.
   Her karede güncel dünyayı okur; sunucudan çıkıldığında eski eşya görüntüsü tutulmaz.
+- Visuals > China Hat ve Wings, kendi karakterine yerel kozmetik şapka ve
+  kanatlar ekler. China Hat tasarımları Klasik, Geniş Kenar ve Katmanlı;
+  Wings tasarımları Ejderha, Melek ve Kelebek olarak seçilebilir. Eski configler
+  tasarım alanı olmadan ilk yüklendiğinde Klasik/Ejderha kullanır.
+  Üçüncü şahısta görünür; diğer oyunculara gönderilmez. Şapka başı,
+  kanatlar gövdeyi takip eder. Boyut, opaklık, tema/özel renk ve glow ayarları vardır;
+  Wings çırpınması ve hızı ayarlanabilir, azaltılmış hareket tercihine uyar.
+  Kamera yakın düzlemi ve görünüm sınırları kırpılır; karakter için gövde kutuları,
+  yakındaki tam opak bloklar için kamera gölgeleri kullanılır. Kısmi/şeffaf bloklar
+  ve hareketli uzuvların tam şekli bu çizim maskesine dahil değildir.
+  Uçuş, yüzme, yatma ve binme pozlarında çizilmez. Oyun içi doğrulama yapılmadı.
+- Visuals > Cape, üçüncü şahısta kendi karakterine hareketli pelerin ekler.
+  Kumaş omuzdan sabitlenir; yürüyüş, zıplama ve dönüşlerde yumuşakça savrulur,
+  dururken hafif dalgalanır. Düz, Şeritli ve Amblemli tasarımları; uzunluk,
+  genişlik, hareket miktarı, opaklık, tema/özel renk ve glow ayarları vardır.
+  Animasyon kapatılabilir ve azaltılmış hareket tercihine uyar. Hareket yalnızca
+  çizimden hesaplanır; ilk şahıs, desteklenmeyen pozlar, teleport ve kapanışta
+  animasyon sıfırlanır. China Hat/Wings ile aynı yerel çizim ve blok maskesi
+  sınırlamaları geçerlidir; diğer oyunculara gönderilmez. Oyun içinde denenmedi.
+- Client > NameProtect, kendi hesap adını yerel ekranda takma adla gösterir.
+  Varsayılan `Protected` değiştirilebilir; takma ad 1–16 harf, rakam veya alt çizgi
+  içerir ve config'e kaydedilir. Tam isimleri büyük/küçük harf farkı olmadan eşler;
+  başka bir oyuncunun daha uzun adının içindeki benzer parçayı değiştirmez.
+  Vanilla font çizimi ve genişlik ölçümü aynı görünür adı kullanır; normal sohbet,
+  TAB ve scoreboard yazıları bu yoldan geçer. Renkli OrderedText isimleri farklı
+  stil parçalarına ayrılsa da tek ad olarak ele alınır. Target HUD, Nametag, ESP
+  ve Radar'ın kendi etiketleri de aynı filtreye bağlıdır. Hesap profili, UUID,
+  gönderilen mesajlar ve sunucudaki oyuncu adı değişmez; ham yazı verisi korunur.
+  Uzun sohbet satırlarında önceden iki satıra bölünmüş isim parçaları ve vanilla
+  fontunu kullanmayan üçüncü taraf çizimler bu filtrenin kapsamı dışındadır.
+  `NameProtectTransformer.java`, yalnızca Fabric 1.21.1 TextRenderer sınıfının
+  dört çizim ve üç genişlik metoduna JVMTI retransformation ile filtre ekler.
+  Java filtresi render sırasında native callback kullanmaz. Kapanışta filtre
+  pasifleştirilir, bu JVMTI ortamına ait dönüşüm geri alınır ve ortam bırakılır;
+  Java yardımcı sınıfları pasif olarak oyun kapanana kadar kalabilir.
+  Hazır sınıflar `assets/nameprotect` içine gömülüdür. Yeniden üretim:
+  `scripts/Build-NameProtectBridge.ps1` (JDK 17+, ASM/ASM Tree 9.x; Fabric'in
+  mevcut ASM kütüphanelerini kullanır). Bağlantı başarısızsa ayarda hata gösterilir.
+  Oyun içinde henüz denenmedi.
+- Visuals > Sky, oyunun kendi gökyüzü rengini Tema, Günbatımı, Mor, Buz veya Özel
+  renk seçenekleriyle değiştirir. Yoğunluk ve ufuk sisini uyumlama ayarları vardır.
+  Panorama modu, DLL'e gömülü Yıldızlı Gece, Samanyolu ve Bulutlu Şafak fotoğrafları
+  yanında stilize Pastel Günbatımı, Nebula ve Kutup Işıkları görsellerini kullanır.
+  Yeni ayarlarda varsayılan Pastel Günbatımı'dır; kayıtlı seçimler korunur.
+  Parlaklık, yön ve yavaş dönüş ayarlanabilir. Ufuk, RenderSystem'in aynı karedeki
+  gerçek sis rengine ve başlangıç/bitiş mesafesine uyarlanır; parlaklık ayarı bu sis
+  rengini açıp koyulaştırmaz. Yoğun kısa mesafeli siste panorama ayrıntısı azalır.
+  Ufkun altında doku satırı uzatmak yerine sis rengi kullanılır. Yatay birleşimde
+  açık ve döngüye göre düzeltilmiş doku türevleri yanlış mip seviyesi/çizgi oluşmasını
+  önler; stilize görsellerin kenar ve tepe renkleri ayrıca yumuşatılır.
+  Kaynak görsellerin yer/yansıma bölümleri gökyüzüne taşınmaz. Üretilen PNG'ler
+  ve üretim istemleri `assets/skies` altındadır; görseller ayrıca indirilmez.
+  Fabric API BEFORE_ENTITIES olayı ile gerçek dünya framebuffer'ına uzak derinlikte
+  çizilir; opak arazi derinliğine uyar, su/varlık/partikül/el/HUD çizimlerinden önce
+  çalışır. Nether/End gibi gökyüzü ışığı olmayan boyutlarda ve kamera su/lav/kar
+  içindeyken panorama çizilmez ve modülün biome gökyüzü/sis renkleri geri alınır.
+  Aktif Iris shader paketi varsa panorama durur;
+  hata durumu ayarlarda tek satır gösterilir. Renk modu ayrıca kullanılabilir.
+  `src/bridge/SkyBridge.java`, standart Java yansımasıyla Fabric olayına bağlanır;
+  hazır bytecode `assets/skybridge` içinde taşınır. Java kaynak değişince
+  `scripts/Build-SkyBridge.ps1` ile yeniden hazırlanır (JDK 17+ gerekir).
+  Oyun klasörüne mod kurmaz. DLL kapanırken listener önce pasifleştirilir,
+  native bağlantı ve GPU kaynakları bırakılır; Fabric'in kayıt silme API'si
+  olmadığından küçük, pasif listener oyun kapanana kadar kalır.
+  Saat, hava durumu ve ışık seviyesi vanilla kalır; gece/yağmur rengi etkileyebilir.
+  BiomeEffects renkleri client/render thread'de saklanıp uygulanır; kapanışta,
+  dünyadan çıkarken ve render kancası kaldırılırken sahip olunan değerler geri alınır.
+  Başka bir modun sonradan değiştirdiği renklerin üzerine eski değer yazılmaz.
+  Şaderlerin kendi gökyüzü renkleri bu vanilla renklerini geçersiz kılabilir.
+  Bağlar [Yarn 1.21.1 BiomeEffects](https://maven.fabricmc.net/docs/yarn-1.21.1+build.3/net/minecraft/world/biome/BiomeEffects.html)
+  ve DynamicRegistryManager dokümanından doğrulandı; oyun içinde denenmedi.
+- Visuals > Trails, Parçacık / Ayak İzi / İkisi Birlikte seçenekleriyle kendi
+  karakterinin hareket ettiği konumlarda yerel iz bırakır; birinci/üçüncü şahısta
+  görülebilir. Ayak izleri yerde, su/lav dışında ve gerçek blok yüzeyinin üzerinde
+  oluşur; slab/merdiven için vanilla collider raycast kullanılır. İz süresi, sıklık,
+  boyut, opaklık, tema/özel renk ve glow ayarlanabilir. En fazla 96 parçacık ve 48
+  ayak izi tutulur; emission mesafeye bağlıdır, uzun karelerde toplu birikim yapılmaz.
+  Dünya/oyuncu değişimi, teleport, modül kapanışı ve geçersiz görüntüde izler silinir.
+  Duvar görünürlüğü kare başına en fazla 12 ray ile dönüşümlü güncellenir; yaklaşık
+  200 ms önbellek ve parçacık merkezi kullanılır, çok düşük FPS'de güncelleme uzayabilir.
+  Azaltılmış hareket tercihinde parçacıklar daha seyrek ve sabit oluşur. Oyun içinde denenmedi.
+- Visuals > Target HUD, nişangâhtaki oyuncunun gerçek skin kafasını, canını, mesafesini,
+  dört zırh parçasını ve elindeki eşyayı 232×94 yatay kartta gösterir. Ekipman tek
+  sırada oyunun yüklü eşya modelleri ve atlas dokularıyla çizilir; renk katmanları ve
+  GUI dönüşümleri korunur. Dayanıklılık ince çubukla gösterilir; büyülü eşyanın yuvası
+  mor çerçevelenir. Özel Java çizicisi gerektiren built-in modellerde görsel yerine
+  soru işareti gösterilir. Hedef nişangâhtan
+  çıktıktan sonra varsayılan iki saniye boyunca canlı güncellenir; süre ayarlanabilir.
+  Dünya değişimi, ölüm veya yüklenmiş oyuncunun kaybında kart temizlenir.
+  HUD Editor'da kendi karakterinle önizleme, taşıma, boyut değiştirme, hizalama,
+  geri alma ve otomatik kayıt desteklenir. Oyun içi doğrulama henüz yapılmadı.
 - ESP/Chams için ayrı bir çizim mesafesi seçilmez. Storage ESP yüklenmiş chunk'lardaki
   depolama nesnelerini, Block ESP ise yüklenmiş chunk bölümlerini parça parça tarar.
   Chams ve Nametag de mesafe filtresi uygulamaz. Oyunun/sunucunun göndermediği
@@ -121,11 +241,11 @@ DLL'yi derler ve `Onestep-Windows-x64` artifact'i olarak saklar. Bu çıktı imz
 assets/                   Fontlar, ikonlar ve arka plan
 include/                  Üçüncü taraf kütüphaneler
 scripts/                  Derleme ve kaynak doğrulama araçları
-server/                   Gelecekteki auth için korunan Worker ve veritabanı kaynakları
+server/                   Lisans Worker'ı, oturum politikası ve veritabanı kaynakları
 src/
   main.cpp                Yalnızca DLL girişi ve worker başlatma
   app/                    Uygulama başlangıcı, kapanışı ve modül döngüsü
-  auth/                   Korunan auth kodu ve config servis bağlantısı
+  auth/                   Lisans girişi, oturum, heartbeat ve config servis bağlantısı
   cache/                  Oyun nesnesi önbelleği
   configs/                Public config istemcisi
   friends/                Oturumluk arkadaş listesi
@@ -208,8 +328,8 @@ Oyun içi doğrulama henüz yapılmadı; gerçek bir Minecraft oturumunda ayrıc
 
 `main.cpp` worker'ı başlatır ve `app::run()` tamamlandıktan sonra DLL'yi boşaltır.
 `app/runtime.cpp` başlangıç/kapanış sırasını, `app/module_loop.cpp` ise modül
-tuşlarını ve worker tick akışını yönetir. Devre dışı eski auth konsol ekranı
-giriş dosyasından kaldırıldı; gelecekteki auth kaynakları korunuyor.
+tuşlarını ve worker tick akışını yönetir. Auth etkin build'lerde oyun içi giriş
+paneli gösterilir; tek arka plan işi doğrulamayı yapar ve modül akışı oturumu bekler.
 
 Modüller render hook kurulmadan önce kaydedilir. Kapanışta config worker ve
 render akışı durur; ardından modüller, oyun önbelleği, JNI metadata ve JVM
@@ -231,12 +351,12 @@ seyrek enum değerlerini de destekleyen seçenek listeleri için
 İçe aktarma önce yerel aday ayarları doğrular; geçersiz değerler canlı ayarlara
 uygulanmaz. Gizli kontrollerin değerleri config içinde korunur.
 
-Katalogdaki 45 stable ID'nin tamamı `settings_manifest.json` ile izlenir.
-Modüle özel ayarları bulunan 41 kayıt ortak şemaya bağlandı. Friends Manager,
-Click GUI, Panic ve Full Bright için modüle özel config alanı yoktur; arkadaş
+Katalogdaki stable ID'lerin tamamı `settings_manifest.json` ile izlenir.
+Modüle özel ayarları bulunan kayıtlar ortak şemaya bağlandı. Friends Manager,
+Click GUI, Panic, Full Bright, No Jump Delay ve Fast Stop için modüle özel config alanı yoktur; arkadaş
 listesi ve genel UI tercihleri kendi mevcut sahiplerinde kalır.
 
-27 combat/utility/visual modülü `settings_store.hpp` üzerinden kilitli yayın
+Combat/utility/visual modülleri `settings_store.hpp` üzerinden kilitli yayın
 ve kopya snapshot kullanır. Vape ve Chams mevcut kilitlerini, Jump Reset
 revision/iptal mekanizmasını korur. Aim/Trigger/Anchor modelleri ortak şemaya
 geçerken mevcut runtime sahipliklerini korur; bu taşıma bütün paylaşılan
@@ -284,4 +404,4 @@ Unicode metinleri, tüm belge doğrulamasını ve hata durumunda geri almayı s�
 - Düz JSON config biçimini ve mevcut modüllerin stable ID değerlerini koru.
 
 Üçüncü taraf kaynakları: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-Gelecekteki auth kurulumu: [server/SECURITY_SETUP.md](server/SECURITY_SETUP.md).
+Auth kurulumu ve etkin derleme: [server/SECURITY_SETUP.md](server/SECURITY_SETUP.md).

@@ -1,10 +1,19 @@
 param(
     [switch]$Clean,
     [switch]$SkipSign,
-    [string]$PlatformToolset = ''
+    [string]$PlatformToolset = '',
+    [switch]$RequireAuth,
+    [string]$AuthServerDomain = '',
+    [string]$AuthPublicKeySpkiBase64 = '',
+    [switch]$ProtectWithVMProtect,
+    [string]$VMProtectPath = '',
+    [string]$VMProtectProject = ''
 )
 
 $ErrorActionPreference = 'Stop'
+if ($ProtectWithVMProtect -and (-not $VMProtectProject -or -not (Test-Path -LiteralPath $VMProtectProject))) {
+    throw 'VMProtect icin GUI ile hazirlanmis .vmp projesini VMProtectProject ile belirtin.'
+}
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $project = Join-Path $projectRoot 'custom-base.vcxproj'
 $msbuildCandidates = @(
@@ -27,6 +36,10 @@ if (-not $msbuild) {
 $target = if ($Clean) { 'Rebuild' } else { 'Build' }
 $buildArgs = @($project, '/m', "/t:$target", '/p:Configuration=Release', '/p:Platform=x64', '/v:minimal', '/nologo')
 if ($PlatformToolset) { $buildArgs += "/p:PlatformToolset=$PlatformToolset" }
+if ($RequireAuth) { $buildArgs += '/p:AuthRequired=true' }
+if ($AuthServerDomain) { $buildArgs += "/p:AuthServerDomain=$AuthServerDomain" }
+if ($AuthPublicKeySpkiBase64) { $buildArgs += "/p:AuthPublicKeySpkiBase64=$AuthPublicKeySpkiBase64" }
+if ($ProtectWithVMProtect) { $buildArgs += '/p:AuthProtectionMap=true' }
 & $msbuild @buildArgs
 if ($LASTEXITCODE -ne 0) {
     throw "Release derlemesi basarisiz oldu ($LASTEXITCODE)."
@@ -35,6 +48,12 @@ if ($LASTEXITCODE -ne 0) {
 $output = Join-Path $projectRoot 'build\Onestep.dll'
 if (-not (Test-Path -LiteralPath $output)) {
     throw "Derleme ciktisi bulunamadi: $output"
+}
+
+if ($ProtectWithVMProtect) {
+    $authProtectOutput = & (Join-Path $PSScriptRoot 'Protect-Release.ps1') -InputDll $output `
+        -ProjectFile $VMProtectProject -VMProtectPath $VMProtectPath
+    $output = @($authProtectOutput)[-1]
 }
 
 if (-not $SkipSign) {

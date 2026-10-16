@@ -1,6 +1,7 @@
 #include "widgets.hpp"
 #include "gui.hpp"
 #include "ui_state.hpp"
+#include "control_draw.hpp"
 #include "../services/notifications/notification_service.hpp"
 #include "../ui/notification_renderer.hpp"
 #include <algorithm>
@@ -18,17 +19,11 @@ namespace
     {
         float toggle = 0.0f;
         float hover = 0.0f;
-        float popup = 0.0f;
-        bool combo_open = false;
-        bool combo_scroll_pending = false;
         bool color_open = false;
         float color_popup = 0.0f;
     };
 
     std::unordered_map<ImGuiID, animation_state> animations;
-    int combo_tracking_frame = -1;
-    bool previous_frame_mouse_click = false;
-    bool current_frame_combo_interaction = false;
 
     constexpr float option_right_gutter = 0.0f;
     constexpr float toggle_height = 34.0f;
@@ -76,6 +71,18 @@ namespace
     {
         const ImVec2 extent = font->CalcTextSizeA(size, FLT_MAX, 0.0f, text);
         draw->AddText(font, size, ImVec2(right.x - extent.x, right.y), color, text);
+    }
+
+    std::string fit_option_value(ImFont* font, float size, float width, const char* text)
+    {
+        if (!text || width <= 0.f) return {};
+        if (font->CalcTextSizeA(size, FLT_MAX, 0.f, text).x <= width) return text;
+        constexpr const char* ellipsis = "...";
+        const float ellipsis_width = font->CalcTextSizeA(size, FLT_MAX, 0.f, ellipsis).x;
+        if (width <= ellipsis_width) return {};
+        const char* remaining = text;
+        font->CalcTextSizeA(size, width - ellipsis_width, 0.f, text, nullptr, &remaining);
+        return std::string(text, remaining) + ellipsis;
     }
 
     void draw_label_clipped(ImDrawList* draw, ImFont* font, float size, const ImVec2& position,
@@ -468,142 +475,117 @@ bool gui::option_combo(const char* label, int* current_item, const char* const i
 {
     if (!current_item || !items || item_count <= 0) return false;
     *current_item = std::clamp(*current_item, 0, item_count - 1);
-
-    const int frame = ImGui::GetFrameCount();
-    if (combo_tracking_frame != frame)
-    {
-        if (combo_tracking_frame >= 0 && previous_frame_mouse_click && !current_frame_combo_interaction)
-        {
-            for (auto& [unused_id, state] : animations)
-                state.combo_open = false;
-        }
-        previous_frame_mouse_click = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
-        current_frame_combo_interaction = false;
-        combo_tracking_frame = frame;
-    }
-
     ImGui::PushID(label);
     const ImGuiID id = ImGui::GetID("##option_combo");
     animation_state& anim = animations[id];
     const ImVec2 start = ImGui::GetCursorScreenPos();
-    const float width = std::max(120.0f, ImGui::GetContentRegionAvail().x - option_right_gutter);
-    ImGui::InvisibleButton("##option_combo", ImVec2(width, toggle_height));
-    const bool header_hovered = ImGui::IsItemHovered();
-    const bool header_clicked = ImGui::IsItemClicked();
-    bool just_opened = false;
-    if (header_clicked)
-    {
-        anim.combo_open = !anim.combo_open;
-        just_opened = anim.combo_open;
-        if (just_opened)
-            anim.combo_scroll_pending = true;
-        current_frame_combo_interaction = true;
-    }
-    const float combo_delta = std::clamp(ImGui::GetIO().DeltaTime, 0.0f, 0.05f);
-    const float combo_duration = anim.combo_open ? 0.18f : 0.15f;
-    anim.popup = std::clamp(
-        anim.popup + (anim.combo_open ? combo_delta : -combo_delta) / combo_duration,
-        0.0f,
-        1.0f);
-    if (gui::aegis::get_preferences().reduce_motion) anim.popup = anim.combo_open ? 1.0f : 0.0f;
-    if (!anim.combo_open && anim.popup < 0.002f)
-        anim.popup = 0.0f;
-    anim.hover = approach(anim.hover, header_hovered || anim.combo_open ? 1.0f : 0.0f);
-    const float eased_popup = anim.popup * anim.popup * (3.0f - 2.0f * anim.popup);
-
-    const int visible_items = popup_max_height_in_items > 0
-        ? std::min(item_count, popup_max_height_in_items)
-        : item_count;
-    const float full_list_height = 6.0f + static_cast<float>(visible_items) * 31.0f;
-    const float list_height = full_list_height * eased_popup;
-
-    ImDrawList* draw = ImGui::GetWindowDrawList();
+    const float width = std::max(120.f, ImGui::GetContentRegionAvail().x - option_right_gutter);
+    ImFont* font = ImGui::GetFont();
+    constexpr float value_size = 13.5f;
+    constexpr float value_gutter = 24.f;
+    // Use all choices, not the current value, to keep the field stable.
+    float longest_value = 0.f;
+    for (int index = 0; index < item_count; ++index)
+        longest_value = std::max(longest_value, font->CalcTextSizeA(value_size, FLT_MAX, 0.f, items[index]).x);
+    const float control_right = start.x + width - 10.f;
+    const float control_width = std::clamp(longest_value + value_gutter * 2.f,
+        104.f, std::max(104.f, width * .53f));
+    const float label_width = font->CalcTextSizeA(13.5f, FLT_MAX, 0.f, label, visible_end(label)).x;
+    const bool stacked = label_width + control_width + 28.f > width;
+    const float row_height = stacked ? 60.f : toggle_height;
+    const float control_left = stacked ? start.x + 10.f : control_right - control_width;
+    const ImVec2 control_min(control_left, start.y + (stacked ? 29.f : 4.f));
+    const ImVec2 control_max(control_right, start.y + row_height - 4.f);
+    ImGui::InvisibleButton("##option_combo", ImVec2(width, row_height));
+    const bool hovered = ImGui::IsItemHovered();
+    if (ImGui::IsItemClicked()) ImGui::OpenPopup("##option_choices");
+    const bool open = ImGui::IsPopupOpen("##option_choices");
+    anim.hover = approach(anim.hover, hovered || open ? 1.f : 0.f);
     const ImVec4 accent = ImGui::GetStyleColorVec4(ImGuiCol_CheckMark);
-    draw_option_row(draw, start, width, toggle_height + list_height, anim.hover);
-    if (list_height > 1.0f)
-        draw->AddLine(
-            ImVec2(start.x + 8.0f, start.y + toggle_height),
-            ImVec2(start.x + width - 8.0f, start.y + toggle_height),
-            IM_COL32(255, 255, 255, static_cast<int>(12.0f * eased_popup)));
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    draw_option_row(draw, start, width, row_height, anim.hover);
+    draw->AddRectFilled(control_min, control_max,
+        ImGui::GetColorU32(ImVec4(1.f, 1.f, 1.f, .045f + .035f * anim.hover)), 6.f);
+    draw->AddRect(control_min, control_max, with_alpha(accent, .24f * anim.hover), 6.f);
+    draw_label_clipped(draw, font, 13.5f, ImVec2(start.x + 10.f, start.y + 9.f),
+        stacked ? control_right : std::max(start.x + 10.f, control_left - 8.f),
+        ImGui::GetColorU32(ImGuiCol_Text), label);
+
+    // Keep equal space on both sides: reserving only the arrow's side
+    // shifts short values away from the actual center of the field.
+    const float value_left = control_left + value_gutter;
+    const float value_right = control_right - value_gutter;
     const char* selected = items[*current_item];
-    const float right_padding = 29.0f;
-    const ImVec2 selected_extent = ImGui::GetFont()->CalcTextSizeA(14.0f, FLT_MAX, 0.0f, selected);
-    draw_label_clipped(draw, ImGui::GetFont(), 13.5f, ImVec2(start.x + 10.0f, start.y + 9.0f),
-        start.x + width - right_padding - selected_extent.x - 12.0f, ImGui::GetColorU32(ImGuiCol_Text), label);
-    draw_text_right(draw, ImGui::GetFont(), 14.0f,
-        ImVec2(start.x + width - right_padding, start.y + 7.0f), ImGui::GetColorU32(ImGuiCol_TextDisabled), selected);
-    const float chevron_x = start.x + width - 15.0f;
-    const float chevron_y = start.y + 18.0f;
-    const float direction = eased_popup;
-    draw->AddTriangleFilled(
-        ImVec2(chevron_x - 4.0f, chevron_y - 2.0f + 4.0f * direction),
-        ImVec2(chevron_x + 4.0f, chevron_y - 2.0f + 4.0f * direction),
-        ImVec2(chevron_x, chevron_y + 3.0f - 5.0f * direction),
-        with_alpha(accent, 0.95f));
+    const std::string fitted = fit_option_value(font, value_size, value_right - value_left, selected);
+    gui::control_draw::centered_label(draw, font, value_size,
+        ImVec2(value_left, control_min.y), ImVec2(value_right, control_max.y),
+        ImGui::GetColorU32(ImGuiCol_Text), fitted.c_str(), ImVec2(0.f, 3.f));
+    const float arrow_x = std::floor(control_right - 11.f) + .5f;
+    const float arrow_y = std::floor((control_min.y + control_max.y) * .5f) + .5f;
+    const float direction = open ? -1.f : 1.f;
+    const ImU32 arrow_color = open ? with_alpha(accent, 1.f)
+        : ImGui::GetColorU32(ImGuiCol_Text);
+    draw->PathLineTo(ImVec2(arrow_x - 3.f, arrow_y - 1.5f * direction));
+    draw->PathLineTo(ImVec2(arrow_x, arrow_y + 1.5f * direction));
+    draw->PathLineTo(ImVec2(arrow_x + 3.f, arrow_y - 1.5f * direction));
+    draw->PathStroke(arrow_color, 0, 1.4f);
+    if (hovered && fitted != selected) ImGui::SetTooltip("%s", selected);
 
     bool changed = false;
-    if (list_height > 0.5f)
+    if (open)
     {
-        ImGui::SetCursorScreenPos(ImVec2(start.x, start.y + toggle_height));
-        ImGui::PushStyleVar(ImGuiStyleVar_Alpha, std::max(0.02f, eased_popup));
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(5.0f, 3.0f));
-        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 0.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-        const ImGuiWindowFlags child_flags = visible_items < item_count
-            ? ImGuiWindowFlags_AlwaysVerticalScrollbar
-            : ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
-        if (ImGui::BeginChild("##combo_inline", ImVec2(width, list_height), ImGuiChildFlags_None, child_flags))
+        const int visible_items = std::min(item_count, popup_max_height_in_items > 0 ? popup_max_height_in_items : 8);
+        const float popup_width = std::min(width - 20.f, std::max(control_right - control_left, longest_value + 40.f));
+        const float popup_height = 12.f + visible_items * 30.f;
+        const ImGuiViewport* viewport = ImGui::GetMainViewport();
+        const float popup_x = std::clamp(control_right - popup_width, viewport->WorkPos.x,
+            std::max(viewport->WorkPos.x, viewport->WorkPos.x + viewport->WorkSize.x - popup_width));
+        const float popup_y = start.y + row_height + popup_height > viewport->WorkPos.y + viewport->WorkSize.y
+            ? std::max(viewport->WorkPos.y, start.y - popup_height) : start.y + row_height;
+        ImGui::SetNextWindowPos(ImVec2(popup_x, popup_y));
+        ImGui::SetNextWindowSizeConstraints(ImVec2(popup_width, 0.f), ImVec2(popup_width, popup_height));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(6.f, 6.f));
+        ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 8.f);
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.f, 2.f));
+        ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 3.f);
+        ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(.065f, .065f, .082f, .99f));
+        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(1.f, 1.f, 1.f, .09f));
+        ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(accent.x, accent.y, accent.z, .16f));
+        ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(accent.x, accent.y, accent.z, .23f));
+        ImGui::PushStyleColor(ImGuiCol_ScrollbarGrab, ImVec4(accent.x, accent.y, accent.z, .45f));
+        ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabHovered, ImVec4(accent.x, accent.y, accent.z, .65f));
+        ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabActive, accent);
+        if (ImGui::BeginPopup("##option_choices", ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings))
         {
-            ImGui::SetCursorPosY(ImGui::GetCursorPosY() - (1.0f - eased_popup) * 8.0f);
             for (int index = 0; index < item_count; ++index)
             {
                 ImGui::PushID(index);
                 const ImVec2 item_min = ImGui::GetCursorScreenPos();
                 const float item_width = ImGui::GetContentRegionAvail().x;
-                ImGui::InvisibleButton("##combo_item", ImVec2(item_width, 31.0f));
-                const bool item_hovered = ImGui::IsItemHovered();
-                const bool item_clicked = ImGui::IsItemClicked();
                 const bool item_selected = index == *current_item;
+                const bool clicked = ImGui::Selectable("##choice", item_selected, 0, ImVec2(0.f, 28.f));
+                const std::string item_text = fit_option_value(font, value_size, item_width - 26.f, items[index]);
                 ImDrawList* item_draw = ImGui::GetWindowDrawList();
-                if (item_selected || item_hovered)
-                {
-                    item_draw->AddRectFilled(
-                        ImVec2(item_min.x + 1.0f, item_min.y + 2.0f),
-                        ImVec2(item_min.x + item_width - 1.0f, item_min.y + 29.0f),
-                        item_selected ? with_alpha(accent, 0.16f) : IM_COL32(255, 255, 255, 10),
-                        5.0f);
-                }
-                item_draw->AddText(ImGui::GetFont(), 14.0f,
-                    ImVec2(item_min.x + 8.0f, item_min.y + 7.0f),
-                    item_selected ? with_alpha(accent, 0.98f) : ImGui::GetColorU32(ImGuiCol_Text),
-                    items[index]);
+                item_draw->AddText(font, value_size, ImVec2(item_min.x + 7.f, item_min.y + 7.f),
+                    item_selected ? with_alpha(accent, .98f) : ImGui::GetColorU32(ImGuiCol_Text), item_text.c_str());
                 if (item_selected)
-                    item_draw->AddCircleFilled(
-                        ImVec2(item_min.x + item_width - 11.0f, item_min.y + 15.5f),
-                        2.5f, with_alpha(accent, 0.95f), 0);
-                if (item_clicked)
                 {
-                    *current_item = index;
-                    changed = true;
-                    anim.combo_open = false;
-                    current_frame_combo_interaction = true;
+                    item_draw->AddCircleFilled(ImVec2(item_min.x + item_width - 8.f, item_min.y + 14.f),
+                        2.f, with_alpha(accent, .95f));
+                    ImGui::SetItemDefaultFocus();
                 }
-                if (item_clicked || (item_hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)))
-                    current_frame_combo_interaction = true;
+                if (ImGui::IsItemHovered() && item_text != items[index]) ImGui::SetTooltip("%s", items[index]);
+                if (clicked)
+                {
+                    changed = *current_item != index;
+                    *current_item = index;
+                }
                 ImGui::PopID();
             }
+            ImGui::EndPopup();
         }
-        ImGui::EndChild();
-        ImGui::PopStyleColor(2);
+        ImGui::PopStyleColor(7);
         ImGui::PopStyleVar(4);
-        ImGui::SetCursorScreenPos(ImVec2(start.x, start.y + toggle_height + list_height + 5.0f));
-        if (anim.combo_scroll_pending && anim.popup >= 0.999f)
-        {
-            ImGui::SetScrollHereY(0.82f);
-            anim.combo_scroll_pending = false;
-        }
     }
     ImGui::PopID();
     return changed;
@@ -712,6 +694,7 @@ bool gui::option_color(const char* label, float color[4], ImGuiColorEditFlags)
             IM_COL32(188, 184, 198, static_cast<int>(255.0f * eased)), hex);
         draw->PopClipRect();
         ImGui::SetCursorScreenPos(ImVec2(start.x, panel_max.y + 5.0f));
+        ImGui::Dummy(ImVec2(0.f, 0.f));
     }
     ImGui::PopID();
     return changed;

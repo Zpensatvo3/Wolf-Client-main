@@ -2,6 +2,7 @@
 #include "module_registry.hpp"
 #include "config_json.hpp"
 #include "anchor_config_migration.hpp"
+#include "totem_config_migration.hpp"
 #include <set>
 #include <vector>
 
@@ -46,6 +47,8 @@ bool modules::apply_public_config(const std::string& payload, std::string& messa
     std::set<std::string> seen;
     const config_json::value* old_anchor = nullptr;
     const config_json::value* old_blatant = nullptr;
+    const config_json::value* old_totem = nullptr;
+    const config_json::value* old_legit_totem = nullptr;
     for (const auto& entry : list->items) {
         if (entry.type != kind::object) { message = "Config module entry must be an object."; return false; }
         const auto* id = entry.find("id");
@@ -63,7 +66,8 @@ bool modules::apply_public_config(const std::string& payload, std::string& messa
             return false;
         }
         const bool anchor_alias = id->text == "anchor_macro" || id->text == "blatant_anchor_macro";
-        module* current = find_module_by_id(anchor_alias ? "anchor_macro" : id->text);
+        const bool totem_alias = id->text == "auto_totem" || id->text == "legit_auto_totem";
+        module* current = find_module_by_id(anchor_alias ? "anchor_macro" : totem_alias ? "auto_totem" : id->text);
         if (!current) continue; // Removed/unavailable modules do not block compatible ones.
         if (anchor_alias)
         {
@@ -74,6 +78,16 @@ bool modules::apply_public_config(const std::string& payload, std::string& messa
                 message = id->text + ": " + config_validation_error(*current,converted); return false;
             }
             (blatant ? old_blatant : old_anchor) = &entry;
+            continue;
+        }
+        if (totem_alias)
+        {
+            const bool legit = id->text == "legit_auto_totem";
+            const auto converted = config_migration::encode(config_migration::totem_fields(*settings, legit));
+            if (!current->validate_config_settings(converted)) {
+                message = id->text + ": " + config_validation_error(*current, converted); return false;
+            }
+            (legit ? old_legit_totem : old_totem) = &entry;
             continue;
         }
         const std::string fields(settings->raw);
@@ -90,6 +104,15 @@ bool modules::apply_public_config(const std::string& payload, std::string& messa
             message = "anchor_macro: " + config_validation_error(*target,merged.settings); return false;
         }
         pending.push_back({target,merged.enabled,merged.keybind,merged.settings,target->export_config_settings()});
+    }
+    if (old_totem || old_legit_totem)
+    {
+        auto* target = find_module_by_id("auto_totem");
+        const auto merged = config_migration::merge_totem(old_totem, old_legit_totem);
+        if (!target->validate_config_settings(merged.settings)) {
+            message = "auto_totem: " + config_validation_error(*target, merged.settings); return false;
+        }
+        pending.push_back({target, merged.enabled, merged.keybind, merged.settings, target->export_config_settings()});
     }
     if (pending.empty()) { message = "This config has no compatible modules."; return false; }
     // Every entry is checked before any mutation. Restore earlier settings if an

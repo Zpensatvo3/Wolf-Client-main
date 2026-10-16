@@ -43,8 +43,8 @@ namespace auth
 	void configure_config_service(const std::string& server_url);
 
 	// Starts the background heartbeat with randomized 55-75 second intervals.
-	// Temporary network failures retry with bounded backoff and do not revoke a
-	// valid local session.
+	// Temporary network failures retry with bounded backoff until the signed
+	// session expires. A monotonic deadline bounds offline access.
 	// The long-lived license key is never retained for this operation; the
 	// server-issued, signed session token is refreshed instead.
 	void start_heartbeat_monitor(const std::string& server_url);
@@ -57,11 +57,19 @@ namespace auth
 
 	bool is_authenticated();
 	int get_active_epoch();
-	void set_authenticated(bool status, const std::string& token = "", int epoch = 1);
+	void set_authenticated(bool status, const std::string& token = "", int epoch = 1,
+		long long expires_at_ms = 0);
 
 	// Posts JSON fields to the authenticated Worker configured during login.
 	// Example fields: \"id\": 12. The function adds the session token safely.
 	service_result post_authenticated_json(const std::string& path, const std::string& json_fields);
+
+    // Launcher protocol. No permanent license key crosses the local handoff.
+    std::string make_launcher_request(const std::string& json_fields);
+    std::string service_field(const std::string& json, const std::string& key);
+    std::string decode_service_payload(const std::string& envelope, const std::string& audience);
+    auth_result redeem_launcher_ticket(const std::string& ticket, const std::string& server_domain,
+        const std::string& release_sha256);
 }
 
 #endif // WOLF_AUTH_HPP

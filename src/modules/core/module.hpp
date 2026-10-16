@@ -24,6 +24,8 @@ namespace modules
         virtual void render_options();
         virtual void render_overlay() {};
         virtual bool render_when_disabled() const { return false; }
+        // Render-thread cleanup before the swap hook and client JNI go away.
+        virtual void on_render_shutdown() {}
         virtual void on_enable(::cache& cache);
         virtual void on_disable(::cache& cache);
 

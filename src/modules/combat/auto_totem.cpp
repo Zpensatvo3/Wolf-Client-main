@@ -136,15 +136,28 @@ bool stack_is_totem(const maps::ItemStack& stack, const maps::Item& totem_item)
 
 void modules::auto_totem::run(::cache& cache)
 {
-    auto settings_snapshot = settings_.read();
-	const auto reset_inventory_state = [this]()
-	{
-		inventory_was_open = false;
-		inventory_opened_by_module = false;
-		pending_destination = -1;
-		next_action_time = {};
-		pending_action_time = {};
-	};
+    const auto settings_snapshot = settings_.read();
+    if (!applied_settings_ || *applied_settings_ != settings_snapshot)
+    {
+        reset_runtime();
+        applied_settings_ = settings_snapshot;
+    }
+    if (settings_snapshot.mode == 1) run_legit(cache, settings_snapshot);
+    else run_normal(cache, settings_snapshot);
+}
+
+void modules::auto_totem::reset_runtime()
+{
+    inventory_was_open = false;
+    inventory_opened_by_module = false;
+    pending_destination = -1;
+    next_action_time = {};
+    pending_action_time = {};
+}
+
+void modules::auto_totem::run_normal(::cache& cache, const module_settings::auto_totem& settings_snapshot)
+{
+    const auto reset_inventory_state = [this]() { reset_runtime(); };
 
     if (gui::draw || !cache.is_valid() || !cache.instance || !cache.player || !jni::get_env())
     {
@@ -335,15 +348,11 @@ void modules::auto_totem::run(::cache& cache)
 void modules::auto_totem::on_disable(::cache& cache)
 {
     (void)cache;
-    inventory_was_open = false;
-    inventory_opened_by_module = false;
-    next_action_time = {};
+    reset_runtime();
+    applied_settings_.reset();
 }
 
 void modules::auto_totem::render_options()
 {
-    ImGui::TextDisabled("Server-confirmed swaps prevent delayed swap-back actions.");
     gui::settings::render(settings_, module_settings::auto_totem::schema());
-    ImGui::TextDisabled("%s", gui::text("Performs one verified swap per interval and never closes a manually opened inventory.",
-        "Her aralikta tek dogrulanmis tasima yapar ve elle acilan envanteri kapatmaz."));
 }
