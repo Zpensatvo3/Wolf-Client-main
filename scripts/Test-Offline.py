@@ -10,6 +10,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parent.parent
 TESTS = {
+    "auth_policy": ["tests/auth_policy_test.cpp"],
     "module_runtime": ["tests/module_runtime_test.cpp"],
     "vape_adapter": ["tests/vape_adapter_test.cpp"],
     "aimassist_math": ["tests/aimassist_math_test.cpp"],

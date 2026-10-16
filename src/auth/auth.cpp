@@ -41,7 +41,7 @@ namespace
 	// server rejections, epoch changes and signed session expiry close access.
 	constexpr auto kHeartbeatRetryInitial = std::chrono::seconds(12);
 	constexpr auto kHeartbeatRetryMaximum = std::chrono::seconds(90);
-	constexpr char kAuthPublicKeySpkiBase64[] = WOLF_AUTH_PUBLIC_KEY_SPKI_BASE64;
+	constexpr char kAuthPublicKeySpkiBase64[] = ONESTEP_AUTH_PUBLIC_KEY_SPKI_BASE64;
 
 	std::atomic<bool> g_authenticated{ false };
 	std::atomic<ULONGLONG> g_session_deadline{ 0 };
@@ -649,7 +649,7 @@ namespace
 		}
 
 		winhttp_handle session(WinHttpOpen(
-			L"Wolf-Client/2.1",
+			L"OneStep-Client/2.1",
 			WINHTTP_ACCESS_TYPE_NO_PROXY,
 			WINHTTP_NO_PROXY_NAME,
 			WINHTTP_NO_PROXY_BYPASS,
@@ -788,7 +788,7 @@ namespace
 		}
 
 		winhttp_handle session(WinHttpOpen(
-			L"Wolf-Client/2.1",
+			L"OneStep-Client/2.1",
 			WINHTTP_ACCESS_TYPE_NO_PROXY,
 			WINHTTP_NO_PROXY_NAME,
 			WINHTTP_NO_PROXY_BYPASS,

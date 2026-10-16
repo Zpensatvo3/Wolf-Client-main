@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <!-- Public deployment metadata only. Server secrets never enter the client. -->
+  <!-- Public deployment metadata only. Projects emit ONESTEP_AUTH_* definitions.
+       The production hostname and public verification key are required; no fallback. -->
   <PropertyGroup>
     <AuthRequired Condition="'$(AuthRequired)' == ''">true</AuthRequired>
     <AuthServerDomain>onestep-auth.gogogamesas.workers.dev</AuthServerDomain>

@@ -1,5 +1,10 @@
 # Onestep — Lisans girişi kurulumu
 
+> Aşağıdaki ilk kurulum ve canlı kontrol notları `77373b6` döneminin tarihsel
+> kaydıdır; bu çalışma sırasında yeniden canlı test yapılmadı. Yeni kaynak yapısı,
+> dashboard, yerel testler ve güncel yayın adımları [README.md](README.md) içindedir.
+> Refaktör yereldir; otomatik deploy veya üretim migration'ı yapılmaz.
+
 16 Ekim 2026'da servis `https://onestep-auth.gogogamesas.workers.dev` adresine
 yayımlandı. Yönetim paneli `/admin`, sağlık kontrolü `/health` yolundadır.
 `onestep-licenses` veritabanı ve SQLite RateLimiter bu servise aittir; eski
@@ -63,11 +68,13 @@ kontrol sırasında değiştirilmedi.
 
 1. Hedef Cloudflare hesabında Worker, D1 ve `RATE_LIMITER` Durable Object
    kaynaklarını yapılandır. Güncel dosya `wrangler.jsonc`'dir. Eski
-   `wrangler.legacy.toml` yalnızca geçmiş Wolf ortamı içindir.
+   `archive/wolf/wrangler.legacy.toml.txt` yalnızca geçmiş Wolf ortamının
+   çalıştırılmayan referansıdır; aktif deploy girdisi değildir.
 2. Yeni veritabanında `schema.sql` uygula. Mevcut veritabanı varsa önce şemayı
    incele ve gereken migration'ı hazırla; üretim verisini yeniden oluşturma.
 3. Aşağıdaki sırları Worker secrets olarak kaydet.
-4. `worker.js` ve içe aktardığı `session-policy.mjs` dosyasını birlikte yayımla.
+4. `worker.js` ve bütün modülleri Wrangler ile tek paket olarak hazırla.
+   `npm run check` yalnızca dry-run yapar; gerçek yayın ayrı operatör kararıdır.
 5. Admin panelinden test lisansı oluştur; aynı ortamın public key'iyle auth
    etkin istemci üret. Yukarıdaki Onestep ortamında bu adımlar tamamlandı.
 
@@ -107,10 +114,21 @@ MSBuild karşılığı:
 msbuild custom-base.vcxproj /m /p:Configuration=Release /p:Platform=x64 /p:AuthRequired=true /p:AuthServerDomain=auth.example.com /p:AuthPublicKeySpkiBase64=BASE64URL_SPKI
 ```
 
-Bu projede değerler `server/AuthDeployment.props` içinden gelir; normal
+Bu projede değerler `server/AuthDeployment.props` içinden gelir ve
+`ONESTEP_AUTH_REQUIRED`, `ONESTEP_AUTH_SERVER_DOMAIN`,
+`ONESTEP_AUTH_PUBLIC_KEY_SPKI_BASE64` tanımlarına dönüşür. Normal
 `scripts/Build-Release.ps1` de auth açık üretir. İzole geliştirme ihtiyacında
 MSBuild'e `/p:AuthRequired=false` açıkça verilmelidir. Auth etkin ama hostname/
-public key eksikse derleme durur. Auth ve config aynı hostname'i kullanır.
+public key eksikse derleme durur. Eski Wolf hostname'i fallback olarak kullanılmaz;
+açıkça verilse de auth etkin derlemede reddedilir. Auth ve config aynı hostname'i kullanır.
+
+Aktif Worker artık request sırasında eski tablo dönüştürmesi veya ALTER/CREATE
+işlemi yapmaz. Canonical OneStep şeması salt okunur doğrulanır; eksik kolon veya
+legacy raw-key şeması operatör incelemesi gerektirir. Mevcut DB üzerinde migration
+gerekiyorsa önce yedek ve yerel temsilî şema ile ayrı incelenmelidir.
+
+`wolf-client-v1` session audience'ı ve `WOLF-HWID-V3|` fingerprint girdisi aktif
+protokol parçaları olarak korunur. Mevcut lisansları/cihazları sıfırlamak gerekmez.
 
 Yeni Onestep servisinde `ALLOW_DEVICE_CONFIGS=false` olduğu için config uçları
 geçerli lisans oturumu ister. Eski Wolf servisindeki lisanssız cihaz-sahipliği

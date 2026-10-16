@@ -27,11 +27,11 @@
   </PropertyGroup>
   <Import Project="server\AuthDeployment.props" Condition="Exists('server\AuthDeployment.props')" />
   <PropertyGroup>
-    <AuthRequired Condition="'$(AuthRequired)' == ''">false</AuthRequired>
-    <AuthRuntimeDefines Condition="'$(AuthRequired)' == 'true'">WOLF_AUTH_REQUIRED=1;</AuthRuntimeDefines>
-    <AuthRuntimeDefines Condition="'$(AuthServerDomain)' != ''">$(AuthRuntimeDefines)WOLF_AUTH_SERVER_DOMAIN=&quot;$(AuthServerDomain)&quot;;</AuthRuntimeDefines>
+    <AuthRequired Condition="'$(AuthRequired)' == ''">true</AuthRequired>
+    <AuthRuntimeDefines Condition="'$(AuthRequired)' == 'true'">ONESTEP_AUTH_REQUIRED=1;</AuthRuntimeDefines>
+    <AuthRuntimeDefines Condition="'$(AuthServerDomain)' != ''">$(AuthRuntimeDefines)ONESTEP_AUTH_SERVER_DOMAIN=&quot;$(AuthServerDomain)&quot;;</AuthRuntimeDefines>
     <!-- Public key only: pass /p:AuthPublicKeySpkiBase64=... when producing a release DLL. -->
-    <AuthPublicKeyDefine Condition="'$(AuthPublicKeySpkiBase64)' != ''">WOLF_AUTH_PUBLIC_KEY_SPKI_BASE64=&quot;$(AuthPublicKeySpkiBase64)&quot;;</AuthPublicKeyDefine>
+    <AuthPublicKeyDefine Condition="'$(AuthPublicKeySpkiBase64)' != ''">ONESTEP_AUTH_PUBLIC_KEY_SPKI_BASE64=&quot;$(AuthPublicKeySpkiBase64)&quot;;</AuthPublicKeyDefine>
   </PropertyGroup>
   <Target Name="ValidateAuthConfiguration" BeforeTargets="PrepareForBuild">
     <Error Condition="'$(AuthRequired)' != 'true' and '$(AuthRequired)' != 'false'" Text="AuthRequired must be true or false." />

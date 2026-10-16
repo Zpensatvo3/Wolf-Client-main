@@ -6,7 +6,9 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy --keep-vars",
     "check": "wrangler deploy --dry-run",
-    "test": "node --test ../tests/auth_server_policy_test.mjs ../tests/device_proof_test.mjs ../tests/launcher_test.mjs"
+    "test": "node --test ../tests/auth_server_policy_test.mjs ../tests/device_proof_test.mjs ../tests/launcher_test.mjs ../tests/auth_worker_test.mjs ../tests/dashboard_test.mjs",
+    "test:browser": "node --test ../tests/dashboard_browser_test.mjs",
+    "test:runtime": "node --test ../tests/worker_runtime_test.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261016.1",

@@ -1,5 +1,5 @@
-#ifndef WOLF_AUTH_HPP
-#define WOLF_AUTH_HPP
+#ifndef ONESTEP_AUTH_HPP
+#define ONESTEP_AUTH_HPP
 
 #include <atomic>
 #include <string>
@@ -72,4 +72,4 @@ namespace auth
         const std::string& release_sha256);
 }
 
-#endif // WOLF_AUTH_HPP
+#endif // ONESTEP_AUTH_HPP

@@ -17,7 +17,7 @@ namespace auth::policy
         return true;
     }
 
-    inline bool valid_domain(std::string_view domain)
+    inline constexpr bool valid_domain(std::string_view domain)
     {
         if (domain.empty() || domain.size() > 253) return false;
         std::size_t label = 0;

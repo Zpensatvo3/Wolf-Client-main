@@ -6,6 +6,10 @@ istemcisi içerir.
 
 ## Güncel durum
 
+- Auth kaynakları modüllere ayrıldı; koyu temalı yeni yönetim paneli, sayfalı lisans
+  listesi, ayrıntı çekmecesi, işlem geçmişi ve sistem durumu hazırlandı. Bu kaynak
+  değişikliği yereldir; canlı servise deploy edilmedi. Mimari, test ve güvenli yayın
+  adımları: [server/README.md](server/README.md).
 - Terminal tarzı native **Onestep Launcher** hazır: key girişi, imzalı sürüm
   kontrolü, lisanslı internetten indirme ve seçilen açık Minecraft'a başlatma.
   EXE: `build/launcher/Onestep-Launcher.exe`. DLL launcher keyini almaz; hedef
@@ -21,8 +25,8 @@ istemcisi içerir.
 - `Onestep-Auth.cmd`, yönetici parolasını ve ilk client lisansını kullanıcı
   isteğiyle panoya kopyalayan küçük yerel yardımcıyı açar (PowerShell 7 gerekir).
   Kaynakta parola bulunmaz; yedek `server/.credentials` altında Windows hesabına
-  bağlı şifreli saklanır ve git dışında tutulur. Eski Wolf admin adresi Onestep'e
-  yönlenir; sahibinin isteğiyle eski 10 lisans şifreli yedeklenip silinmiştir.
+  bağlı şifreli saklanır ve git dışında tutulur. Tarihsel Wolf operasyon notları
+  `server/archive/wolf/` altındadır; güncel servis bu kaynaklara bağlı değildir.
 - Yeni serviste public config çağrıları da lisanslı oturum ister; eski Wolf
   servisinin ayrı lisanssız config yolu değiştirilmedi.
 - HWID'ye ek olarak Windows CNG cihaz anahtarıyla imzalı giriş/heartbeat vardır.

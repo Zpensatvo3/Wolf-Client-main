@@ -17,6 +17,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Validate auth configuration and Worker locally
+        run: |
+          python scripts/Test-AuthConfiguration.py
+          npm ci --prefix server
+          npm test --prefix server
+          npm run test:runtime --prefix server
       - name: Validate infrastructure and source boundaries
         run: |
           python scripts/Test-Infrastructure.py
