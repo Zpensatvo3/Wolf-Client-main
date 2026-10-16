@@ -7,6 +7,7 @@
 #include "../src/modules/misc/settings/pot_refill_settings.hpp"
 #include "../src/modules/combat/settings/crystal_aura_settings.hpp"
 #include "../src/modules/combat/settings/anchor_macro_settings.hpp"
+#include "../src/modules/client/settings/nameprotect_settings.hpp"
 #include <cassert>
 #include <set>
 #include <string>
@@ -119,4 +120,23 @@ int main()
     gui::settings::render(anchor,anchor_fields.subspan(1));
     assert(drawn.contains("blatant_variance") && drawn.contains("blatant_camera_strength"));
     assert(anchor.legit_place_delay == 38 && anchor.blatant_place_delay == 0);
+
+    // NameProtect keeps its custom text control but publishes through the shared editor.
+    modules::settings::store<module_settings::nameprotect> privacy;
+    const auto edit_alias = [&](std::string_view value) {
+        return gui::settings::edit(privacy,module_settings::nameprotect::schema(),[&](auto& candidate) {
+            if (services::privacy::valid_alias(value)) candidate.alias=value;
+        });
+    };
+    assert(privacy.read().alias == "Protected");
+    assert(!edit_alias("Protected"));
+    assert(edit_alias("Player_123"));
+    const auto snapshot = privacy.read();
+    for (const auto invalid : {"", "Has Space", "Bad!", "abcdefghijklmnopq", "\xc3\xa7"}) {
+        assert(!edit_alias(invalid));
+        assert(privacy.read().alias == snapshot.alias);
+    }
+    assert(edit_alias("abcdefghijklmnop"));
+    assert(privacy.read().alias == "abcdefghijklmnop");
+    assert(snapshot.alias == "Player_123");
 }

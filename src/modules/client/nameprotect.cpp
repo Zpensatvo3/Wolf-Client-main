@@ -1,5 +1,6 @@
 #include "nameprotect.hpp"
 #include "../../gui/gui.hpp"
+#include "../../ui/settings_renderer.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../../services/game/client_context.hpp"
 #include "../../../resource.h"
@@ -192,13 +193,14 @@ void modules::nameprotect::render_overlay()
 }
 void modules::nameprotect::render_options()
 {
-    auto current=settings_.read();
-    char alias[17]{};
-    std::memcpy(alias,current.alias.data(),current.alias.size());
-    ImGui::TextUnformatted(gui::text("Alias","Takma Ad"));
-    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
-    if (ImGui::InputText("##nameprotect_alias",alias,sizeof(alias),ImGuiInputTextFlags_CharsNoBlank) &&
-        services::privacy::valid_alias(alias))
-        settings_.update([&](auto& candidate) { candidate.alias=alias; return true; });
+    gui::settings::edit(settings_,module_settings::nameprotect::schema(),[](auto& current) {
+        char alias[17]{};
+        std::memcpy(alias,current.alias.data(),current.alias.size());
+        ImGui::TextUnformatted(gui::text("Alias","Takma Ad"));
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+        if (ImGui::InputText("##nameprotect_alias",alias,sizeof(alias),ImGuiInputTextFlags_CharsNoBlank) &&
+            services::privacy::valid_alias(alias))
+            current.alias=alias;
+    });
     if (!state_->error.empty()) ImGui::TextWrapped("%s",state_->error.c_str());
 }
