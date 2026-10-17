@@ -364,10 +364,10 @@ void modules::block_esp::render_options()
 		catalog = available_blocks;
 		selected = candidate.selected_blocks;
 	}
-	ImGui::InputTextWithHint("##block_search", gui::text("Search blocks...", "Blok ara..."),
+	ImGui::InputTextWithHint("##block_search", "Search blocks...",
 		block_search, sizeof(block_search));
 	ImGui::SameLine();
-	if (ImGui::Button(gui::text("Clear", "Temizle")))
+	if (ImGui::Button("Clear"))
 	{
 		std::scoped_lock lock(marker_mutex);
 		candidate.selected_blocks.clear(); markers.clear(); scan_index = 0; scan_section = 0;

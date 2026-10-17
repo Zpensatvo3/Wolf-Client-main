@@ -21,16 +21,16 @@ namespace module_settings
             using model = radar;
             using setting = modules::settings::descriptor<model>;
             static const setting fields[]{
-                setting::number("size", {"Radar Size", "Radar Boyutu"}, &model::radar_size, 120.0f, 260.0f, "%.0f px"),
-                setting::number("range", {"Range", "Mesafe"}, &model::radar_range, 8.0f, 128.0f, "%.0f blocks"),
-                setting::number("position_x", {"Position X", "Konum X"}, &model::position_x, -1000000.f, 1000000.f, "%.0f px").display_limits(4.f, 1200.f),
-                setting::number("position_y", {"Position Y", "Konum Y"}, &model::position_y, -1000000.f, 1000000.f, "%.0f px").display_limits(4.f, 800.f),
-                setting::number("background_opacity", {"Background", "Arka Plan"}, &model::background_opacity, 0.20f, 1.0f, "%.2f"),
-                setting::toggle("rotate_with_player", {"Rotate with Player", "Oyuncuyla Birlikte Dondur"}, &model::rotate_with_player),
-                setting::toggle("show_names", {"Show Names", "Isimleri Goster"}, &model::show_names),
-                setting::toggle("show_distance_rings", {"Distance Rings", "Mesafe Halkalari"}, &model::show_distance_rings),
-                setting::toggle("show_cardinals", {"Cardinal Directions", "Yon Harfleri"}, &model::show_cardinals),
-                setting::toggle("show_player_count", {"Player Count", "Oyuncu Sayisi"}, &model::show_player_count),
+                setting::number("size", {"Radar Size"}, &model::radar_size, 120.0f, 260.0f, "%.0f px"),
+                setting::number("range", {"Range"}, &model::radar_range, 8.0f, 128.0f, "%.0f blocks"),
+                setting::number("position_x", {"Position X"}, &model::position_x, -1000000.f, 1000000.f, "%.0f px").display_limits(4.f, 1200.f),
+                setting::number("position_y", {"Position Y"}, &model::position_y, -1000000.f, 1000000.f, "%.0f px").display_limits(4.f, 800.f),
+                setting::number("background_opacity", {"Background"}, &model::background_opacity, 0.20f, 1.0f, "%.2f"),
+                setting::toggle("rotate_with_player", {"Rotate with Player"}, &model::rotate_with_player),
+                setting::toggle("show_names", {"Show Names"}, &model::show_names),
+                setting::toggle("show_distance_rings", {"Distance Rings"}, &model::show_distance_rings),
+                setting::toggle("show_cardinals", {"Cardinal Directions"}, &model::show_cardinals),
+                setting::toggle("show_player_count", {"Player Count"}, &model::show_player_count),
             };
             return fields;
         }

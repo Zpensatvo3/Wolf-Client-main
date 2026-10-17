@@ -37,34 +37,34 @@ namespace module_settings
         static std::span<const modules::settings::descriptor<anchor_macro>> schema()
         {
             using d = modules::settings::descriptor<anchor_macro>;
-            static const modules::settings::label modes[]{{"Legit","Legit"},{"Blatant","Blatant"}};
+            static const modules::settings::label modes[]{{"Legit"},{"Blatant"}};
             static const auto legit = +[](const anchor_macro& c) { return c.mode == 0; };
             static const auto blatant = +[](const anchor_macro& c) { return c.mode == 1; };
             static const d fields[]{
-                d::choice("mode", {"Mode","Mod"}, &anchor_macro::mode, modes),
-                d::integer("legit_switch_delay", {"Slot Switch Delay","Slot Gecis Gecikmesi"}, &anchor_macro::legit_switch_delay,0,500,"%d ms").when(legit),
-                d::integer("legit_place_delay", {"Place Delay","Anchor Koyma Gecikmesi"}, &anchor_macro::legit_place_delay,0,500,"%d ms").when(legit),
-                d::integer("legit_charge_delay", {"Charge Delay","Glowstone Basma Gecikmesi"}, &anchor_macro::legit_charge_delay,0,500,"%d ms").when(legit),
-                d::integer("legit_detonate_delay", {"Detonation Delay","Patlatma Gecikmesi"}, &anchor_macro::legit_detonate_delay,0,500,"%d ms").when(legit),
-                d::integer("legit_return_delay", {"Return Delay","Geri Donus Gecikmesi"}, &anchor_macro::legit_return_delay,0,500,"%d ms").when(legit),
-                d::toggle("legit_randomize", {"Randomize Delays","Gecikmeleri Rastgelelestir"}, &anchor_macro::legit_randomize).when(legit),
-                d::integer("legit_variance", {"Random Variation","Rastgele Sapma"}, &anchor_macro::legit_variance,0,150,"+/- %d ms")
+                d::choice("mode", {"Mode"}, &anchor_macro::mode, modes),
+                d::integer("legit_switch_delay", {"Slot Switch Delay"}, &anchor_macro::legit_switch_delay,0,500,"%d ms").when(legit),
+                d::integer("legit_place_delay", {"Place Delay"}, &anchor_macro::legit_place_delay,0,500,"%d ms").when(legit),
+                d::integer("legit_charge_delay", {"Charge Delay"}, &anchor_macro::legit_charge_delay,0,500,"%d ms").when(legit),
+                d::integer("legit_detonate_delay", {"Detonation Delay"}, &anchor_macro::legit_detonate_delay,0,500,"%d ms").when(legit),
+                d::integer("legit_return_delay", {"Return Delay"}, &anchor_macro::legit_return_delay,0,500,"%d ms").when(legit),
+                d::toggle("legit_randomize", {"Randomize Delays"}, &anchor_macro::legit_randomize).when(legit),
+                d::integer("legit_variance", {"Random Variation"}, &anchor_macro::legit_variance,0,150,"+/- %d ms")
                     .when([](const anchor_macro& c) { return c.mode == 0 && c.legit_randomize; }),
-                d::toggle("legit_hybrid_slot_input", {"Hybrid Slot Input","Hibrit Slot Girisi"}, &anchor_macro::legit_hybrid_slot_input).when(legit),
-                d::toggle("legit_camera_movement", {"Camera Movement","Kamera Hareketi"}, &anchor_macro::legit_camera_movement).when(legit),
-                d::number("legit_camera_strength", {"Camera Strength","Kamera Siddeti"}, &anchor_macro::legit_camera_strength,0,1.2f)
+                d::toggle("legit_hybrid_slot_input", {"Hybrid Slot Input"}, &anchor_macro::legit_hybrid_slot_input).when(legit),
+                d::toggle("legit_camera_movement", {"Camera Movement"}, &anchor_macro::legit_camera_movement).when(legit),
+                d::number("legit_camera_strength", {"Camera Strength"}, &anchor_macro::legit_camera_strength,0,1.2f)
                     .when([](const anchor_macro& c) { return c.mode == 0 && c.legit_camera_movement; }),
-                d::integer("blatant_switch_delay", {"Slot Switch Delay","Slot Gecis Gecikmesi"}, &anchor_macro::blatant_switch_delay,0,500,"%d ms").when(blatant),
-                d::integer("blatant_place_delay", {"Place Delay","Anchor Koyma Gecikmesi"}, &anchor_macro::blatant_place_delay,0,500,"%d ms").when(blatant),
-                d::integer("blatant_charge_delay", {"Charge Delay","Glowstone Basma Gecikmesi"}, &anchor_macro::blatant_charge_delay,0,500,"%d ms").when(blatant),
-                d::integer("blatant_detonate_delay", {"Detonation Delay","Patlatma Gecikmesi"}, &anchor_macro::blatant_detonate_delay,0,500,"%d ms").when(blatant),
-                d::integer("blatant_return_delay", {"Return Delay","Geri Donus Gecikmesi"}, &anchor_macro::blatant_return_delay,0,500,"%d ms").when(blatant),
-                d::toggle("blatant_randomize", {"Randomize Delays","Gecikmeleri Rastgelelestir"}, &anchor_macro::blatant_randomize).when(blatant),
-                d::integer("blatant_variance", {"Random Variation","Rastgele Sapma"}, &anchor_macro::blatant_variance,0,150,"+/- %d ms")
+                d::integer("blatant_switch_delay", {"Slot Switch Delay"}, &anchor_macro::blatant_switch_delay,0,500,"%d ms").when(blatant),
+                d::integer("blatant_place_delay", {"Place Delay"}, &anchor_macro::blatant_place_delay,0,500,"%d ms").when(blatant),
+                d::integer("blatant_charge_delay", {"Charge Delay"}, &anchor_macro::blatant_charge_delay,0,500,"%d ms").when(blatant),
+                d::integer("blatant_detonate_delay", {"Detonation Delay"}, &anchor_macro::blatant_detonate_delay,0,500,"%d ms").when(blatant),
+                d::integer("blatant_return_delay", {"Return Delay"}, &anchor_macro::blatant_return_delay,0,500,"%d ms").when(blatant),
+                d::toggle("blatant_randomize", {"Randomize Delays"}, &anchor_macro::blatant_randomize).when(blatant),
+                d::integer("blatant_variance", {"Random Variation"}, &anchor_macro::blatant_variance,0,150,"+/- %d ms")
                     .when([](const anchor_macro& c) { return c.mode == 1 && c.blatant_randomize; }),
-                d::toggle("blatant_hybrid_slot_input", {"Hybrid Slot Input","Hibrit Slot Girisi"}, &anchor_macro::blatant_hybrid_slot_input).when(blatant),
-                d::toggle("blatant_camera_movement", {"Camera Movement","Kamera Hareketi"}, &anchor_macro::blatant_camera_movement).when(blatant),
-                d::number("blatant_camera_strength", {"Camera Strength","Kamera Siddeti"}, &anchor_macro::blatant_camera_strength,0,1.2f)
+                d::toggle("blatant_hybrid_slot_input", {"Hybrid Slot Input"}, &anchor_macro::blatant_hybrid_slot_input).when(blatant),
+                d::toggle("blatant_camera_movement", {"Camera Movement"}, &anchor_macro::blatant_camera_movement).when(blatant),
+                d::number("blatant_camera_strength", {"Camera Strength"}, &anchor_macro::blatant_camera_strength,0,1.2f)
                     .when([](const anchor_macro& c) { return c.mode == 1 && c.blatant_camera_movement; })
             };
             return fields;

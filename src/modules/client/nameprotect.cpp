@@ -144,7 +144,7 @@ struct modules::nameprotect::runtime
             if (env->ExceptionCheck()) env->ExceptionClear();
             transforming.store(nullptr,std::memory_order_release);
             shutdown(env); failed=true;
-            error=gui::text("NameProtect could not connect to the game font.","NameProtect oyun yazılarına bağlanamadı.");
+            error="NameProtect could not connect to the game font.";
             return false;
         }
     }
@@ -196,7 +196,7 @@ void modules::nameprotect::render_options()
     gui::settings::edit(settings_,module_settings::nameprotect::schema(),[](auto& current) {
         char alias[17]{};
         std::memcpy(alias,current.alias.data(),current.alias.size());
-        ImGui::TextUnformatted(gui::text("Alias","Takma Ad"));
+        ImGui::TextUnformatted("Alias");
         ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
         if (ImGui::InputText("##nameprotect_alias",alias,sizeof(alias),ImGuiInputTextFlags_CharsNoBlank) &&
             services::privacy::valid_alias(alias))

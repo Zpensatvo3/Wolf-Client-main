@@ -3,7 +3,6 @@
 #include <Windows.h>
 #include <imgui/imgui.h>
 #include "widgets.hpp"
-#include "language.hpp"
 #include "../modules/render/settings/hud_settings.hpp"
 #include "../modules/render/settings/arraylist_settings.hpp"
 
@@ -23,6 +22,7 @@ namespace gui
 	inline int menu_key = VK_RSHIFT;
 	inline bool menu_key_scanning = false;
 	inline bool suppress_menu_key_until_release = false;
+	inline std::atomic_bool suppress_escape_until_release{false};
 	inline int active_theme = 0; // 0: onestep, 1: Crimson, 2: Emerald, 3: Ocean, 4: Rose, 5: Cyber, 6: Sunset, 7: Mono
 	// Render-thread preferences; reference aliases keep the HUD editor API stable.
 	inline module_settings::hud watermark_settings{};

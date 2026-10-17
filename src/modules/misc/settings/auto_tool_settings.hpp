@@ -15,8 +15,8 @@ namespace module_settings
             using model = auto_tool;
             using setting = modules::settings::descriptor<model>;
             static const setting fields[]{
-                setting::toggle("require_left_click", {"Require Left Click", "Sol Tik Gerekli"}, &model::require_left_click),
-                setting::toggle("prefer_hotbar_only", {"Prefer Hotbar Only", "Yalnızca hotbar"}, &model::prefer_hotbar_only, false),
+                setting::toggle("require_left_click", {"Require Left Click"}, &model::require_left_click),
+                setting::toggle("prefer_hotbar_only", {"Prefer Hotbar Only"}, &model::prefer_hotbar_only, false),
             };
             return fields;
         }

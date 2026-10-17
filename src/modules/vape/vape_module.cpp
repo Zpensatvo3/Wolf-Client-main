@@ -211,15 +211,15 @@ const char* modules::vape_module::conflict() const
     using vape_bridge::active;
     if (kind == vape_kind::aim) {
         if (active("aim_assist") || active("legit_click_aim_assist") || active("blatant_click_aim_assist"))
-            return gui::text("Pause: Wolf Aim Assist is enabled", "Bekliyor: Wolf Aim Assist açık");
+            return "Pause: Wolf Aim Assist is enabled";
     }
     if (kind == vape_kind::left) {
         if (active("triggerbot") || active("left_clicker") || active("shield_breaker") ||
             active("mace_swap") || active("hit_crystal") || active("anchor_macro"))
-            return gui::text("Pause: Wolf attack module is enabled", "Bekliyor: Wolf saldırı modülü açık");
+            return "Pause: Wolf attack module is enabled";
     }
     if (kind == vape_kind::right && (active("right_clicker") || active("fast_exp")))
-        return gui::text("Pause: Wolf right click module is enabled", "Bekliyor: Wolf sağ tık modülü açık");
+        return "Pause: Wolf right click module is enabled";
     return nullptr;
 }
 

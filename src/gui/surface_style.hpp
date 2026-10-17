@@ -9,6 +9,7 @@ namespace gui::surface_style
         style.AntiAliasedLines = true;
         style.AntiAliasedLinesUseTex = true;
         style.AntiAliasedFill = true;
+        style.ScrollbarSize = 0.f;
         style.CurveTessellationTol = .15f;
         style.CircleTessellationMaxError = .08f;
     }

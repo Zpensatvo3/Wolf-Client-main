@@ -16,12 +16,12 @@ namespace module_settings
         {
             using model = elytra_swapper;
             using setting = modules::settings::descriptor<model>;
-        static constexpr modules::settings::label modes[]{{"Equip Elytra", "Elytra Tak"}, {"Equip Chestplate", "Gogusluk Tak"}};
+        static constexpr modules::settings::label modes[]{{"Equip Elytra"}, {"Equip Chestplate"}};
             static const setting fields[]{
-                setting::choice("target_mode", {"Swap Target", "Takas Hedefi"}, &model::target_mode, modes),
-                setting::toggle("use_hotbar", {"Use Hotbar", "Hotbar Kullan"}, &model::use_hotbar),
-                setting::toggle("work_without_inventory", {"Work Without Inventory", "Envanter Acik Olmadan Calis"}, &model::work_without_inventory),
-                setting::integer("swap_delay_ms", {"Click Delay", "Tik Gecikmesi"}, &model::swap_delay_ms, 20, 300, "%d ms"),
+                setting::choice("target_mode", {"Swap Target"}, &model::target_mode, modes),
+                setting::toggle("use_hotbar", {"Use Hotbar"}, &model::use_hotbar),
+                setting::toggle("work_without_inventory", {"Work Without Inventory"}, &model::work_without_inventory),
+                setting::integer("swap_delay_ms", {"Click Delay"}, &model::swap_delay_ms, 20, 300, "%d ms"),
             };
             return fields;
         }

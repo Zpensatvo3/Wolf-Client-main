@@ -248,7 +248,7 @@ struct sky_panorama::renderer::runtime
             for (float value:f) if (!std::isfinite(value)) return;
             current->render(p.data(),v.data(),f.data());
         }
-        catch (...) { platform::jni_context::clear_exception(); current->failure="Panorama çizimi durduruldu."; current->enabled=false; }
+        catch (...) { platform::jni_context::clear_exception(); current->failure="Panorama rendering stopped."; current->enabled=false; }
     }
     bool initialize()
     {
@@ -299,7 +299,7 @@ struct sky_panorama::renderer::runtime
         if (!owner)
         {
             owner=context_gl;
-            if (!gl.load()) { failed=true; failure="Panorama için OpenGL işlevleri eksik."; return; }
+            if (!gl.load()) { failed=true; failure="Required OpenGL functions for the panorama are unavailable."; return; }
         }
         if (owner!=context_gl) return; // Never use a VAO from another context.
         GLdouble clear_depth=0; glGetDoublev(GL_DEPTH_CLEAR_VALUE,&clear_depth);
@@ -311,12 +311,12 @@ struct sky_panorama::renderer::runtime
         const auto inverse=glm::inverse(combined);
         for (int i=0;i<16;++i) if (!std::isfinite(glm::value_ptr(inverse)[i])) return;
         gl_restore restore(gl);
-        if (!program && !initialize()) { failed=true; failure="Panorama shader'ı hazırlanamadı."; return; }
+        if (!program && !initialize()) { failed=true; failure="Could not initialize the panorama shader."; return; }
         const int selected=std::clamp(config.panorama,0,5);
         constexpr int resources[]{IDR_SKY_NIGHT,IDR_SKY_MILKY_WAY,IDR_SKY_SUNRISE,
             IDR_SKY_CANDY_DUSK,IDR_SKY_NEBULA,IDR_SKY_AURORA};
         if (!textures[selected]) textures[selected]=load_texture(gl,resources[selected]);
-        if (!textures[selected]) { failed=true; failure="Panorama görseli açılamadı."; return; }
+        if (!textures[selected]) { failed=true; failure="Could not load the panorama image."; return; }
         const double now=static_cast<double>(GetTickCount64())/1000.;
         const double dt=last_time>0 ? std::clamp(now-last_time,0.,.1) : 0.; last_time=now;
         if (config.drift && !reduced) phase=std::fmod(phase+dt*.00055,1.);
@@ -393,7 +393,7 @@ bool sky_panorama::renderer::connect()
     catch (...)
     {
         platform::jni_context::clear_exception(); shutdown();
-        s.failed=true; s.failure="Panorama bağlantısı kurulamadı; Fabric API gerekiyor.";
+        s.failed=true; s.failure="Could not connect the panorama bridge; Fabric API is required.";
         return false;
     }
 }
@@ -427,9 +427,9 @@ const char* sky_panorama::renderer::error() const
     if (s.bridge && s.shader_check && jni::get_env())
     {
         const bool blocked=jni::get_env()->CallStaticBooleanMethod(s.bridge,s.shader_check)==JNI_TRUE;
-        if (!platform::jni_context::clear_exception() && blocked) return "Panorama için Iris shader paketini kapat.";
+        if (!platform::jni_context::clear_exception() && blocked) return "Disable the Iris shader pack to use panoramas.";
         const bool alive=jni::get_env()->CallStaticBooleanMethod(s.bridge,s.healthy)==JNI_TRUE;
-        if (!platform::jni_context::clear_exception() && !alive) return "Panorama bağlantısı durdu; istemciyi yeniden yükle.";
+        if (!platform::jni_context::clear_exception() && !alive) return "The panorama bridge stopped; reload the client.";
     }
     return s.failure.c_str();
 }

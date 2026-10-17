@@ -184,7 +184,7 @@ void modules::fast_exp::on_disable(::cache& cache)
 void modules::fast_exp::render_options()
 {
     gui::settings::render(settings_, module_settings::fast_exp::schema());
-    ImGui::TextDisabled("%s", gui::text("Input: Windows API (SendInput)", "Girdi: Windows API (SendInput)"));
-    ImGui::TextDisabled("%s", gui::text("Hold right-click with EXP bottle to fire.", "EXP elindeyken sag tika basili tutarak atesleyin."));
-    ImGui::TextDisabled("%s", gui::text("Safety checks active (GUI, screens, EXP detection).", "Guvenlik kontrolleri aktif (Menu, ekranlar, EXP kontrolu)."));
+    ImGui::TextDisabled("%s", "Input: Windows API (SendInput)");
+    ImGui::TextDisabled("%s", "Hold right-click with EXP bottle to fire.");
+    ImGui::TextDisabled("%s", "Safety checks active (GUI, screens, EXP detection).");
 }

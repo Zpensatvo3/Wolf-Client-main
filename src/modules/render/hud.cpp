@@ -183,7 +183,7 @@ void modules::hud::render_overlay()
 
 void modules::hud::render_options()
 {
-    ImGui::TextDisabled("%s", gui::text("Displays onestep logo watermark", "onestep logo watermark gostergesini ekrana cizer"));
+    ImGui::TextDisabled("%s", "Displays onestep logo watermark");
     ImGui::Spacing();
     gui::settings::render(gui::watermark_settings, module_settings::hud::schema());
 }

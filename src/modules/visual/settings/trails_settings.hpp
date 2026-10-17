@@ -14,17 +14,17 @@ namespace module_settings
         {
             using d = modules::settings::descriptor<trails>;
             static constexpr modules::settings::label modes[]{
-                {"Particles", "Parçacık"}, {"Footprints", "Ayak İzi"}, {"Both", "İkisi Birlikte"}
+                {"Particles"}, {"Footprints"}, {"Both"}
             };
             static const d fields[]{
-                d::choice("mode", {"Trail", "İz Türü"}, &trails::mode, modes),
-                d::number("lifetime", {"Lifetime", "İz Süresi"}, &trails::lifetime, .5f, 5.f, "%.1f s"),
-                d::number("density", {"Particle Density", "Parçacık Sıklığı"}, &trails::density, .5f, 2.f, "%.1fx").when([](const trails& c) { return c.mode!=1; }),
-                d::number("size", {"Size", "Boyut"}, &trails::size, .5f, 1.5f, "%.2fx"),
-                d::number("opacity", {"Opacity", "Opaklık"}, &trails::opacity, .1f, 1.f, "%.2f"),
-                d::toggle("theme_color", {"Theme Color", "Tema Rengi"}, &trails::theme_color),
-                d::color("color", {"Color", "Renk"}, &trails::color).when([](const trails& c) { return !c.theme_color; }),
-                d::toggle("glow", {"Glow", "Parlama"}, &trails::glow)
+                d::choice("mode", {"Trail"}, &trails::mode, modes),
+                d::number("lifetime", {"Lifetime"}, &trails::lifetime, .5f, 5.f, "%.1f s"),
+                d::number("density", {"Particle Density"}, &trails::density, .5f, 2.f, "%.1fx").when([](const trails& c) { return c.mode!=1; }),
+                d::number("size", {"Size"}, &trails::size, .5f, 1.5f, "%.2fx"),
+                d::number("opacity", {"Opacity"}, &trails::opacity, .1f, 1.f, "%.2f"),
+                d::toggle("theme_color", {"Theme Color"}, &trails::theme_color),
+                d::color("color", {"Color"}, &trails::color).when([](const trails& c) { return !c.theme_color; }),
+                d::toggle("glow", {"Glow"}, &trails::glow)
             };
             return fields;
         }

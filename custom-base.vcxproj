@@ -181,6 +181,7 @@
   <ItemGroup>
     <ClInclude Include="src\ui\grim_ui.hpp" />
     <ClInclude Include="src\ui\menu_background.hpp" />
+    <ClInclude Include="src\ui\profile_model.hpp" />
     <ResourceCompile Include="assets.rc" />
   </ItemGroup>
   <ItemGroup>
@@ -584,7 +585,6 @@
     <ClInclude Include="src\ui\config_page_model.hpp" />
     <ClInclude Include="src\ui\hud_editor_layout.hpp" />
     <ClInclude Include="src\gui\widgets.hpp" />
-    <ClInclude Include="src\gui\language.hpp" />
     <ClInclude Include="src\gui\module_descriptions.hpp" />
     <None Include="src\modules\settings_manifest.json" />
     <ClInclude Include="src\gui\control_draw.hpp" />

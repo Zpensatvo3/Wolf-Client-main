@@ -76,6 +76,21 @@ istemcisi içerir.
   kılıç aşamasına döner; sınırsız paket serisi göndermez. Oyun içi doğrulama yapılmadı.
   Native/Vape clicker'ların araya saldırı sokması ortak sahiplikle engellenir;
   Triggerbot önceliklidir. Diğer blok/slot makrolarıyla birlikte kullanım doğrulanmadı.
+- Oyun içi arayüz yalnızca İngilizcedir; Türkçe seçimi, etiketler ve çeviri katmanı
+  kaldırıldı. Eski UI tercihlerindeki `language` alanı yok sayılır; diğer ayarlar
+  korunur. Oyuncu adları ve kullanıcı metinleri Unicode olarak görüntülenebilir.
+  Kaydırma çubukları gizlidir; listeler, temalar ve ayarlar fare tekerleğiyle kayar.
+  ESC ana menüyü kapatır. Açık arama, açılır liste veya onay penceresi varsa ilk
+  ESC onu kapatır; HUD düzenleyicide ESC menüye döner. Tuş ataması sırasında ESC
+  atamayı temizler; menüyü kapatmaz. Menü kapanışındaki ESC tekrarı Minecraft'a
+  iletilmez. Oyun içi Windows doğrulaması ayrıca yapılmalıdır.
+- Arama düğmesi, sol altta oyuncu bilgisinin üstündeki kutudadır. Arama sonuçları
+  kutunun yanında açılır; mevcut klavye gezinmesi ve otomatik tamamlama korunur.
+  Profilde yerel oyuncunun skin kafası (ikinci katman dahil) ve adı gösterilir.
+  Skin yüklenene kadar varsayılan kafa kullanılır. Rastgele UID yerine doğrulanmış
+  lisans bitiş tarihinden kalan süre (`30 days`, `2 hours`) veya `Lifetime` yazılır;
+  bilinmeyen süre lifetime kabul edilmez. Bu etiket yalnızca görseldir, yetkilendirme
+  ve oturum süresi kontrollerini değiştirmez.
 - Temalar sayfasında menü arka planı seçilebilir: Klasik (eski görünüm), Hisar,
   Pamuk Alacakaranlığı, Nebula ve Aurora. Hazır görseller DLL'e gömülüdür; indirme
   gerektirmez. **Görsel ekle** ile PNG/JPG seçilebilir (16 MB, kenar başına 8192
@@ -359,7 +374,7 @@ taşınmadı; registry ve ayar yayınlama sahipliği sonraki aşamadır.
 
 `setting_schema.hpp` bool, tamsayı, sayısal değer, aralık, renk, metin listesi ve
 seyrek enum değerlerini de destekleyen seçenek listeleri için
-üye bağlarını, config anahtarlarını, sınırları ve dil etiketlerini tanımlar.
+üye bağlarını, config anahtarlarını, sınırları ve İngilizce UI etiketlerini tanımlar.
 `ui/settings_renderer.hpp` bu tanımları mevcut arayüz kontrolleriyle çizer.
 İçe aktarma önce yerel aday ayarları doğrular; geçersiz değerler canlı ayarlara
 uygulanmaz. Gizli kontrollerin değerleri config içinde korunur.

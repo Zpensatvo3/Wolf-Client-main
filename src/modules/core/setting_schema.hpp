@@ -14,7 +14,6 @@ namespace modules::settings
     struct label
     {
         const char* english;
-        const char* turkish;
     };
     enum class control { toggle, number, range, choice, integer, color, real_pair, integer_pair, string_list };
 
@@ -39,7 +38,6 @@ namespace modules::settings
         std::span<const label> choices{};
         bool Config::* visible_if = nullptr;
         bool visible = true;
-        const char* turkish_format = nullptr;
         float (Config::* float_array)[4] = nullptr;
         float (Config::* float_pair)[2] = nullptr;
         int (Config::* int_pair)[2] = nullptr;
@@ -114,10 +112,6 @@ namespace modules::settings
         descriptor display_minimum(int value) const
         {
             auto d = *this; d.integer_display_minimum = value; return d;
-        }
-        descriptor translated_format(const char* value) const
-        {
-            auto d = *this; d.turkish_format = value; return d;
         }
         static descriptor number(const char* key, label title, float Config::* member,
             float minimum, float maximum, const char* format = "%.1f", bool Config::* visible_if = nullptr)

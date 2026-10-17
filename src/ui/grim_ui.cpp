@@ -1,6 +1,7 @@
 #include "grim_ui.hpp"
 #include "hud_editor.hpp"
 #include "menu_background.hpp"
+#include "profile_model.hpp"
 
 #include "../gui/gui.hpp"
 #include "../gui/module_descriptions.hpp"
@@ -21,7 +22,6 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
-#include <random>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -53,14 +53,6 @@ namespace
         themes
     };
 
-    unsigned generate_session_uid()
-    {
-        const auto clock_seed = static_cast<unsigned>(std::chrono::high_resolution_clock::now().time_since_epoch().count());
-        std::random_device device;
-        std::mt19937 generator(clock_seed ^ device());
-        return std::uniform_int_distribution<unsigned>(100000, 999999)(generator);
-    }
-
     struct runtime_state
     {
         page current = page::combat;
@@ -78,7 +70,10 @@ namespace
         bool search_completion_active = false;
         bool search_completion_pending = false;
         float player_preview_yaw = 0.0f;
-        unsigned session_uid = generate_session_uid();
+        double profile_refreshed_at = -10.0;
+        std::string license_label;
+        bool had_popup = false;
+        int rendered_frame = -1;
         modules::module* transfer_module = nullptr;
         ImVec2 transfer_min{};
         ImVec2 transfer_max{};
@@ -178,7 +173,7 @@ namespace
         case page::friends: return "Friends";
         case page::configs: return "Configs";
         case page::hud: return "Hud";
-        case page::themes: return gui::text("Themes", "Temalar");
+        case page::themes: return "Themes";
         }
         return "onestep";
     }
@@ -188,7 +183,7 @@ namespace
         switch (value)
         {
         case page::combat: return "Combat assistance and timing";
-        case page::vape: return gui::text("Independent combat engines", "Bağımsız combat motorları");
+        case page::vape: return "Independent combat engines";
         case page::movement: return "Movement and bridging tools";
         case page::player: return "Player and inventory automation";
         case page::visuals: return "World visualization modules";
@@ -338,7 +333,7 @@ namespace
 
         ImFont* label_font = gui::ui_bold_font ? gui::ui_bold_font : ImGui::GetFont();
         constexpr float label_size = 15.5f;
-        const char* label = entry.target == page::themes ? gui::text("Themes", "Temalar") : entry.label;
+        const char* label = entry.target == page::themes ? "Themes" : entry.label;
         const ImVec2 label_extent = label_font->CalcTextSizeA(label_size, FLT_MAX, 0.0f, label);
         draw_text(draw, label_font, label_size,
             ImVec2(position.x + 38.0f, position.y + (34.0f - label_extent.y) * 0.5f),
@@ -440,9 +435,9 @@ namespace
     {
         ImGui::SetCursorScreenPos(minimum);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-        ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 1.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 0.0f);
         ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-        if (ImGui::BeginChild("##grim_module_grid", size, ImGuiChildFlags_None))
+        if (ImGui::BeginChild("##grim_module_grid", size, ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar))
         {
             const float gap = 8.0f;
             const float width = (ImGui::GetContentRegionAvail().x - gap) * 0.5f;
@@ -536,7 +531,7 @@ namespace
             button_min.y + (button_size.y - label_size.y) * 0.5f), primary, label);
 
         draw_text(draw, gui::ui_font, 12.5f, ImVec2(minimum.x + 20.0f, minimum.y + 143.0f), muted,
-            gui::text("Select, align and drag overlays. Layout is saved automatically.", "HUD seç, hizala ve sürükle. Yerleşim otomatik kaydedilir."));
+            "Select, align and drag overlays. Layout is saved automatically.");
     }
 
     void render_direct_hud_editor(const ImGuiViewport* viewport)
@@ -544,12 +539,12 @@ namespace
         gui::hud_editor::render(viewport);
     }
 
-    void render_search(const ImVec2& shell_position)
+    void render_search(const ImVec2& anchor)
     {
         const float target = state.search_open ? 1.0f : 0.0f;
         state.search_animation = approach(state.search_animation, target, 13.0f);
         if (!state.search_open && state.search_animation < 0.01f) return;
-        if (state.search_open && ImGui::IsKeyPressed(ImGuiKey_Escape)) state.search_open = false;
+        if (state.search_open && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) state.search_open = false;
         const float eased = state.search_animation * state.search_animation * (3.0f - 2.0f * state.search_animation);
         auto collect_results = []
         {
@@ -565,14 +560,15 @@ namespace
         constexpr float result_height = 46.0f;
         const float full_height = 108.0f + static_cast<float>(std::max<std::size_t>(1, results.size())) * result_height;
         const ImVec2 size(610.0f * (0.94f + eased * 0.06f), (54.0f + (full_height - 54.0f) * eased));
-        const ImVec2 position(shell_position.x + 960.0f - size.x - 18.0f, shell_position.y + 8.0f);
+        // Expand into the content area beside the sidebar search field.
+        const ImVec2 position(anchor.x + 190.0f, anchor.y + 36.0f - size.y);
         ImGui::SetCursorScreenPos(position);
         ImGui::PushStyleVar(ImGuiStyleVar_Alpha, std::max(0.02f, eased));
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f, 10.0f));
         ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 13.0f);
         ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.012f, 0.012f, 0.017f, 0.94f));
         if (ImGui::BeginChild("##grim_search", size, ImGuiChildFlags_Border,
-            ImGuiWindowFlags_NoScrollWithMouse))
+            ImGuiWindowFlags_NoScrollbar))
         {
             if (state.focus_search)
             {
@@ -681,6 +677,54 @@ namespace
         ImGui::PopStyleVar(3);
     }
 
+    void render_profile(const ImVec2& position, float width)
+    {
+        const double now = ImGui::GetTime();
+        if (now < state.profile_refreshed_at || now - state.profile_refreshed_at >= 1.0)
+        {
+            modules::player_esp::refresh_local_skin_texture();
+            state.license_label = gui::profile::license_label(auth::client::snapshot(),
+                std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now()));
+            state.profile_refreshed_at = now;
+        }
+        ImDrawList* draw = ImGui::GetWindowDrawList();
+        const ImVec2 head(position.x, position.y + 2.f), maximum(head.x + 42.f, head.y + 42.f);
+        if (const auto texture = modules::player_esp::local_skin_texture_id())
+        {
+            const auto skin = reinterpret_cast<ImTextureID>(texture);
+            draw->AddImageRounded(skin, head, maximum, ImVec2(8.f / 64.f, 8.f / 64.f),
+                ImVec2(16.f / 64.f, 16.f / 64.f), IM_COL32_WHITE, 6.f);
+            draw->AddImageRounded(skin, head, maximum, ImVec2(40.f / 64.f, 8.f / 64.f),
+                ImVec2(48.f / 64.f, 16.f / 64.f), IM_COL32_WHITE, 6.f);
+        }
+        else
+        {
+            // Offline/loading fallback; replaced by the actual local skin as soon as it resolves.
+            constexpr float pixel = 42.f / 8.f;
+            draw->AddRectFilled(head, maximum, IM_COL32(169, 121, 90, 255), 6.f);
+            draw->AddRectFilled(head, ImVec2(maximum.x, head.y + pixel * 2.5f),
+                IM_COL32(61, 42, 30, 255), 6.f, ImDrawFlags_RoundCornersTop);
+            auto block = [&](float x, float y, float w, float h, ImU32 color)
+            {
+                draw->AddRectFilled(ImVec2(head.x + x * pixel, head.y + y * pixel),
+                    ImVec2(head.x + (x + w) * pixel, head.y + (y + h) * pixel), color);
+            };
+            block(1, 3, 2, 1, IM_COL32(224, 218, 209, 255));
+            block(5, 3, 2, 1, IM_COL32(224, 218, 209, 255));
+            block(2, 3, 1, 1, IM_COL32(83, 76, 151, 255));
+            block(5, 3, 1, 1, IM_COL32(83, 76, 151, 255));
+            block(3, 4, 2, 2, IM_COL32(136, 86, 61, 255));
+            block(2, 6, 4, 1, IM_COL32(73, 46, 33, 255));
+        }
+        std::string player = friends::local_player_name();
+        if (player.empty()) player = "Player";
+        const ImVec4 clip(position.x + 53.f, position.y, position.x + width, position.y + 46.f);
+        draw->AddText(gui::ui_bold_font ? gui::ui_bold_font : ImGui::GetFont(), 14.f,
+            ImVec2(position.x + 53.f, position.y + 4.f), primary, player.c_str(), nullptr, 0, &clip);
+        draw->AddText(gui::ui_font ? gui::ui_font : ImGui::GetFont(), 12.f,
+            ImVec2(position.x + 53.f, position.y + 26.f), muted, state.license_label.c_str(), nullptr, 0, &clip);
+    }
+
     void render_inspector(const ImVec2& position)
     {
         if (!state.animated_module || state.inspector_animation < 0.005f)
@@ -723,10 +767,10 @@ namespace
             draw->AddCircleFilled(close, 11.0f, alpha(IM_COL32(255, 255, 255, 14), eased));
         gui::control_draw::close_icon(draw, close, alpha(ImGui::IsItemHovered() ? primary : secondary, eased));
 
-        draw_text(draw, gui::ui_font, 13.5f, ImVec2(anim_pos.x + 16.0f, anim_pos.y + 62.0f), alpha(secondary, eased), gui::text("Enabled", "Etkin"));
+        draw_text(draw, gui::ui_font, 13.5f, ImVec2(anim_pos.x + 16.0f, anim_pos.y + 62.0f), alpha(secondary, eased), "Enabled");
         toggle("##module_enabled", &module->enabled, ImVec2(anim_pos.x + 251.0f, anim_pos.y + 57.0f));
 
-        draw_text(draw, gui::ui_font, 13.5f, ImVec2(anim_pos.x + 16.0f, anim_pos.y + 95.0f), alpha(secondary, eased), gui::text("Keybind", "Tuş"));
+        draw_text(draw, gui::ui_font, 13.5f, ImVec2(anim_pos.x + 16.0f, anim_pos.y + 95.0f), alpha(secondary, eased), "Keybind");
         ImGui::SetCursorScreenPos(ImVec2(anim_pos.x + 215.0f, anim_pos.y + 87.0f));
         ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * eased);
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(1.0f, 1.0f, 1.0f, 0.045f));
@@ -741,7 +785,7 @@ namespace
         {
             ImGui::SetCursorScreenPos(ImVec2(anim_pos.x + 6.0f, anim_pos.y + 126.0f));
             ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 4.0f));
-            ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 3.0f);
+            ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 0.0f);
             ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 4.0f));
             ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * eased);
             ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
@@ -749,7 +793,7 @@ namespace
             ImGui::PushStyleColor(ImGuiCol_CheckMark, control_accent);
             ImGui::PushStyleColor(ImGuiCol_SliderGrabActive, control_accent);
             if (ImGui::BeginChild("##inspector_options", ImVec2(292.0f, std::max(1.0f, visible_height - 134.0f)),
-                ImGuiChildFlags_AlwaysUseWindowPadding))
+                ImGuiChildFlags_AlwaysUseWindowPadding, ImGuiWindowFlags_NoScrollbar))
             {
                 const ImGuiWindow* options_window = ImGui::GetCurrentWindow();
                 const float content_start = options_window->DC.CursorStartPos.y;
@@ -957,6 +1001,19 @@ void gui::grim::reset_runtime_state()
 void gui::grim::render(const ImGuiViewport* viewport, const page_callbacks& callbacks)
 {
     if (!viewport) return;
+    const bool escape_pressed = ImGui::IsKeyPressed(ImGuiKey_Escape, false);
+    const bool search_was_open = state.search_open;
+    constexpr auto popup_flags = ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel;
+    const bool popup_was_open = ImGui::IsPopupOpen(nullptr, popup_flags) ||
+        (state.rendered_frame == ImGui::GetFrameCount() - 1 && state.had_popup);
+    const bool capturing_key = std::any_of(modules::get_modules().begin(), modules::get_modules().end(),
+        [](const modules::module* module) { return module->is_keybind_capture_active(); });
+    // Keyboard navigation is intentionally disabled in the game integration,
+    // so dismiss ordinary ImGui popups explicitly. Modal confirmations own
+    // their cancellation state and are handled by their page instead.
+    if (escape_pressed && !search_was_open && !capturing_key &&
+        ImGui::IsPopupOpen(nullptr, popup_flags) && !ImGui::GetTopMostPopupModal())
+        ImGui::ClosePopupToLevel(ImGui::GetCurrentContext()->OpenPopupStack.Size - 1, true);
     gui::background::update();
     accent = gui::get_dynamic_color();
     accent_hover = blend(accent, primary, 0.16f);
@@ -1066,19 +1123,32 @@ void gui::grim::render(const ImGuiViewport* viewport, const page_callbacks& call
             nav_y += 40.0f;
         }
 
-        const ImVec2 profile(origin.x + 13.0f, origin.y + main_size.y - 58.0f);
-        draw->AddRectFilled(profile, ImVec2(origin.x + sidebar_width - 13.0f, origin.y + main_size.y - 12.0f),
-            IM_COL32(255, 255, 255, 10), 9.0f);
-        draw->AddRect(profile, ImVec2(origin.x + sidebar_width - 13.0f, origin.y + main_size.y - 12.0f),
-            IM_COL32(255, 255, 255, 8), 9.0f);
-        icon(draw, "\xEF\x80\x87", ImVec2(profile.x + 18.0f, profile.y + 23.0f), secondary, 16.0f);
-        std::string player = friends::local_player_name();
-        if (player.empty()) player = "Player";
-        if (player.size() > 16) player = player.substr(0, 14) + "...";
-        draw_text(draw, gui::ui_bold_font, 14.0f, ImVec2(profile.x + 38.0f, profile.y + 7.0f), secondary, player.c_str());
-        char uid[32]{};
-        std::snprintf(uid, sizeof(uid), "UID: %06u", state.session_uid);
-        draw_text(draw, gui::ui_font, 12.0f, ImVec2(profile.x + 38.0f, profile.y + 28.0f), muted, uid);
+        const ImVec2 profile(origin.x + 14.0f, origin.y + main_size.y - 58.0f);
+        render_profile(profile, sidebar_width - 28.f);
+
+        const ImVec2 search_button(origin.x + 14.f, profile.y - 48.f);
+        ImGui::SetCursorScreenPos(search_button);
+        ImGui::InvisibleButton("##open_search", ImVec2(176.f, 36.f));
+        if (ImGui::IsItemClicked())
+        {
+            state.search_open = !state.search_open;
+            state.focus_search = state.search_open;
+            state.search_selection = 0;
+            state.search_completion_active = false;
+            state.search_completion_pending = false;
+            state.search_completion_target.clear();
+        }
+        const bool search_hovered = ImGui::IsItemHovered();
+        const ImVec2 search_max(search_button.x + 176.f, search_button.y + 36.f);
+        draw->AddRectFilled(search_button, search_max, IM_COL32(15, 15, 20, search_hovered ? 210 : 150), 7.f);
+        draw->AddRect(search_button, search_max, state.search_open ? alpha(accent, .75f) :
+            IM_COL32(255, 255, 255, search_hovered ? 45 : 26), 7.f);
+        const ImVec2 search_center(search_button.x + 17.f, search_button.y + 16.f);
+        draw->AddCircle(search_center, 5.f, muted, 0, 1.6f);
+        draw->AddLine(ImVec2(search_center.x + 3.5f, search_center.y + 3.5f),
+            ImVec2(search_center.x + 7.5f, search_center.y + 7.5f), muted, 1.6f);
+        draw_text(draw, gui::ui_font, 14.f, ImVec2(search_button.x + 34.f, search_button.y + 9.f),
+            search_hovered ? secondary : muted, "Search");
 
         const ImVec2 content(origin.x + sidebar_width + 18.0f, origin.y + 13.0f);
         const float content_width = main_size.x - sidebar_width - 36.0f;
@@ -1090,25 +1160,6 @@ void gui::grim::render(const ImGuiViewport* viewport, const page_callbacks& call
         draw_text(draw, gui::ui_bold_font, 19.0f, ImVec2(content.x + 28.0f, content.y), primary, page_title);
         draw_text(draw, gui::ui_bold_font, 13.0f, ImVec2(content.x + 28.0f, content.y + 26.0f), muted, page_description(state.current));
 
-        const ImVec2 search_button(content.x + content_width - 34.0f, content.y - 3.0f);
-        ImGui::SetCursorScreenPos(search_button);
-        ImGui::InvisibleButton("##open_search", ImVec2(34.0f, 34.0f));
-        if (ImGui::IsItemClicked())
-        {
-            state.search_open = !state.search_open;
-            state.focus_search = state.search_open;
-            state.search_selection = 0;
-            state.search_completion_active = false;
-            state.search_completion_pending = false;
-            state.search_completion_target.clear();
-        }
-        if (ImGui::IsItemHovered() || state.search_open)
-            draw->AddRectFilled(search_button, ImVec2(search_button.x + 34.0f, search_button.y + 34.0f), IM_COL32(255, 255, 255, 8), 8.0f);
-        const ImVec2 search_center(search_button.x + 16.0f, search_button.y + 15.0f);
-        draw->AddCircle(search_center, 5.5f, secondary, 0, 1.5f);
-        draw->AddLine(ImVec2(search_center.x + 4.0f, search_center.y + 4.0f),
-            ImVec2(search_center.x + 8.0f, search_center.y + 8.0f), secondary, 1.5f);
-
         const ImVec2 body(content.x, content.y + 57.0f);
         const ImVec2 body_size(content_width, main_size.y - 77.0f);
         state.page_fade = approach(state.page_fade, 1.0f, 14.0f);
@@ -1118,13 +1169,13 @@ void gui::grim::render(const ImGuiViewport* viewport, const page_callbacks& call
         if (state.current == page::friends && callbacks.friends)
         {
             ImGui::SetCursorScreenPos(body);
-            if (ImGui::BeginChild("##friends_page", body_size)) callbacks.friends();
+            if (ImGui::BeginChild("##friends_page", body_size, ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar)) callbacks.friends();
             ImGui::EndChild();
         }
         else if (state.current == page::configs && callbacks.configs)
         {
             ImGui::SetCursorScreenPos(body);
-            if (ImGui::BeginChild("##configs_page", body_size)) callbacks.configs();
+            if (ImGui::BeginChild("##configs_page", body_size, ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar)) callbacks.configs();
             ImGui::EndChild();
         }
         else if (state.current == page::hud)
@@ -1134,7 +1185,7 @@ void gui::grim::render(const ImGuiViewport* viewport, const page_callbacks& call
         else if (state.current == page::themes)
         {
             ImGui::SetCursorScreenPos(body);
-            if (ImGui::BeginChild("##themes_page", body_size)) gui::render_theme_selection();
+            if (ImGui::BeginChild("##themes_page", body_size, ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar)) gui::render_theme_selection();
             ImGui::EndChild();
         }
         else
@@ -1145,9 +1196,18 @@ void gui::grim::render(const ImGuiViewport* viewport, const page_callbacks& call
         ImGui::PopStyleVar();
 
         const ImVec2 inspector_position(origin.x + main_size.x + inspector_gap, origin.y);
-        render_search(origin);
+        render_search(search_button);
         render_inspector(inspector_position);
     }
     ImGui::End();
     ImGui::PopStyleVar(2);
+    const bool popup_open = ImGui::IsPopupOpen(nullptr, popup_flags);
+    if (escape_pressed && !search_was_open && !popup_was_open && !popup_open && !capturing_key)
+    {
+        gui::suppress_escape_until_release.store(true, std::memory_order_release);
+        gui::draw = false;
+        ImGui::ClearActiveID();
+    }
+    state.had_popup = popup_open;
+    state.rendered_frame = ImGui::GetFrameCount();
 }

@@ -464,7 +464,7 @@ void modules::target_hud::draw_card(ImDrawList* draw, float x, float y, bool pre
     }
     else text(26.f, 24.f, 18.f, 20.f, muted, "?");
     const auto display_name=services::privacy::display_name(target.name);
-    text(65.f, 10.f, 13.f, 157.f, primary, target.valid ? display_name.c_str() : gui::text("Target HUD", "Hedef HUD"), true);
+    text(65.f, 10.f, 13.f, 157.f, primary, target.valid ? display_name.c_str() : "Target HUD", true);
     char value[96]{};
     if (target.valid) std::snprintf(value, sizeof(value), "%.1f / %.0f HP", target.health, target.maximum_health);
     else std::snprintf(value, sizeof(value), "-- / -- HP");

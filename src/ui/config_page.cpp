@@ -168,26 +168,26 @@ namespace gui::config_page
         void render_library(const configs::snapshot& library, const std::vector<const configs::public_config*>& entries)
         {
             const float width = ImGui::GetContentRegionAvail().x;
-            const char* tabs[] = { gui::text("Community", "Topluluk"), gui::text("Mine", "Benim"), gui::text("Favourites", "Favoriler") };
+            const char* tabs[] = { "Community", "Mine", "Favourites" };
             for (int i = 0; i < 3; ++i) {
                 if (i) ImGui::SameLine(0, 5);
                 if (button(tabs[i], tabs[i], ImVec2((width - 10) / 3, 31), static_cast<int>(state.tab) == i)) state.tab = static_cast<model::collection>(i);
             }
             ImGui::Dummy(ImVec2(0, 3));
             ImGui::SetNextItemWidth(width - 33);
-            ImGui::InputTextWithHint("##search", gui::text("Search setups, authors...", "Config veya oyuncu ara..."), state.search, IM_ARRAYSIZE(state.search));
+            ImGui::InputTextWithHint("##search", "Search setups, authors...", state.search, IM_ARRAYSIZE(state.search));
             ImGui::SameLine(0, 5);
             if (button("clear_search", "", ImVec2(28, ImGui::GetFrameHeight()), false, false, icon::close)) state.search[0] = '\0';
-            tooltip(gui::text("Clear search", "Aramayi temizle"));
+            tooltip("Clear search");
             const auto row = ImGui::GetCursorScreenPos();
-            label(ImVec2(row.x, row.y + 6), std::to_string(entries.size()) + gui::text(" setups", " config"), 11.5f, faint);
+            label(ImVec2(row.x, row.y + 6), std::to_string(entries.size()) + " setups", 11.5f, faint);
             ImGui::SetCursorScreenPos(ImVec2(row.x + std::max(0.f, width - 128), row.y));
             ImGui::SetNextItemWidth(128);
-            const char* sorts[] = { gui::text("Recent", "En yeni"), gui::text("Popular", "Populer"), gui::text("Name", "Isim") };
+            const char* sorts[] = { "Recent", "Popular", "Name" };
             ImGui::Combo("##sort", &state.sort, sorts, 3);
             ImGui::SetCursorScreenPos(ImVec2(row.x, row.y + ImGui::GetFrameHeight() + 8));
             ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
-            if (ImGui::BeginChild("##rows", ImVec2(0, 0))) {
+            if (ImGui::BeginChild("##rows", ImVec2(0, 0), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar)) {
                 for (const auto* entry : entries) {
                     ImGui::PushID(entry->id);
                     const auto p = ImGui::GetCursorScreenPos();
@@ -201,7 +201,7 @@ namespace gui::config_page
                     document(ImVec2(p.x + 10, p.y + 15), 36, selected);
                     label(ImVec2(p.x + 57, p.y + 12), entry->name, 14, selected ? accent() : primary, true, row_width - 72);
                     label(ImVec2(p.x + 57, p.y + 33), entry->author_name, 11.5f, muted, false, row_width - 94);
-                    label(ImVec2(p.x + 57, p.y + 51), std::to_string(entry->module_count) + gui::text(" modules  /  ", " modul  /  ") + std::to_string(entry->downloads) + gui::text(" loads", " yukleme"), 10.5f, faint, false, row_width - 72);
+                    label(ImVec2(p.x + 57, p.y + 51), std::to_string(entry->module_count) + " modules  /  " + std::to_string(entry->downloads) + " loads", 10.5f, faint, false, row_width - 72);
                     if (state.favourites.contains(entry->id)) draw_icon(ImVec2(p.x + row_width - 16, p.y + 40), icon::star, tint(accent(), .8f));
                     tooltip(entry->name.c_str());
                     ImGui::Dummy(ImVec2(0, 3));
@@ -211,11 +211,11 @@ namespace gui::config_page
                     ImGui::Dummy(ImVec2(0, 32));
                     document(ImGui::GetCursorScreenPos(), 44);
                     ImGui::Dummy(ImVec2(0, 58));
-                    wrapped(library.busy ? gui::text("Fetching configs...", "Configler getiriliyor...") : gui::text("No matching configs", "Eslesen config yok"), primary);
-                    wrapped(state.search[0] ? gui::text("Try another name or clear your search.", "Baska bir isim dene veya aramayi temizle.")
-                        : state.tab == model::collection::favourites ? gui::text("Star a config to find it here. Favourites last for this session.", "Bir configi favoriye ekle. Favoriler bu oturum boyunca tutulur.")
-                        : state.tab == model::collection::mine ? gui::text("Publish your first setup with New config.", "Yeni config ile ilk ayar paketini paylas.")
-                        : gui::text("Refresh to check the community library.", "Topluluk kutuphanesini yenilemeyi dene."));
+                    wrapped(library.busy ? "Fetching configs..." : "No matching configs", primary);
+                    wrapped(state.search[0] ? "Try another name or clear your search."
+                        : state.tab == model::collection::favourites ? "Star a config to find it here. Favourites last for this session."
+                        : state.tab == model::collection::mine ? "Publish your first setup with New config."
+                        : "Refresh to check the community library.");
                 }
             }
             ImGui::EndChild();
@@ -230,21 +230,21 @@ namespace gui::config_page
                 ImGui::Dummy(ImVec2(0, 34));
                 document(ImGui::GetCursorScreenPos(), 52);
                 ImGui::Dummy(ImVec2(0, 68));
-                wrapped(gui::text("Your next setup starts here", "Yeni ayarlarin burada basliyor"), primary);
+                wrapped("Your next setup starts here", primary);
                 ImGui::Dummy(ImVec2(0, 4));
-                wrapped(gui::text("Choose a config to see its details, or share your own settings with the community.", "Detaylari gormek icin bir config sec veya kendi ayarlarini toplulukla paylas."));
+                wrapped("Choose a config to see its details, or share your own settings with the community.");
                 return;
             }
             const float footer = selected->mine ? 114.f : 74.f;
             ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
-            if (ImGui::BeginChild("##detail_scroll", ImVec2(0, std::max(40.f, height - footer)))) {
-                section(selected->mine ? gui::text("YOUR CONFIG", "SENIN CONFIGIN") : gui::text("COMMUNITY CONFIG", "TOPLULUK CONFIGI"));
+            if (ImGui::BeginChild("##detail_scroll", ImVec2(0, std::max(40.f, height - footer)), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar)) {
+                section(selected->mine ? "YOUR CONFIG" : "COMMUNITY CONFIG");
                 document(ImGui::GetCursorScreenPos(), 48, true);
                 ImGui::Dummy(ImVec2(0, 62));
                 ImGui::PushFont(font(true));
                 wrapped(selected->name.c_str(), primary);
                 ImGui::PopFont();
-                wrapped((gui::text("by ", "Hazirlayan: ") + selected->author_name).c_str());
+                wrapped(("by " + selected->author_name).c_str());
                 ImGui::Dummy(ImVec2(0, 12));
                 const auto p = ImGui::GetCursorScreenPos();
                 const float tile_width = (width - 8) / 2;
@@ -252,20 +252,20 @@ namespace gui::config_page
                     const auto tile = ImVec2(p.x + i * (tile_width + 8), p.y);
                     ImGui::GetWindowDrawList()->AddRectFilled(tile, ImVec2(tile.x + tile_width, tile.y + 59), IM_COL32(255, 255, 255, 5), 7);
                     label(ImVec2(tile.x + 10, tile.y + 8), std::to_string(i ? selected->downloads : selected->module_count), 19, primary, true, tile_width - 20);
-                    label(ImVec2(tile.x + 10, tile.y + 35), i ? gui::text("Downloads", "Yukleme") : gui::text("Active modules", "Aktif modul"), 10.5f, muted, false, tile_width - 20);
+                    label(ImVec2(tile.x + 10, tile.y + 35), i ? "Downloads" : "Active modules", 10.5f, muted, false, tile_width - 20);
                 }
                 ImGui::Dummy(ImVec2(0, 74));
-                section(gui::text("ABOUT THIS SETUP", "BU CONFIG HAKKINDA"));
-                wrapped(selected->description.empty() ? gui::text("No description provided.", "Aciklama eklenmemis.") : selected->description.c_str());
+                section("ABOUT THIS SETUP");
+                wrapped(selected->description.empty() ? "No description provided." : selected->description.c_str());
                 ImGui::Dummy(ImVec2(0, 15));
-                wrapped((gui::text("Updated  ", "Guncelleme  ") + model::date(selected->updated_at.empty() ? selected->created_at : selected->updated_at)).c_str(), faint);
+                wrapped(("Updated  " + model::date(selected->updated_at.empty() ? selected->created_at : selected->updated_at)).c_str(), faint);
             }
             ImGui::EndChild();
             ImGui::PopStyleColor();
             ImGui::SetCursorScreenPos(ImVec2(top.x, top.y + height - footer + 9));
             ImGui::GetWindowDrawList()->AddLine(ImVec2(top.x, top.y + height - footer), ImVec2(top.x + width, top.y + height - footer), IM_COL32(255, 255, 255, 12));
             ImGui::BeginDisabled(library.busy || state.pending != operation::none);
-            if (button("load", gui::text("Load config", "Configi yukle"), ImVec2(width - 46, 35), true)) {
+            if (button("load", "Load config", ImVec2(width - 46, 35), true)) {
                 track(operation::load, library);
                 configs::load(selected->id);
             }
@@ -275,18 +275,18 @@ namespace gui::config_page
             if (button("favourite", "", ImVec2(38, 35), favourite, false, icon::star)) {
                 if (favourite) state.favourites.erase(selected->id); else state.favourites.insert(selected->id);
             }
-            tooltip(favourite ? gui::text("Remove favourite", "Favoriden cikar") : gui::text("Add to session favourites", "Oturum favorilerine ekle"));
+            tooltip(favourite ? "Remove favourite" : "Add to session favourites");
             if (selected->mine) {
                 ImGui::BeginDisabled(library.busy || state.pending != operation::none);
-                if (button("edit", gui::text("Edit", "Duzenle"), ImVec2((width - 8) / 2, 30))) open_editor(selected);
+                if (button("edit", "Edit", ImVec2((width - 8) / 2, 30))) open_editor(selected);
                 ImGui::SameLine(0, 8);
-                if (button("delete", gui::text("Delete", "Sil"), ImVec2((width - 8) / 2, 30), false, true)) {
+                if (button("delete", "Delete", ImVec2((width - 8) / 2, 30), false, true)) {
                     state.deleting = selected->id;
                     state.delete_name = selected->name;
                 }
                 ImGui::EndDisabled();
             }
-            label(ImGui::GetCursorScreenPos(), gui::text("Loading replaces your current module settings.", "Yukleme, mevcut modul ayarlarini degistirir."), 10.5f, faint, false, width);
+            label(ImGui::GetCursorScreenPos(), "Loading replaces your current module settings.", 10.5f, faint, false, width);
         }
 
         void render_editor(const configs::snapshot& library)
@@ -296,44 +296,44 @@ namespace gui::config_page
             const bool busy = library.busy || state.pending != operation::none;
             const std::string author = friends::local_player_name();
             ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
-            if (ImGui::BeginChild("##form_scroll", ImVec2(0, std::max(40.f, height - 87)))) {
-                section(state.editing ? gui::text("EDIT CONFIG", "CONFIG DUZENLE") : gui::text("NEW CONFIG", "YENI CONFIG"));
+            if (ImGui::BeginChild("##form_scroll", ImVec2(0, std::max(40.f, height - 87)), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar)) {
+                section(state.editing ? "EDIT CONFIG" : "NEW CONFIG");
                 ImGui::PushFont(font(true));
-                wrapped(state.editing ? gui::text("Refine your setup", "Configini guncelle") : gui::text("Share your setup", "Ayarlarini paylas"), primary);
+                wrapped(state.editing ? "Refine your setup" : "Share your setup", primary);
                 ImGui::PopFont();
-                wrapped(gui::text("Your current modules and their settings will be shared publicly.", "Mevcut modullerin ve ayarlari herkese acik paylasilir."));
+                wrapped("Your current modules and their settings will be shared publicly.");
                 ImGui::Dummy(ImVec2(0, 2));
                 ImGui::BeginDisabled(busy);
-                section(gui::text("CONFIG NAME", "CONFIG ADI"));
+                section("CONFIG NAME");
                 ImGui::SetNextItemWidth(-1);
-                ImGui::InputTextWithHint("##name", gui::text("e.g. Clean survival", "Orn. Sade survival"), state.name, IM_ARRAYSIZE(state.name));
+                ImGui::InputTextWithHint("##name", "e.g. Clean survival", state.name, IM_ARRAYSIZE(state.name));
                 label(ImGui::GetCursorScreenPos(), std::to_string(std::strlen(state.name)) + " / 48", 10, faint);
                 ImGui::Dummy(ImVec2(0, 12));
-                section(gui::text("DESCRIPTION / OPTIONAL", "ACIKLAMA / ISTEGE BAGLI"));
+                section("DESCRIPTION / OPTIONAL");
                 ImGui::InputTextMultiline("##description", state.description, IM_ARRAYSIZE(state.description), ImVec2(-1, 72));
                 label(ImGui::GetCursorScreenPos(), std::to_string(std::strlen(state.description)) + " / 180", 10, faint);
                 ImGui::Dummy(ImVec2(0, 15));
                 ImGui::EndDisabled();
-                section(gui::text("PUBLISHING AS", "YAYINLAYAN"));
-                wrapped(author.empty() ? gui::text("Join a world to publish a config.", "Config yayinlamak icin bir dunyaya gir.") : author.c_str(), author.empty() ? danger : primary);
-                wrapped((std::to_string(modules::enabled_module_count()) + gui::text(" active modules included", " aktif modul dahil edilecek")).c_str(), faint);
+                section("PUBLISHING AS");
+                wrapped(author.empty() ? "Join a world to publish a config." : author.c_str(), author.empty() ? danger : primary);
+                wrapped((std::to_string(modules::enabled_module_count()) + " active modules included").c_str(), faint);
                 if (state.editing) {
                     ImGui::Dummy(ImVec2(0, 8));
-                    wrapped(gui::text("Saving also replaces this config's shared settings with your current ones.", "Kaydetme, bu configin paylasilan ayarlarini mevcut ayarlarinla degistirir."), faint);
+                    wrapped("Saving also replaces this config's shared settings with your current ones.", faint);
                 }
             }
             ImGui::EndChild();
             ImGui::PopStyleColor();
             ImGui::SetCursorScreenPos(ImVec2(top.x, top.y + height - 76));
             ImGui::BeginDisabled(busy || author.empty() || model::trim(state.name).empty());
-            if (button("publish", state.editing ? gui::text("Save changes", "Degisiklikleri kaydet") : gui::text("Publish config", "Configi yayinla"), ImVec2(width, 36), true)) {
+            if (button("publish", state.editing ? "Save changes" : "Publish config", ImVec2(width, 36), true)) {
                 track(operation::publish, library);
                 configs::publish(state.editing, model::trim(state.name), model::trim(state.description), author,
                     modules::export_public_config(), modules::enabled_module_count());
             }
             ImGui::EndDisabled();
             ImGui::BeginDisabled(busy);
-            if (button("cancel_edit", gui::text("Cancel", "Vazgec"), ImVec2(width, 29))) state.editor = false;
+            if (button("cancel_edit", "Cancel", ImVec2(width, 29))) state.editor = false;
             ImGui::EndDisabled();
         }
         void render_delete(const configs::snapshot& library)
@@ -344,23 +344,27 @@ namespace gui::config_page
             ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(22, 20));
             ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 12);
             ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(.06f, .07f, .09f, .99f));
-            if (ImGui::BeginPopupModal("##config_delete", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_AlwaysAutoResize)) {
-                section(gui::text("DELETE CONFIG", "CONFIG SIL"));
+            if (ImGui::BeginPopupModal("##config_delete", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoScrollbar)) {
+                if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+                    state.deleting = 0;
+                    ImGui::CloseCurrentPopup();
+                }
+                section("DELETE CONFIG");
                 ImGui::PushFont(font(true));
                 wrapped(state.delete_name.c_str(), primary);
                 ImGui::PopFont();
                 ImGui::Dummy(ImVec2(0, 7));
-                wrapped(gui::text("This removes the public config permanently. Your current module settings stay unchanged.", "Bu config kalici olarak silinir. Mevcut modul ayarlarin degismez."));
+                wrapped("This removes the public config permanently. Your current module settings stay unchanged.");
                 ImGui::Dummy(ImVec2(0, 14));
                 const float half = (ImGui::GetContentRegionAvail().x - 8) / 2;
-                if (button("cancel_delete", gui::text("Keep config", "Vazgec"), ImVec2(half, 35))) {
+                if (button("cancel_delete", "Keep config", ImVec2(half, 35))) {
                     state.deleting = 0;
                     ImGui::CloseCurrentPopup();
                 }
                 ImGui::SameLine(0, 8);
                 const auto owned = std::find_if(library.entries.begin(), library.entries.end(), [](const auto& entry) { return entry.id == state.deleting && entry.mine; });
                 ImGui::BeginDisabled(library.busy || state.pending != operation::none || owned == library.entries.end());
-                if (button("confirm_delete", gui::text("Delete config", "Configi sil"), ImVec2(half, 35), false, true)) {
+                if (button("confirm_delete", "Delete config", ImVec2(half, 35), false, true)) {
                     track(operation::remove, library);
                     configs::remove(state.deleting);
                     state.deleting = 0;
@@ -400,7 +404,7 @@ namespace gui::config_page
             if (state.pending != operation::load || !library.success) gui::push_workspace_toast(library.status, library.success);
             state.pending = operation::none;
         }
-        if (!embedded) gui::page_header(gui::text("Configs", "Configler"), gui::text("Your community library", "Topluluk kutuphanen"));
+        if (!embedded) gui::page_header("Configs", "Your community library");
         ImGui::PushFont(font());
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(9, 7));
         ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 7);
@@ -428,15 +432,15 @@ namespace gui::config_page
                 state.narrow_details = false;
                 if (state.pending != operation::publish) state.editor = false;
             }
-            tooltip(gui::text("Back to library", "Kutuphaneye don"));
+            tooltip("Back to library");
             ImGui::EndDisabled();
         } else {
-            label(ImVec2(top.x, top.y + 1), gui::text("Config library", "Config kutuphanesi"), 15, primary, true, available.x - 180);
-            label(ImVec2(top.x, top.y + 21), gui::text("Discover. Save. Make it yours.", "Kesfet. Kaydet. Kendine uyarla."), 10.5f, faint, false, available.x - 180);
+            label(ImVec2(top.x, top.y + 1), "Config library", 15, primary, true, available.x - 180);
+            label(ImVec2(top.x, top.y + 21), "Discover. Save. Make it yours.", 10.5f, faint, false, available.x - 180);
         }
         ImGui::SetCursorScreenPos(ImVec2(top.x + available.x - 164, top.y));
         ImGui::BeginDisabled(library.busy || state.pending != operation::none || state.editor);
-        if (button("new_config", gui::text("New config", "Yeni config"), ImVec2(124, 32), true, false, icon::plus)) open_editor();
+        if (button("new_config", "New config", ImVec2(124, 32), true, false, icon::plus)) open_editor();
         ImGui::EndDisabled();
         ImGui::SameLine(0, 8);
         ImGui::BeginDisabled(library.busy || state.pending != operation::none);
@@ -444,7 +448,7 @@ namespace gui::config_page
             track(operation::refresh, library);
             configs::refresh();
         }
-        tooltip(gui::text("Refresh library", "Kutuphaneyi yenile"));
+        tooltip("Refresh library");
         ImGui::EndDisabled();
         const auto entries = model::filter(library, state.tab, state.search, state.favourites, static_cast<model::order>(state.sort));
         const configs::public_config* selected = nullptr;
@@ -475,7 +479,7 @@ namespace gui::config_page
         const bool working = library.busy || state.pending != operation::none;
         const auto status_color = working ? accent() : library.success ? muted : danger;
         ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(footer.x + 4, footer.y + 7), 2.5f, status_color);
-        label(ImVec2(footer.x + 14, footer.y), working ? gui::text("Working on your request...", "Islemin tamamlanmasi bekleniyor...") : library.status.empty() ? gui::text("Ready to explore", "Kesfetmeye hazir") : library.status.c_str(), 11, status_color, false, available.x - 20);
+        label(ImVec2(footer.x + 14, footer.y), working ? "Working on your request..." : library.status.empty() ? "Ready to explore" : library.status.c_str(), 11, status_color, false, available.x - 20);
         ImGui::Dummy(ImVec2(available.x, 17));
         tooltip(library.status.c_str());
         render_delete(library);

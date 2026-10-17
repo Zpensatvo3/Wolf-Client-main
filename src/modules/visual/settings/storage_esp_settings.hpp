@@ -13,11 +13,11 @@ namespace module_settings
         {
             using model = storage_esp;
             using setting = modules::settings::descriptor<model>;
-            static constexpr modules::settings::label box_style_labels[]{{"2D Box", "2D Box"},{"3D Box", "3D Box"}};
+            static constexpr modules::settings::label box_style_labels[]{{"2D Box"},{"3D Box"}};
             static const setting fields[]{
-                setting::choice("box_style", {"Box Style", "Kutu Stili"}, &model::box_style, box_style_labels),
-                setting::toggle("show_labels", {"Show Labels", "Etiketleri Goster"}, &model::show_labels),
-                setting::toggle("show_distance", {"Show Distance", "Mesafeyi Goster"}, &model::show_distance),
+                setting::choice("box_style", {"Box Style"}, &model::box_style, box_style_labels),
+                setting::toggle("show_labels", {"Show Labels"}, &model::show_labels),
+                setting::toggle("show_distance", {"Show Distance"}, &model::show_distance),
             };
             return fields;
         }

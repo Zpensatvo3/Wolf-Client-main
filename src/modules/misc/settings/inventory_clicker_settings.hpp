@@ -14,9 +14,9 @@ namespace module_settings
             using model = inventory_clicker;
             using setting = modules::settings::descriptor<model>;
             static const setting fields[]{
-                setting::integer("min_cps", {"Min CPS", "Minimum CPS"}, &model::min_cps, 1, 20, "%d"),
-                setting::integer("max_cps", {"Max CPS", "Maksimum CPS"}, &model::max_cps, 1, 20, "%d"),
-                setting::integer("click_delay", {"click_delay", "click_delay"}, &model::click_delay, -1000000, 1000000, "%d").hidden(),
+                setting::integer("min_cps", {"Min CPS"}, &model::min_cps, 1, 20, "%d"),
+                setting::integer("max_cps", {"Max CPS"}, &model::max_cps, 1, 20, "%d"),
+                setting::integer("click_delay", {"click_delay"}, &model::click_delay, -1000000, 1000000, "%d").hidden(),
             };
             return fields;
         }

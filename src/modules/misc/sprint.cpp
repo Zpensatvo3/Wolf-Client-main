@@ -72,7 +72,5 @@ void modules::sprint::on_disable(::cache& cache)
 void modules::sprint::render_options()
 {
 	gui::settings::render(settings_, module_settings::sprint::schema());
-	ImGui::TextDisabled("%s", gui::text(
-		"Uses Minecraft's native 1.21.1 sprint eligibility checks.",
-		"Minecraft 1.21.1'in kendi sprint uygunluk kontrolünü kullanır."));
+	ImGui::TextDisabled("%s", "Uses Minecraft's native 1.21.1 sprint eligibility checks.");
 }

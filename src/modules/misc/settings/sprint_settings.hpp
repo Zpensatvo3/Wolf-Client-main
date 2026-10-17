@@ -14,7 +14,7 @@ namespace module_settings
             using model = sprint;
             using setting = modules::settings::descriptor<model>;
             static const setting fields[]{
-                setting::toggle("stop_while_using_item", {"Stop While Using Items", "Eşya Kullanırken Dur"}, &model::stop_while_using_item),
+                setting::toggle("stop_while_using_item", {"Stop While Using Items"}, &model::stop_while_using_item),
             };
             return fields;
         }

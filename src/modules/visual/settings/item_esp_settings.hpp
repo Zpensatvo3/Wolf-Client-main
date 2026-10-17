@@ -14,14 +14,14 @@ namespace module_settings
         {
             using d = modules::settings::descriptor<item_esp>;
             static const d fields[]{
-                d::toggle("show_boxes", {"Show Boxes", "Kutulari Goster"}, &item_esp::show_boxes),
-                d::toggle("show_names", {"Show Names", "Isimleri Goster"}, &item_esp::show_names),
-                d::toggle("show_count", {"Show Count", "Adedi Goster"}, &item_esp::show_count),
-                d::toggle("show_distance", {"Show Distance", "Mesafeyi Goster"}, &item_esp::show_distance),
-                d::toggle("use_theme_color", {"Theme Color", "Tema Rengi"}, &item_esp::use_theme_color),
-                d::color("color", {"Item Color", "Esya Rengi"}, &item_esp::color).when([](const item_esp& c) { return !c.use_theme_color; }),
-                d::number("line_thickness", {"Line Thickness", "Cizgi Kalinligi"}, &item_esp::line_thickness, .5f, 3.f, "%.1f", &item_esp::show_boxes),
-                d::number("fill_opacity", {"Fill Opacity", "Dolgu Saydamligi"}, &item_esp::fill_opacity, 0.f, .35f, "%.2f", &item_esp::show_boxes)
+                d::toggle("show_boxes", {"Show Boxes"}, &item_esp::show_boxes),
+                d::toggle("show_names", {"Show Names"}, &item_esp::show_names),
+                d::toggle("show_count", {"Show Count"}, &item_esp::show_count),
+                d::toggle("show_distance", {"Show Distance"}, &item_esp::show_distance),
+                d::toggle("use_theme_color", {"Theme Color"}, &item_esp::use_theme_color),
+                d::color("color", {"Item Color"}, &item_esp::color).when([](const item_esp& c) { return !c.use_theme_color; }),
+                d::number("line_thickness", {"Line Thickness"}, &item_esp::line_thickness, .5f, 3.f, "%.1f", &item_esp::show_boxes),
+                d::number("fill_opacity", {"Fill Opacity"}, &item_esp::fill_opacity, 0.f, .35f, "%.2f", &item_esp::show_boxes)
             };
             return fields;
         }

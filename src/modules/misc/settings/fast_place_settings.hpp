@@ -14,7 +14,7 @@ namespace module_settings
             using model = fast_place;
             using setting = modules::settings::descriptor<model>;
             static const setting fields[]{
-                setting::integer("delay", {"Place Delay", "Yerleştirme Gecikmesi"}, &model::delay, 0, 4, "%d ticks").translated_format("%d tik"),
+                setting::integer("delay", {"Place Delay"}, &model::delay, 0, 4, "%d ticks"),
             };
             return fields;
         }

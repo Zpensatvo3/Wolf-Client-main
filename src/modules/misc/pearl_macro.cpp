@@ -163,6 +163,6 @@ void modules::pearl_macro::on_disable(::cache& cache)
 void modules::pearl_macro::render_options()
 {
 	gui::settings::render(settings_, module_settings::pearl_macro::schema());
-	ImGui::TextDisabled("%s", gui::text("One use: switch to pearl, throw, then restore the old slot.", "Ender Pearl'e geçer, atar ve eski slota döner."));
-	ImGui::TextDisabled("%s", gui::text("Requires an ender pearl in the hotbar.", "Hotbarda Ender Pearl gerektirir."));
+	ImGui::TextDisabled("%s", "One use: switch to pearl, throw, then restore the old slot.");
+	ImGui::TextDisabled("%s", "Requires an ender pearl in the hotbar.");
 }

@@ -507,15 +507,13 @@ void modules::crystal_aura::render_options()
 {
     gui::settings::render(settings_,module_settings::crystal_aura::schema());
     const auto& state = *runtime_;
-    ImGui::TextWrapped("%s",gui::text(
-        "Choose players, players + mobs, or mobs only for testing. Sword -> airborne -> obsidian -> crystal -> break. Skip Airborne Wait for Mobs allows golem tests without knockback. No self-damage protection; nearby friends can take explosion damage.",
-        "Oyuncular, oyuncular + moblar veya test icin yalnizca moblari sec. Kilic -> havalanma -> obsidyen -> kristal -> patlatma. Moblarda Havalanma Bekleme secenegiyle golemde geri tepme olmadan test yapabilirsin. Kendine hasar korumasi yok; yakindaki arkadaslar patlamadan zarar gorebilir."));
-    ImGui::TextDisabled("%s",gui::text("Last game update (menu pauses the module):", "Son oyun durumu (menu modulu duraklatir):"));
-    const char* status = gui::text("Waiting for target", "Hedef bekleniyor");
-    if (state.last_target >= 0) status = gui::text("Active", "Aktif");
-    if (state.last_status == 1) status = gui::text("Hotbar needs sword, obsidian and crystals", "Hotbar'da kilic, obsidyen ve kristal gerekli");
-    if (state.last_status == 2) status = gui::text("Waiting for a valid placement", "Uygun yerlestirme yeri bekleniyor");
-    if (state.last_status == 3) status = gui::text("Paused: item use or Triggerbot owns attack", "Durakladi: esya kullanimi veya Triggerbot saldiri sahipligi");
+    ImGui::TextWrapped("%s","Choose players, players + mobs, or mobs only for testing. Sword -> airborne -> obsidian -> crystal -> break. Skip Airborne Wait for Mobs allows golem tests without knockback. No self-damage protection; nearby friends can take explosion damage.");
+    ImGui::TextDisabled("%s","Last game update (menu pauses the module):");
+    const char* status = "Waiting for target";
+    if (state.last_target >= 0) status = "Active";
+    if (state.last_status == 1) status = "Hotbar needs sword, obsidian and crystals";
+    if (state.last_status == 2) status = "Waiting for a valid placement";
+    if (state.last_status == 3) status = "Paused: item use or Triggerbot owns attack";
     ImGui::TextWrapped("%s",status);
     if (state.last_target >= 0)
     {
@@ -523,15 +521,15 @@ void modules::crystal_aura::render_options()
         const char* step = "";
         switch (state.last_phase)
         {
-        case phase::melee: step = gui::text("Sword", "Kilic"); break;
-        case phase::launch: step = gui::text("Waiting for airborne target", "Hedefin havalanmasi bekleniyor"); break;
-        case phase::base: step = gui::text("Selecting / placing obsidian", "Obsidyen yeri seciliyor / yerlestiriliyor"); break;
-        case phase::wait_base: step = gui::text("Checking base block", "Zemin blogu kontrol ediliyor"); break;
-        case phase::crystal: step = gui::text("Placing crystal", "Kristal yerlestiriliyor"); break;
-        case phase::wait_crystal: step = gui::text("Waiting for crystal spawn", "Kristalin olusmasi bekleniyor"); break;
-        case phase::break_crystal: step = gui::text("Breaking crystal", "Kristal kiriliyor"); break;
-        case phase::wait_break: step = gui::text("Waiting for crystal removal", "Kristalin kaybolmasi bekleniyor"); break;
+        case phase::melee: step = "Sword"; break;
+        case phase::launch: step = "Waiting for airborne target"; break;
+        case phase::base: step = "Selecting / placing obsidian"; break;
+        case phase::wait_base: step = "Checking base block"; break;
+        case phase::crystal: step = "Placing crystal"; break;
+        case phase::wait_crystal: step = "Waiting for crystal spawn"; break;
+        case phase::break_crystal: step = "Breaking crystal"; break;
+        case phase::wait_break: step = "Waiting for crystal removal"; break;
         }
-        ImGui::TextWrapped("%s: %d | %s",gui::text("Target", "Hedef"),state.last_target,step);
+        ImGui::TextWrapped("%s: %d | %s","Target",state.last_target,step);
     }
 }

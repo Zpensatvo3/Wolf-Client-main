@@ -14,16 +14,16 @@ namespace module_settings
         {
             using d = modules::settings::descriptor<target_hud>;
             static const d fields[]{
-                d::number("position_x", {"Position X", "Konum X"}, &target_hud::position_x,
+                d::number("position_x", {"Position X"}, &target_hud::position_x,
                     0.f, 1000000.f, "%.0f px").hidden(),
-                d::number("position_y", {"Position Y", "Konum Y"}, &target_hud::position_y,
+                d::number("position_y", {"Position Y"}, &target_hud::position_y,
                     0.f, 1000000.f, "%.0f px").hidden(),
-                d::number("scale", {"Scale", "Boyut"}, &target_hud::scale, .5f, 2.f, "%.2fx"),
-                d::number("keep_seconds", {"Keep Target", "Hedefi Gösterme Süresi"},
+                d::number("scale", {"Scale"}, &target_hud::scale, .5f, 2.f, "%.2fx"),
+                d::number("keep_seconds", {"Keep Target"},
                     &target_hud::keep_seconds, 0.f, 5.f, "%.1f s"),
-                d::number("background_opacity", {"Background", "Arka Plan"},
+                d::number("background_opacity", {"Background"},
                     &target_hud::background_opacity, .3f, 1.f, "%.2f"),
-                d::toggle("glow", {"Glow", "Parlama"}, &target_hud::glow),
+                d::toggle("glow", {"Glow"}, &target_hud::glow),
             };
             return fields;
         }

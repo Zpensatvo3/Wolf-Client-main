@@ -133,7 +133,7 @@ void gui::hud_editor::render(const ImGuiViewport* viewport)
 {
     if (!viewport || viewport->Size.x < 1 || viewport->Size.y < 1) return;
     restore_saved_layout();
-    if (ImGui::IsKeyPressed(ImGuiKey_Escape)) { close(); return; }
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) { close(); return; }
     if (ImGui::GetIO().KeyCtrl && !ImGui::IsMouseDown(ImGuiMouseButton_Left) && ImGui::IsKeyPressed(ImGuiKey_Z, false)) undo();
     const ImVec2 canvas = viewport->Size, origin = viewport->Pos;
     const float toolbar_width = std::min(720.f, std::max(1.f, canvas.x - 24.f));
@@ -155,9 +155,9 @@ void gui::hud_editor::render(const ImGuiViewport* viewport)
         const float header_width = std::max(1.f, std::min(440.f, canvas.x - 16.f));
         const ImVec2 header(origin.x + (canvas.x - header_width) * .5f, origin.y + 12);
         draw->AddRectFilled(header, ImVec2(header.x + header_width, header.y + 47), IM_COL32(14, 17, 23, 225), 9);
-        draw_editor_text(draw, ImVec2(header.x + 14, header.y + 7), 14, IM_COL32(240, 243, 249, 255), gui::text("HUD Editor", "HUD Editörü"));
+        draw_editor_text(draw, ImVec2(header.x + 14, header.y + 7), 14, IM_COL32(240, 243, 249, 255), "HUD Editor");
         draw_editor_text(draw, ImVec2(header.x + 14, header.y + 28), 10.5f, IM_COL32(154, 161, 176, 255),
-            gui::text("Drag / arrows: 1px / Shift: 10px / Alt: free / Ctrl+Z: undo", "Sürükle / oklar: 1px / Shift: 10px / Alt: serbest / Ctrl+Z: geri al"));
+            "Drag / arrows: 1px / Shift: 10px / Alt: free / Ctrl+Z: undo");
 
         struct item { ImVec2 position{}, size{}; int first = 0, last = 0; modules::module* module = nullptr; };
         std::array<item, overlay_count> items{};
@@ -269,15 +269,15 @@ void gui::hud_editor::render(const ImGuiViewport* viewport)
         const ImVec2 button_size(slot, 28);
         for (int index = 0; index < overlay_count; ++index)
             if (button(ids[index], names[index], location(index, 0), button_size, selected == index, !items[index].module)) selected = index;
-        if (button("##grid", gui::text("Grid", "Izgara"), location(4, 0), button_size, grid)) grid = !grid;
-        if (button("##snap", gui::text("Snap", "Hizala"), location(5, 0), button_size, snap)) snap = !snap;
-        if (button("##done", gui::text("Done", "Tamam"), location(6, 0), button_size, true)) close();
+        if (button("##grid", "Grid", location(4, 0), button_size, grid)) grid = !grid;
+        if (button("##snap", "Snap", location(5, 0), button_size, snap)) snap = !snap;
+        if (button("##done", "Done", location(6, 0), button_size, true)) close();
         auto* selected_module = items[selected].module;
         const bool scalable = selected != 2 && selected_module;
         auto value = capture();
         float scale = value[selected].scale;
         auto apply_scale = [&](float next) { remember(); value[selected].scale = next; apply(value); save(); };
-        if (button("##visible", selected_module && selected_module->enabled ? gui::text("Visible", "Görünür") : gui::text("Hidden", "Gizli"),
+        if (button("##visible", selected_module && selected_module->enabled ? "Visible" : "Hidden",
             location(0, 1), button_size, selected_module && selected_module->enabled, !selected_module))
         { remember(); selected_module->enabled = !selected_module->enabled; save(); }
         if (button("##scale_down", "-", location(1, 1), button_size, false, !scalable || scale <= .5f))
@@ -287,8 +287,8 @@ void gui::hud_editor::render(const ImGuiViewport* viewport)
         button("##scale_value", scale_text, location(2, 1), button_size, false, true);
         if (button("##scale_up", "+", location(3, 1), button_size, false, !scalable || scale >= 2.f))
         { scale = std::min(2.f, scale + .05f); apply_scale(scale); }
-        if (button("##undo", gui::text("Undo", "Geri al"), location(4, 1), button_size, false, history.empty())) undo();
-        if (button("##reset", gui::text("Reset", "Sıfırla"), location(5, 1), button_size, false, !selected_module))
+        if (button("##undo", "Undo", location(4, 1), button_size, false, history.empty())) undo();
+        if (button("##reset", "Reset", location(5, 1), button_size, false, !selected_module))
         {
             remember(); auto value = capture(); const bool visible = value[selected].visible;
             value[selected] = gui::aegis::preferences{}.hud_layout[selected]; value[selected].visible = visible;
@@ -296,7 +296,7 @@ void gui::hud_editor::render(const ImGuiViewport* viewport)
         }
         char status[192]{};
         std::snprintf(status, sizeof(status), "%s  |  X %.0f  Y %.0f  |  %s", names[selected], items[selected].position.x,
-            items[selected].position.y, gui::text("Auto-save on / Esc: return", "Otomatik kayıt açık / Esc: geri dön"));
+            items[selected].position.y, "Auto-save on / Esc: return");
         draw_editor_text(draw, ImVec2(toolbar.x + 14, toolbar.y + 84), 11, IM_COL32(158, 166, 182, 255), status);
     }
     ImGui::End(); ImGui::PopStyleVar(2);

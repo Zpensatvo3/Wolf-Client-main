@@ -49,7 +49,7 @@ int main()
         for (const auto& d : vape_settings::schema(kind))
         {
             assert(d.key && *d.key && keys.insert(d.key).second);
-            assert(d.title.english && d.title.turkish);
+            assert(d.title.english && *d.title.english);
             assert(encoded.find(std::string("\"") + d.key + "\"") != std::string::npos);
             if (d.type == control::range) assert(keys.insert(d.upper_key).second);
             if (d.type == control::choice) assert(!d.choices.empty());

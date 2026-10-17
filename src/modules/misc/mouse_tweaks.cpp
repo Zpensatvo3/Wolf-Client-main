@@ -415,6 +415,6 @@ void modules::mouse_tweaks::on_disable(::cache& cache)
 void modules::mouse_tweaks::render_options()
 {
 	gui::settings::render(settings_, module_settings::mouse_tweaks::schema());
-	ImGui::TextDisabled("%s", gui::text("RMB revisits a slot; LMB collects matching stacks.", "Sağ tık slotu yeniden işler; sol tık benzer stackleri toplar."));
-	ImGui::TextDisabled("%s", gui::text("Hold Shift while dragging to quick-move hovered stacks.", "Üzerindeki yığınları hızlı taşımak için sürüklerken Shift basılı tut."));
+	ImGui::TextDisabled("%s", "RMB revisits a slot; LMB collects matching stacks.");
+	ImGui::TextDisabled("%s", "Hold Shift while dragging to quick-move hovered stacks.");
 }

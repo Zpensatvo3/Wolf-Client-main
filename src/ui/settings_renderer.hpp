@@ -2,7 +2,6 @@
 
 #include "../modules/core/setting_schema.hpp"
 #include "../modules/core/settings_store.hpp"
-#include "../gui/language.hpp"
 #include "../gui/widgets.hpp"
 #include <vector>
 
@@ -15,8 +14,8 @@ namespace gui::settings
         for (const auto& d : schema)
         {
             if (!d.visible || (d.visible_if && !(candidate.*d.visible_if)) || (d.condition && !d.condition(candidate))) continue;
-            const char* title = gui::text(d.title.english, d.title.turkish);
-            const char* format = gui::is_turkish() && d.turkish_format ? d.turkish_format : d.format;
+            const char* title = d.title.english;
+            const char* format = d.format;
             ImGui::PushID(d.key);
             switch (d.type)
             {
@@ -60,7 +59,7 @@ namespace gui::settings
             {
                 std::vector<const char*> names;
                 names.reserve(d.choices.size());
-                for (const auto& option : d.choices) names.push_back(gui::text(option.english, option.turkish));
+                for (const auto& option : d.choices) names.push_back(option.english);
                 int index = d.selected(candidate);
                 if (!d.choice_values.empty()) {
                     const auto found = std::find(d.choice_values.begin(), d.choice_values.end(), index);

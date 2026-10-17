@@ -227,6 +227,5 @@ void modules::inv_walk::render_overlay()
 void modules::inv_walk::render_options()
 {
     gui::settings::render(settings_, module_settings::inv_walk::schema());
-    ImGui::TextWrapped("%s", gui::text("Pauses while typing. Does not change attack/use keys or send packets.",
-        "Yazi yazarken durur. Saldiri/kullanim tuslarini degistirmez, paket gondermez."));
+    ImGui::TextWrapped("%s", "Pauses while typing. Does not change attack/use keys or send packets.");
 }

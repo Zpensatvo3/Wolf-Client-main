@@ -14,9 +14,9 @@ namespace module_settings
             using model = shield_breaker;
             using setting = modules::settings::descriptor<model>;
             static const setting fields[]{
-                setting::integer("axe_slot", {"Preferred Axe Slot", "Tercih Edilen Balta Slotu"}, &model::config_axe_slot, 1, 9, "Slot %d"),
-                setting::integer("return_delay", {"Return Delay", "Geri Donus Gecikmesi"}, &model::return_delay, 75, 500, "%d ms"),
-                setting::integer("switch_delay", {"switch_delay", "switch_delay"}, &model::switch_delay, -1000000, 1000000, "%d").hidden(),
+                setting::integer("axe_slot", {"Preferred Axe Slot"}, &model::config_axe_slot, 1, 9, "Slot %d"),
+                setting::integer("return_delay", {"Return Delay"}, &model::return_delay, 75, 500, "%d ms"),
+                setting::integer("switch_delay", {"switch_delay"}, &model::switch_delay, -1000000, 1000000, "%d").hidden(),
             };
             return fields;
         }

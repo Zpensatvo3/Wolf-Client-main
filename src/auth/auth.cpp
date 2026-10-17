@@ -1301,7 +1301,7 @@ namespace auth
     auth_result redeem_launcher_ticket(const std::string& ticket, const std::string& domain,
         const std::string& release_sha256) {
         if (release_sha256.size() != 64 || release_sha256.find_first_not_of("0123456789abcdef") != std::string::npos)
-            return { false, "Client dosyası doğrulanamadı." };
+            return { false, "Could not verify the client file." };
         auto attempt = authenticate_impl(ticket, domain, true, release_sha256);
         if (!attempt.result.success) controlled_shutdown();
         else {

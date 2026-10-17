@@ -16,15 +16,15 @@ namespace module_settings
         {
             using d = modules::settings::descriptor<chams>;
             static const d fields[]{
-                d::toggle("theme_color", {"Theme Color","Tema rengi"}, &chams::theme_color),
-                d::color("visible_color", {"Visible Color","Gorunen renk"}, &chams::visible_color).when([](const chams& c) { return !c.theme_color; }),
-                d::toggle("through_walls", {"Through Walls","Duvar arkasi"}, &chams::through_walls),
-                d::color("hidden_color", {"Hidden Color","Gizli renk"}, &chams::hidden_color).when([](const chams& c) { return c.through_walls; }),
-                d::number("opacity", {"Opacity","Opaklik"}, &chams::opacity, 0.f, 1.f, "%.2f"),
-                d::toggle("ignore_friends", {"Ignore Friends","Arkadaslari atla"}, &chams::ignore_friends),
-                d::toggle("glow", {"Glow","Glow"}, &chams::glow),
-                d::number("glow_strength", {"Glow Strength","Parlama gucu"}, &chams::glow_strength, 0.f, 1.f, "%.2f", &chams::glow),
-                d::number("glow_radius", {"Glow Spread","Parlama yayilimi"}, &chams::glow_radius, 2.f, 20.f, "%.0f px", &chams::glow)
+                d::toggle("theme_color", {"Theme Color"}, &chams::theme_color),
+                d::color("visible_color", {"Visible Color"}, &chams::visible_color).when([](const chams& c) { return !c.theme_color; }),
+                d::toggle("through_walls", {"Through Walls"}, &chams::through_walls),
+                d::color("hidden_color", {"Hidden Color"}, &chams::hidden_color).when([](const chams& c) { return c.through_walls; }),
+                d::number("opacity", {"Opacity"}, &chams::opacity, 0.f, 1.f, "%.2f"),
+                d::toggle("ignore_friends", {"Ignore Friends"}, &chams::ignore_friends),
+                d::toggle("glow", {"Glow"}, &chams::glow),
+                d::number("glow_strength", {"Glow Strength"}, &chams::glow_strength, 0.f, 1.f, "%.2f", &chams::glow),
+                d::number("glow_radius", {"Glow Spread"}, &chams::glow_radius, 2.f, 20.f, "%.0f px", &chams::glow)
             };
             return fields;
         }

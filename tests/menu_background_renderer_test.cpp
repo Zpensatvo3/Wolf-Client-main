@@ -1,6 +1,5 @@
 #include "../src/ui/menu_background.hpp"
 #include "../src/gui/ui_state.hpp"
-#include "../src/gui/language.hpp"
 #include <cassert>
 #include <cfloat>
 #include <cstdint>
@@ -88,7 +87,7 @@ int main()
     io.AddMouseButtonEvent(0, false); settings_frame();
     assert(preferences.menu_background.selected == gui::background::style::citadel);
     assert(dirty_count == 1);
-    gui::active_language = 1; settings_frame();
+    settings_frame();
     assert(ImGui::GetDrawData()->TotalVtxCount > 0);
     ImGui::DestroyContext();
 }

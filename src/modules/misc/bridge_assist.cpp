@@ -244,5 +244,5 @@ void modules::bridge_assist::on_disable(::cache& cache)
 void modules::bridge_assist::render_options()
 {
 	gui::settings::render(settings_, module_settings::bridge_assist::schema());
-	ImGui::TextDisabled("%s", gui::text("Sneaks at unsupported hitbox corners; placement stays manual.", "Desteksiz kenarlarda eğilir; blok yerleştirme manuel kalır."));
+	ImGui::TextDisabled("%s", "Sneaks at unsupported hitbox corners; placement stays manual.");
 }

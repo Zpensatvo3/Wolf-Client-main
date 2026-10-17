@@ -345,7 +345,7 @@ namespace
 			draw->AddText(bold_font, title_sz, ImVec2(t_x, std::round(cmin.y + (idle_h * 0.5f - title_sz * 0.95f))),
 				color_title, "Spotify");
 			const std::string idle_text = fit_text(small_font, sub_sz,
-				gui::text("No track playing", "Par\xc3\xa7\x61 \xc3\xa7\x61lm\xc4\xb1yor"), cmax.x - t_x - 12.0f);
+				"No track playing", cmax.x - t_x - 12.0f);
 			draw->AddText(small_font, sub_sz, ImVec2(t_x, std::round(cmin.y + (idle_h * 0.5f + 1.5f))),
 				color_artist, idle_text.c_str());
 			return;
@@ -459,7 +459,7 @@ namespace
 		const float label_right = show_visualizer ? visualizer_left - 7.f * size_scale
 			: logo_left - (show_brand ? 6.f * size_scale : 0.f);
 		const std::string status_text = fit_text(bold_font, layout.label_font,
-			info.playing ? gui::text("PLAYING", "\xc3\x87\x41LIYOR") : gui::text("PAUSED", "DURAKLATILDI"),
+			info.playing ? "PLAYING" : "PAUSED",
 			label_right - label_left);
 
 		if (info.playing)
@@ -574,9 +574,9 @@ namespace
 			const float text_x = std::round(card_min.x + layout.pad + 9.0f);
 			const float text_y = std::round(card_min.y + layout.lyric_start_y + 1.0f);
 			const char* message = has_line ? info.lyrics[index].text.c_str()
-				: (!info.lyrics_loaded ? gui::text("Searching lyrics...", "Sözler aranıyor...")
-					: (!info.lyrics.empty() ? gui::text("Waiting for lyrics...", "Sözler bekleniyor...")
-						: gui::text("No lyrics available", "Şarkı sözü bulunamadı")));
+				: (!info.lyrics_loaded ? "Searching lyrics..."
+					: (!info.lyrics.empty() ? "Waiting for lyrics..."
+						: "No lyrics available"));
 			const ImFont* line_font = has_line ? bold_font : small_font;
 			const std::string line = fit_text(line_font, layout.lyric_font, message, card_max.x - layout.pad - text_x);
 			draw->PushClipRect(ImVec2(card_min.x + layout.pad - 3.0f, text_y - 3.0f),
@@ -766,8 +766,8 @@ void modules::spotify_hud::render_options()
 
 	// All controls below are redirected to Thedorius widgets via ui_redirect.hpp,
 	// ensuring identical styling, colors, and animations with the rest of the client modules.
-	ImGui::SliderFloat(gui::text("Position X", "Konum X"), &candidate.position_x, 0.0f, max_x, "%.0f px");
-	ImGui::SliderFloat(gui::text("Position Y", "Konum Y"), &candidate.position_y, 0.0f, max_y, "%.0f px");
+	ImGui::SliderFloat("Position X", &candidate.position_x, 0.0f, max_x, "%.0f px");
+	ImGui::SliderFloat("Position Y", &candidate.position_y, 0.0f, max_y, "%.0f px");
     gui::settings::render(candidate, module_settings::spotify_hud::schema().subspan(2));
 
     });

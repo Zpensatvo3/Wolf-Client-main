@@ -112,7 +112,5 @@ void modules::fast_stop::render_overlay()
 
 void modules::fast_stop::render_options()
 {
-    ImGui::TextWrapped("%s", gui::text(
-        "Stops horizontal drift when you release movement on the ground. Preserves vertical velocity; pauses in air, fluids, vehicles, flight and while hurt. Does not press keys.",
-        "Yerde hareket tuslarini birakinca yatay kaymayi durdurur. Dusey hizi korur; havada, sivida, binekte, ucarken ve hasar alirken duraklar. Tus basmaz."));
+    ImGui::TextWrapped("%s", "Stops horizontal drift when you release movement on the ground. Preserves vertical velocity; pauses in air, fluids, vehicles, flight and while hurt. Does not press keys.");
 }

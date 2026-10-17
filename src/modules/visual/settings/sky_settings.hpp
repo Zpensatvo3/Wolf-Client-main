@@ -17,24 +17,24 @@ namespace module_settings
         {
             using d = modules::settings::descriptor<sky>;
             static constexpr modules::settings::label styles[]{
-                {"Theme", "Tema"}, {"Sunset", "Günbatımı"}, {"Violet", "Mor"},
-                {"Ice", "Buz"}, {"Custom", "Özel"}
+                {"Theme"}, {"Sunset"}, {"Violet"},
+                {"Ice"}, {"Custom"}
             };
-            static constexpr modules::settings::label modes[]{{"Color", "Renk"},{"Panorama", "Panorama"}};
+            static constexpr modules::settings::label modes[]{{"Color"},{"Panorama"}};
             static constexpr modules::settings::label panoramas[]{
-                {"Starry Night", "Yıldızlı Gece"}, {"Milky Way", "Samanyolu"}, {"Cloudy Sunrise", "Bulutlu Şafak"},
-                {"Candy Dusk", "Pastel Günbatımı"}, {"Nebula", "Nebula"}, {"Aurora", "Kutup Işıkları"}
+                {"Starry Night"}, {"Milky Way"}, {"Cloudy Sunrise"},
+                {"Candy Dusk"}, {"Nebula"}, {"Aurora"}
             };
             static const d fields[]{
-                d::choice("mode", {"Mode", "Mod"}, &sky::mode, modes),
-                d::choice("panorama", {"Panorama", "Panorama"}, &sky::panorama, panoramas).when([](const sky& c) { return c.mode==1; }),
-                d::number("exposure", {"Brightness", "Parlaklık"}, &sky::exposure, -2.f, 2.f, "%+.1f").when([](const sky& c) { return c.mode==1; }),
-                d::number("rotation", {"Rotation", "Yön"}, &sky::rotation, 0.f, 360.f, "%.0f°").when([](const sky& c) { return c.mode==1; }),
-                d::toggle("drift", {"Slow Rotation", "Yavaş Dönüş"}, &sky::drift).when([](const sky& c) { return c.mode==1; }),
-                d::choice("style", {"Style", "Tasarım"}, &sky::style, styles).when([](const sky& c) { return c.mode==0; }),
-                d::number("strength", {"Strength", "Yoğunluk"}, &sky::strength, 0.f, 1.f, "%.2f"),
-                d::color("color", {"Sky Color", "Gökyüzü Rengi"}, &sky::color).when([](const sky& c) { return c.mode==0 && c.style==4; }),
-                d::toggle("match_fog", {"Match Fog", "Sisi Uyumla"}, &sky::match_fog)
+                d::choice("mode", {"Mode"}, &sky::mode, modes),
+                d::choice("panorama", {"Panorama"}, &sky::panorama, panoramas).when([](const sky& c) { return c.mode==1; }),
+                d::number("exposure", {"Brightness"}, &sky::exposure, -2.f, 2.f, "%+.1f").when([](const sky& c) { return c.mode==1; }),
+                d::number("rotation", {"Rotation"}, &sky::rotation, 0.f, 360.f, "%.0f°").when([](const sky& c) { return c.mode==1; }),
+                d::toggle("drift", {"Slow Rotation"}, &sky::drift).when([](const sky& c) { return c.mode==1; }),
+                d::choice("style", {"Style"}, &sky::style, styles).when([](const sky& c) { return c.mode==0; }),
+                d::number("strength", {"Strength"}, &sky::strength, 0.f, 1.f, "%.2f"),
+                d::color("color", {"Sky Color"}, &sky::color).when([](const sky& c) { return c.mode==0 && c.style==4; }),
+                d::toggle("match_fog", {"Match Fog"}, &sky::match_fog)
             };
             return fields;
         }

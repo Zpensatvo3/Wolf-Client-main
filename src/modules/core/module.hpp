@@ -41,6 +41,7 @@ namespace modules
         const char* get_category() const;
         void key_bind_selector();
         void begin_keybind_capture();
+        bool is_keybind_capture_active() const { return scanning; }
 
         bool display_options = false;
         float display_options_progress = 0.0f;

@@ -337,12 +337,12 @@ void modules::jump_reset::render_options()
 {
     ImGui::PushID("jump_reset_settings");
     auto candidate = settings_snapshot();
-    gui::option_section(gui::text("Timing", "Zamanlama"));
+    gui::option_section("Timing");
     const char* profile_names[] = {
-        gui::text("Custom", "Özel"),
-        gui::text("Immediate", "Anlık"),
-        gui::text("Balanced", "Dengeli"),
-        gui::text("Controlled", "Kontrollü")
+        "Custom",
+        "Immediate",
+        "Balanced",
+        "Controlled"
     };
     int selected = static_cast<int>(jump_reset_config::selected_profile(candidate));
     const float width = ImGui::GetContentRegionAvail().x;
@@ -366,7 +366,7 @@ void modules::jump_reset::render_options()
             {
                 ImGui::BeginTooltip();
                 const int chances[] = {0, 100, 85, 65}, delays[] = {0, 0, 15, 35};
-                ImGui::Text(gui::text("%d%% activation / %d ms delay", "%%%d uygulama / %d ms gecikme"),
+                ImGui::Text("%d%% activation / %d ms delay",
                     chances[index], delays[index]);
                 ImGui::EndTooltip();
             }
@@ -374,16 +374,16 @@ void modules::jump_reset::render_options()
             if (index < 3) ImGui::SameLine(0, spacing);
         }
     }
-    else if (gui::option_combo(gui::text("Preset", "Hazır ayar"), &selected, profile_names, 4))
+    else if (gui::option_combo("Preset", &selected, profile_names, 4))
         jump_reset_config::apply_profile(candidate, static_cast<jump_reset_config::profile>(selected));
 
     gui::settings::render(candidate, jump_reset_config::schema().subspan(1, 2));
-    gui::option_section(gui::text("Input / conditions", "Giriş / koşullar"));
+    gui::option_section("Input / conditions");
     gui::settings::render(candidate, jump_reset_config::schema().first(1));
     gui::settings::render(candidate, jump_reset_config::schema().last(1));
 
     ImGui::Spacing();
-    if (gui::action_button(gui::text("Restore Defaults", "Varsayılana dön"),
+    if (gui::action_button("Restore Defaults",
         ImVec2(ImGui::GetContentRegionAvail().x, 28.f)))
         candidate = jump_reset_config::config{};
     if (jump_reset_config::normalize(candidate)) apply_settings(candidate);

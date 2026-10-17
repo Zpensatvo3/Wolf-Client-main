@@ -68,7 +68,7 @@ namespace
 	volatile bool run_once = true;
 
 	int last_pressed_key = 0;
-	ImVector<ImWchar> language_glyph_ranges{};
+	ImVector<ImWchar> text_glyph_ranges{};
 	ImVector<ImWchar> icon_glyph_ranges{};
 	std::vector<unsigned char> ui_font_data{};
 	std::vector<unsigned char> ui_bold_font_data{};
@@ -442,10 +442,7 @@ void gui::render_click_gui_options()
 {
 	// This is deliberately fixed and has no keybind-capture control in the UI.
 	gui::menu_key = VK_RSHIFT;
-	static const char* languages[] = { "English", "T\xC3\xBCrk\xC3\xA7" "e" };
-	const int prev_lang = gui::active_language;
-	gui::option_combo(gui::text("Language", "Dil"), &gui::active_language, languages, IM_ARRAYSIZE(languages));
-	if (gui::active_language != prev_lang) gui::aegis::mark_preferences_dirty();
+	ImGui::TextDisabled("Right Shift: open menu / Esc: close");
 
 }
 
@@ -456,7 +453,7 @@ void gui::render_theme_selection()
 	ImGui::Spacing();
 	ImGui::Separator();
 	ImGui::Spacing();
-	ImGui::TextUnformatted(gui::text("Accent themes", "Vurgu temaları"));
+	ImGui::TextUnformatted("Accent themes");
 	settings_theme_grid();
 	ImGui::PopID();
 }
@@ -676,6 +673,16 @@ static LRESULT CALLBACK detour_WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	else if (msg == WM_XBUTTONDOWN)
 		last_pressed_key = GET_XBUTTON_WPARAM(wParam) == XBUTTON1 ? VK_XBUTTON1 : VK_XBUTTON2;
 
+	// Consume the complete closing Escape gesture, including autorepeat. It
+	// must not also open Minecraft's pause menu after the ClickGUI disappears.
+	if ((key_down || key_up) && wParam == VK_ESCAPE &&
+		gui::suppress_escape_until_release.load(std::memory_order_acquire))
+	{
+		if (ImGui::GetCurrentContext()) ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam);
+		if (key_up) gui::suppress_escape_until_release.store(false, std::memory_order_release);
+		return 0;
+	}
+
 	if (gui::draw)
 	{
 		if (msg == WM_SETCURSOR)
@@ -814,10 +821,12 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 		io.IniFilename = nullptr;
 		io.LogFilename = nullptr;
 
-		ImFontGlyphRangesBuilder language_range_builder;
-		language_range_builder.AddRanges(io.Fonts->GetGlyphRangesDefault());
-		language_range_builder.AddText("ÇĞİÖŞÜçğıöşü");
-		language_range_builder.BuildRanges(&language_glyph_ranges);
+		ImFontGlyphRangesBuilder text_range_builder;
+		text_range_builder.AddRanges(io.Fonts->GetGlyphRangesDefault());
+		// Keep extended Latin glyphs for player names and user-authored text.
+		static constexpr ImWchar user_text_ranges[]{0x0100, 0x017f, 0};
+		text_range_builder.AddRanges(user_text_ranges);
+		text_range_builder.BuildRanges(&text_glyph_ranges);
 		ImFontConfig ui_font_config{};
 		ui_font_config.OversampleH = 3;
 		ui_font_config.OversampleV = 1;
@@ -827,7 +836,7 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 		if (read_resource_bytes(IDR_FONT_MONTSERRAT_SEMIBOLD, ui_font_data))
 			gui::ui_font = io.Fonts->AddFontFromMemoryTTF(
 				ui_font_data.data(), static_cast<int>(ui_font_data.size()), 19.5f,
-				&ui_font_config, language_glyph_ranges.Data);
+				&ui_font_config, text_glyph_ranges.Data);
 		if (!gui::ui_font) {
 			gui::ui_font = io.Fonts->AddFontDefault();
 		}
@@ -836,7 +845,7 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 		if (read_resource_bytes(IDR_FONT_MONTSERRAT_BOLD, ui_bold_font_data))
 			gui::ui_bold_font = io.Fonts->AddFontFromMemoryTTF(
 				ui_bold_font_data.data(), static_cast<int>(ui_bold_font_data.size()), 22.5f,
-				&bold_font_config, language_glyph_ranges.Data);
+				&bold_font_config, text_glyph_ranges.Data);
 		if (!gui::ui_bold_font)
 			gui::ui_bold_font = gui::ui_font;
 		io.FontDefault = gui::ui_font;
@@ -850,7 +859,7 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 		if (!ui_bold_font_data.empty())
 			gui::watermark_font = io.Fonts->AddFontFromMemoryTTF(
 				ui_bold_font_data.data(), static_cast<int>(ui_bold_font_data.size()), 56.0f,
-				&wm_font_config, language_glyph_ranges.Data);
+				&wm_font_config, text_glyph_ranges.Data);
 		if (!gui::watermark_font)
 			gui::watermark_font = gui::ui_bold_font;
 
@@ -893,7 +902,7 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 		ImFontConfig arraylist_font_config = ui_font_config;
 		gui::arraylist_font = ui_font_data.empty() ? nullptr : io.Fonts->AddFontFromMemoryTTF(
 			ui_font_data.data(), static_cast<int>(ui_font_data.size()), 16.5f,
-			&arraylist_font_config, language_glyph_ranges.Data);
+			&arraylist_font_config, text_glyph_ranges.Data);
 		if (!gui::arraylist_font) {
 			gui::arraylist_font = gui::ui_font;
 		}
@@ -912,7 +921,7 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 			style.PopupRounding = 10.0f;
 			style.ChildRounding = 13.0f;
 			style.ScrollbarRounding = 8.0f;
-			style.ScrollbarSize = 1.0f;
+			style.ScrollbarSize = 0.0f;
 			style.FramePadding = ImVec2(10, 7);
 			style.WindowPadding = ImVec2(14, 14);
 			style.ItemSpacing = ImVec2(10, 9);
@@ -1014,6 +1023,8 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 		}
 		previous_menu_key = current_menu_key;
 	}
+	if ((GetAsyncKeyState(VK_ESCAPE) & 0x8000) == 0)
+		gui::suppress_escape_until_release.store(false, std::memory_order_release);
 
 	ImGui_ImplOpenGL3_NewFrame();
 	ImGui_ImplWin32_NewFrame();

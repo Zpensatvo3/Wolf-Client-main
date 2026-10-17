@@ -105,10 +105,8 @@ void gui::notification_ui::renderer::render(const services::notifications::snaps
         const bool off = item.type == model::kind::module_off;
         const bool info = item.type == model::kind::info;
         const char* title = item.title.empty()
-            ? (error ? (style.turkish ? "Başarısız" : "Failed")
-                : info ? (style.turkish ? "Bildirim" : "Notification")
-                       : (style.turkish ? "Tamamlandı" : "Completed")) : item.title.c_str();
-        const char* badge = off ? (style.turkish ? "Kapalı" : "Off") : (style.turkish ? "Açık" : "On");
+            ? (error ? "Failed" : info ? "Notification" : "Completed") : item.title.c_str();
+        const char* badge = off ? "Off" : "On";
         const float badge_width = module ? font->CalcTextSizeA(badge_size, FLT_MAX, 0.f, badge).x + 16.f : 0.f;
         const float width = maximum_width;
         const float wrap = width - 58.f;

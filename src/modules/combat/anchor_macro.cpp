@@ -45,9 +45,7 @@ void modules::anchor_macro::render_overlay()
 void modules::anchor_macro::render_options()
 {
     gui::settings::render(settings_,module_settings::anchor_macro::schema());
-    ImGui::TextWrapped("%s",gui::text(
-        "Each mode remembers its settings. Slot switch and action delays are added. Random variation is sampled once per scheduled step, not a guarantee of server acceptance. One sequence per activation.",
-        "Her mod kendi ayarlarini saklar. Slot gecisi ve islem gecikmeleri toplanir. Rastgele sapma her adim planlanirken bir kez secilir; sunucunun kabulunu garanti etmez. Her acilista tek dongu."));
+    ImGui::TextWrapped("%s","Each mode remembers its settings. Slot switch and action delays are added. Random variation is sampled once per scheduled step, not a guarantee of server acceptance. One sequence per activation.");
 }
 
 void modules::anchor_macro::on_disable(::cache& cache)

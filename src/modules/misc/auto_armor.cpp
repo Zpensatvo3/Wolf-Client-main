@@ -184,7 +184,5 @@ void modules::auto_armor::on_disable(::cache&)
 void modules::auto_armor::render_options()
 {
 	gui::settings::render(settings_, module_settings::auto_armor::schema());
-	ImGui::TextDisabled("%s", gui::text(
-		"Equips one better armor piece at a time.",
-		"Her seferinde bir daha iyi zirh parcasi takar."));
+	ImGui::TextDisabled("%s", "Equips one better armor piece at a time.");
 }

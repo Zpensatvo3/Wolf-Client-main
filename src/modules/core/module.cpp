@@ -65,7 +65,7 @@ std::string modules::module::make_stable_id(const char* value)
 
 void modules::module::key_bind_selector()
 {
-    utils::null_string display = (scanning ? gui::text("LISTENING", "DINLIYOR") : keycode_to_string(keybind));
+    utils::null_string display = (scanning ? "LISTENING" : keycode_to_string(keybind));
     const ImVec2 button_size(72.0f, 26.0f);
     const ImVec2 button_min = ImGui::GetCursorScreenPos();
     ImGui::PushID(get_id());

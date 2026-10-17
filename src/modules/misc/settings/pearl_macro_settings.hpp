@@ -15,8 +15,8 @@ namespace module_settings
             using model = pearl_macro;
             using setting = modules::settings::descriptor<model>;
             static const setting fields[]{
-                setting::integer("switch_delay", {"Switch Delay", "Geçiş Gecikmesi"}, &model::switch_delay, 0, 150, "%d ms"),
-                setting::integer("return_delay", {"Return Delay", "Geri Dönüş Gecikmesi"}, &model::return_delay, 0, 250, "%d ms"),
+                setting::integer("switch_delay", {"Switch Delay"}, &model::switch_delay, 0, 150, "%d ms"),
+                setting::integer("return_delay", {"Return Delay"}, &model::return_delay, 0, 250, "%d ms"),
             };
             return fields;
         }

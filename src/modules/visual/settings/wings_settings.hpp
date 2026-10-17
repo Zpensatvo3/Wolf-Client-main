@@ -14,17 +14,17 @@ namespace module_settings
         {
             using d = modules::settings::descriptor<wings>;
             static constexpr modules::settings::label styles[]{
-                {"Dragon", "Ejderha"}, {"Angel", "Melek"}, {"Butterfly", "Kelebek"}
+                {"Dragon"}, {"Angel"}, {"Butterfly"}
             };
             static const d fields[]{
-                d::choice("style", {"Style", "Tasarım"}, &wings::style, styles),
-                d::number("size", {"Size", "Boyut"}, &wings::size, .5f, 1.6f, "%.2fx"),
-                d::number("opacity", {"Opacity", "Opaklık"}, &wings::opacity, .1f, 1.f, "%.2f"),
-                d::toggle("animate", {"Flapping", "Kanat Çırpma"}, &wings::animate),
-                d::number("speed", {"Flap Speed", "Çırpma Hızı"}, &wings::speed, .25f, 2.f, "%.2fx", &wings::animate),
-                d::toggle("theme_color", {"Theme Color", "Tema Rengi"}, &wings::theme_color),
-                d::color("color", {"Color", "Renk"}, &wings::color).when([](const wings& c) { return !c.theme_color; }),
-                d::toggle("glow", {"Glow", "Parlama"}, &wings::glow)
+                d::choice("style", {"Style"}, &wings::style, styles),
+                d::number("size", {"Size"}, &wings::size, .5f, 1.6f, "%.2fx"),
+                d::number("opacity", {"Opacity"}, &wings::opacity, .1f, 1.f, "%.2f"),
+                d::toggle("animate", {"Flapping"}, &wings::animate),
+                d::number("speed", {"Flap Speed"}, &wings::speed, .25f, 2.f, "%.2fx", &wings::animate),
+                d::toggle("theme_color", {"Theme Color"}, &wings::theme_color),
+                d::color("color", {"Color"}, &wings::color).when([](const wings& c) { return !c.theme_color; }),
+                d::toggle("glow", {"Glow"}, &wings::glow)
             };
             return fields;
         }

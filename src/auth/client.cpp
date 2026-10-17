@@ -34,7 +34,7 @@ namespace
                 std::lock_guard lock(state_mutex);
                 if (stopping) { auth::launch::wipe(launch_ticket); return; }
                 state.status = auth::client::phase::verifying;
-                state.message = "Launcher oturumu dogrulaniyor...";
+                state.message = "Verifying launcher session...";
             }
             auth::auth_result result;
             try {
@@ -44,7 +44,7 @@ namespace
             } catch (...) {
                 auth::controlled_shutdown();
                 result.success = false;
-                result.message = "Launcher oturumu başlatılamadı. Tekrar dene.";
+                result.message = "Could not start the launcher session. Please retry.";
             }
             auth::launch::wipe(launch_ticket);
             auth::launch::wipe(result.session_token);

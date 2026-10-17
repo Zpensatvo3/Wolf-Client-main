@@ -15,15 +15,15 @@ namespace blatant_aim_engine
     {
         using d = modules::settings::descriptor<config>;
         using label = modules::settings::label;
-        static constexpr label points[]{{"Body","Govde"},{"Random","Rastgele"},{"Adaptive","Uyarlanabilir"}};
+        static constexpr label points[]{{"Body"},{"Random"},{"Adaptive"}};
         static constexpr int values[]{1,3,4};
         static const d fields[]{
-            d::number("fov", {"FOV","FOV"}, &config::fov, 10.f, 180.f, "%.0f deg"),
-            d::number("max_distance", {"Max Distance","Maksimum Mesafe"}, &config::max_distance, 1.f, 6.f, "%.1f blocks"),
-            d::number("strength", {"Strength","Guc"}, &config::strength, .05f, 1.f, "%.2f"),
-            d::toggle("only_weapon", {"Only Weapon","Sadece Silah"}, &config::only_weapon),
-            d::toggle("last_target", {"Last Target","Son Hedef"}, &config::last_target),
-            d::enumeration<&config::point>("aim_point", {"Aim Point","Nisan Noktasi"}, points, values)
+            d::number("fov", {"FOV"}, &config::fov, 10.f, 180.f, "%.0f deg"),
+            d::number("max_distance", {"Max Distance"}, &config::max_distance, 1.f, 6.f, "%.1f blocks"),
+            d::number("strength", {"Strength"}, &config::strength, .05f, 1.f, "%.2f"),
+            d::toggle("only_weapon", {"Only Weapon"}, &config::only_weapon),
+            d::toggle("last_target", {"Last Target"}, &config::last_target),
+            d::enumeration<&config::point>("aim_point", {"Aim Point"}, points, values)
         };
         return fields;
     }

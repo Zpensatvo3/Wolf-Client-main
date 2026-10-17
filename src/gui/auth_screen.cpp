@@ -64,22 +64,22 @@ void gui::render_auth_screen()
     ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(.045f, .047f, .063f, .98f));
     ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(.5f, .5f, .7f, .18f));
     constexpr auto flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
-        ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings;
+        ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar;
     if (ImGui::Begin("##onestep_auth", nullptr, flags))
     {
         if (ui_bold_font) ImGui::PushFont(ui_bold_font);
         ImGui::TextUnformatted("onestep");
         if (ui_bold_font) ImGui::PopFont();
-        ImGui::TextDisabled("%s", text("License login", "Lisans girişi"));
+        ImGui::TextDisabled("%s", "License login");
         ImGui::Spacing();
         ImGui::BeginDisabled(busy || !state.configured);
         if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
         ImGui::SetNextItemWidth(-1.f);
         input_id = ImGui::GetID("##license");
-        const bool enter = ImGui::InputTextWithHint("##license", text("License key", "Lisans anahtarı"),
+        const bool enter = ImGui::InputTextWithHint("##license", "License key",
             license.data(), license.size(), ImGuiInputTextFlags_Password | ImGuiInputTextFlags_EnterReturnsTrue |
             ImGuiInputTextFlags_NoUndoRedo);
-        const bool clicked = centered_text_button(text("Sign in", "Giriş yap"), ImVec2(ImGui::GetContentRegionAvail().x, 38.f));
+        const bool clicked = centered_text_button("Sign in", ImVec2(ImGui::GetContentRegionAvail().x, 38.f));
         if (enter || clicked)
         {
             auth::client::submit_license(license.data());
@@ -87,7 +87,7 @@ void gui::render_auth_screen()
         }
         ImGui::EndDisabled();
 
-        if (busy) ImGui::TextDisabled("%s", text("Verifying license...", "Lisans doğrulanıyor..."));
+        if (busy) ImGui::TextDisabled("%s", "Verifying license...");
         else if (!state.message.empty())
         {
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.f, .5f, .53f, 1.f));
@@ -97,7 +97,7 @@ void gui::render_auth_screen()
             ImGui::PopStyleColor();
         }
         ImGui::Spacing();
-        if (centered_text_button(text("Close client", "İstemciyi kapat"), ImVec2(ImGui::GetContentRegionAvail().x, 30.f)))
+        if (centered_text_button("Close client", ImVec2(ImGui::GetContentRegionAvail().x, 30.f)))
         {
             clear_auth_screen();
             gui::should_unload.store(true, std::memory_order_release);

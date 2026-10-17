@@ -10,7 +10,7 @@ namespace gui::notification_ui
         ImFont* font = nullptr;
         ImVec4 accent{.6f, .32f, 1.f, 1.f};
         ImVec4 secondary{.38f, .62f, 1.f, 1.f};
-        bool reduce_motion = false, turkish = false;
+        bool reduce_motion = false;
     };
     class renderer
     {

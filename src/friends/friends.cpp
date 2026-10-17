@@ -91,7 +91,7 @@ void friends::add(std::string_view name)
 
 	std::lock_guard lock(state.mutex);
 	state.names[normalize(display)] = display;
-	state.status = display + gui::text(" added as friend", " arkadaş olarak eklendi");
+	state.status = display + " added as friend";
 }
 
 void friends::remove(std::string_view name)
@@ -102,7 +102,7 @@ void friends::remove(std::string_view name)
 
 	std::lock_guard lock(state.mutex);
 	if (state.names.erase(normalize(display)) > 0)
-		state.status = display + gui::text(" removed from friends", " arkadaşlardan çıkarıldı");
+		state.status = display + " removed from friends";
 }
 
 void friends::toggle(std::string_view name)
@@ -114,11 +114,11 @@ void friends::toggle(std::string_view name)
 	std::lock_guard lock(state.mutex);
 	const std::string key = normalize(display);
 	if (state.names.erase(key) > 0)
-		state.status = display + gui::text(" removed from friends", " arkadaşlardan çıkarıldı");
+		state.status = display + " removed from friends";
 	else
 	{
 		state.names[key] = display;
-		state.status = display + gui::text(" added as friend", " arkadaş olarak eklendi");
+		state.status = display + " added as friend";
 	}
 }
 
@@ -308,12 +308,12 @@ namespace
 		const std::vector<std::string> saved = friends::friend_names_snapshot();
 
 		if (!embedded)
-			gui::page_header(gui::text("Friends", "Arkada\xC5\x9Flar"),
-				gui::text("Session trust list", "Oturum guven listesi"));
+			gui::page_header("Friends",
+				"Session trust list");
 		const float full_width = ImGui::GetContentRegionAvail().x;
 		const float tab_width = std::min(176.0f, (full_width - 8.0f) * 0.5f);
-		const std::string server_tab = gui::text("Server Players", "Sunucu Oyunculari") + std::string("  ") + std::to_string(players.size());
-		const std::string friends_tab = gui::text("Friends", "Arkadaslar") + std::string("  ") + std::to_string(saved.size());
+		const std::string server_tab = "Server Players" + std::string("  ") + std::to_string(players.size());
+		const std::string friends_tab = "Friends" + std::string("  ") + std::to_string(saved.size());
 		if (gui::action_button(server_tab.c_str(), ImVec2(tab_width, 32.0f), active_tab == 0 ? gui::action_tone::accent : gui::action_tone::neutral))
 			active_tab = 0;
 		ImGui::SameLine(0.0f, 8.0f);
@@ -326,28 +326,28 @@ namespace
 			if (active_tab == 0)
 			{
 				ImGui::SetNextItemWidth(-1.0f);
-				ImGui::InputTextWithHint("##friend_server_search_v3", gui::text("Search server players", "Sunucu oyuncularinda ara"),
+				ImGui::InputTextWithHint("##friend_server_search_v3", "Search server players",
 					search, IM_ARRAYSIZE(search));
 			}
 			else
 			{
 				const float available = ImGui::GetContentRegionAvail().x;
 				ImGui::SetNextItemWidth(std::max(120.0f, available - 43.0f));
-				ImGui::InputTextWithHint("##friend_manual_v3", gui::text("Add a player by name", "Oyuncuyu isimle ekle"),
+				ImGui::InputTextWithHint("##friend_manual_v3", "Add a player by name",
 					add_name, IM_ARRAYSIZE(add_name));
 				ImGui::SameLine(0.0f, 7.0f);
-				if (gui::icon_action("friend_manual_add_v3", "\xEF\x88\xB4", "+", gui::text("Add friend", "Arkadas ekle"), false, true) && add_name[0])
+				if (gui::icon_action("friend_manual_add_v3", "\xEF\x88\xB4", "+", "Add friend", false, true) && add_name[0])
 				{
 					const std::string added = add_name;
 					friends::add(added);
 					add_name[0] = '\0';
-					gui::push_workspace_toast(added + gui::text(" added", " eklendi"));
+					gui::push_workspace_toast(added + " added");
 				}
 			}
 			ImGui::Dummy(ImVec2(0.0f, 7.0f));
-			ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 1.0f);
+			ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 0.0f);
 			ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-			if (ImGui::BeginChild("##friends_rows_v3", ImVec2(0.0f, 0.0f)))
+			if (ImGui::BeginChild("##friends_rows_v3", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar))
 			{
 				ImFont* bold = gui::ui_bold_font ? gui::ui_bold_font : ImGui::GetFont();
 				ImFont* regular = gui::ui_font ? gui::ui_font : ImGui::GetFont();
@@ -391,16 +391,16 @@ namespace
 						const ImVec4 clip(row_min.x + 49.0f, row_min.y + 4.0f, row_max.x - 46.0f, row_max.y - 4.0f);
 						ImGui::GetWindowDrawList()->AddText(bold, 15.5f, ImVec2(row_min.x + 49.0f, row_min.y + 11.0f),
 							IM_COL32(232, 234, 241, 255), player.name.c_str(), nullptr, 0.0f, &clip);
-						const char* state_label = player.local ? gui::text("YOU", "SEN")
-							: (player.friend_added ? gui::text("FRIEND", "ARKADAS") : gui::text("ONLINE", "CEVRIMICI"));
+						const char* state_label = player.local ? "YOU"
+							: (player.friend_added ? "FRIEND" : "ONLINE");
 						ImGui::GetWindowDrawList()->AddText(regular, 11.5f, ImVec2(row_min.x + 49.0f, row_min.y + 37.0f),
 							player.friend_added ? ImGui::GetColorU32(ImGuiCol_CheckMark) : IM_COL32(139, 133, 151, 255), state_label, nullptr, 0.0f, &clip);
 						if (!player.local)
 						{
 							ImGui::SetCursorScreenPos(ImVec2(row_max.x - 37.0f, row_min.y + 17.0f));
 							if (gui::icon_action("friend_toggle_v3", player.friend_added ? "\xEF\x94\x83" : "\xEF\x88\xB4",
-								player.friend_added ? "-" : "+", player.friend_added ? gui::text("Remove friend", "Arkadasi cikar")
-								: gui::text("Add friend", "Arkadas ekle"), player.friend_added, !player.friend_added))
+								player.friend_added ? "-" : "+", player.friend_added ? "Remove friend"
+								: "Add friend", player.friend_added, !player.friend_added))
 								friends::toggle(player.name);
 						}
 						end_card();
@@ -422,7 +422,7 @@ namespace
 						ImGui::GetWindowDrawList()->AddText(bold, 15.5f, ImVec2(row_min.x + 49.0f, row_min.y + 21.0f),
 							IM_COL32(232, 234, 241, 255), name.c_str(), nullptr, 0.0f, &clip);
 						ImGui::SetCursorScreenPos(ImVec2(row_max.x - 37.0f, row_min.y + 17.0f));
-						if (gui::icon_action("friend_remove_v3", "\xEF\x94\x83", "-", gui::text("Remove friend", "Arkadasi cikar"), true))
+						if (gui::icon_action("friend_remove_v3", "\xEF\x94\x83", "-", "Remove friend", true))
 							friends::remove(name);
 						end_card();
 					}
@@ -432,8 +432,8 @@ namespace
 				if (!visible)
 				{
 					ImGui::Dummy(ImVec2(0.0f, 28.0f));
-					const char* empty = active_tab == 0 ? gui::text("No server players available", "Sunucu oyuncusu bulunamadi")
-						: gui::text("No friends in this session", "Bu oturumda arkadas yok");
+					const char* empty = active_tab == 0 ? "No server players available"
+						: "No friends in this session";
 					const ImVec2 extent = ImGui::CalcTextSize(empty);
 					ImGui::SetCursorPosX(std::max(0.0f, (ImGui::GetContentRegionAvail().x - extent.x) * 0.5f));
 					ImGui::TextDisabled("%s", empty);

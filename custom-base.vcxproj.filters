@@ -587,6 +587,9 @@
     <ClInclude Include="src\ui\menu_background.hpp">
       <Filter>Header Files\src\ui</Filter>
     </ClInclude>
+    <ClInclude Include="src\ui\profile_model.hpp">
+      <Filter>Header Files\src\ui</Filter>
+    </ClInclude>
     <ClInclude Include="src\platform\adapter\game_adapter.hpp">
       <Filter>Header Files\src\platform\adapter</Filter>
     </ClInclude>
@@ -1596,9 +1599,6 @@
       <Filter>Header Files\src\ui</Filter>
     </ClInclude>
     <ClInclude Include="src\gui\widgets.hpp">
-      <Filter>Header Files\src\gui</Filter>
-    </ClInclude>
-    <ClInclude Include="src\gui\language.hpp">
       <Filter>Header Files\src\gui</Filter>
     </ClInclude>
     <ClInclude Include="src\gui\module_descriptions.hpp">

@@ -282,7 +282,7 @@ bool gui::begin_surface(const char* id, const ImVec2& size, const ImVec2& paddin
     ImGui::PushStyleColor(ImGuiCol_Border, transparent
         ? ImVec4(0.0f, 0.0f, 0.0f, 0.0f)
         : border);
-    return ImGui::BeginChild(id, size, ImGuiChildFlags_None);
+    return ImGui::BeginChild(id, size, ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar);
 }
 
 void gui::end_surface()
@@ -374,7 +374,6 @@ void gui::render_notifications()
     style.accent = gui::get_dynamic_color().Value;
     style.secondary = gui::get_dynamic_color(40).Value;
     style.reduce_motion = gui::aegis::get_preferences().reduce_motion;
-    style.turkish = gui::is_turkish();
     notification_renderer.render(services::notifications::collect(), *ImGui::GetMainViewport(), style);
 }
 
@@ -547,7 +546,7 @@ bool gui::option_combo(const char* label, int* current_item, const char* const i
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(6.f, 6.f));
         ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 8.f);
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.f, 2.f));
-        ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 3.f);
+        ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 0.f);
         ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(.065f, .065f, .082f, .99f));
         ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(1.f, 1.f, 1.f, .09f));
         ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(accent.x, accent.y, accent.z, .16f));
@@ -555,7 +554,7 @@ bool gui::option_combo(const char* label, int* current_item, const char* const i
         ImGui::PushStyleColor(ImGuiCol_ScrollbarGrab, ImVec4(accent.x, accent.y, accent.z, .45f));
         ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabHovered, ImVec4(accent.x, accent.y, accent.z, .65f));
         ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabActive, accent);
-        if (ImGui::BeginPopup("##option_choices", ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings))
+        if (ImGui::BeginPopup("##option_choices", ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar))
         {
             for (int index = 0; index < item_count; ++index)
             {

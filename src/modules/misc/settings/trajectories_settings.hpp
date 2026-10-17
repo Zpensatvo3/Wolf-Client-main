@@ -18,13 +18,13 @@ namespace module_settings
             using model = trajectories;
             using setting = modules::settings::descriptor<model>;
             static const setting fields[]{
-                setting::toggle("show_bows", {"Bows & Trident", "Yaylar ve Trident"}, &model::show_bows),
-                setting::toggle("show_throwables", {"Throwables", "Fırlatılabilir Eşyalar"}, &model::show_throwables),
-                setting::toggle("show_potions", {"Potions & XP", "Potion ve XP"}, &model::show_potions),
-                setting::toggle("show_landing_marker", {"Impact Marker", "Çarpma İşareti"}, &model::show_landing_marker),
-                setting::toggle("show_flight_time", {"Flight Info", "Uçuş Bilgisi"}, &model::show_flight_time),
-                setting::number("line_thickness", {"Line Thickness", "Çizgi Kalınlığı"}, &model::line_thickness, 1.0f, 5.0f, "%.1f px"),
-                setting::integer("max_ticks", {"Prediction Time", "Tahmin Süresi"}, &model::max_ticks, 40, 240, "%d ticks"),
+                setting::toggle("show_bows", {"Bows & Trident"}, &model::show_bows),
+                setting::toggle("show_throwables", {"Throwables"}, &model::show_throwables),
+                setting::toggle("show_potions", {"Potions & XP"}, &model::show_potions),
+                setting::toggle("show_landing_marker", {"Impact Marker"}, &model::show_landing_marker),
+                setting::toggle("show_flight_time", {"Flight Info"}, &model::show_flight_time),
+                setting::number("line_thickness", {"Line Thickness"}, &model::line_thickness, 1.0f, 5.0f, "%.1f px"),
+                setting::integer("max_ticks", {"Prediction Time"}, &model::max_ticks, 40, 240, "%d ticks"),
             };
             return fields;
         }

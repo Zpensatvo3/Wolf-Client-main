@@ -14,13 +14,13 @@ namespace jump_reset_config
     {
         using d = modules::settings::descriptor<config>;
         static constexpr modules::settings::label modes[]{
-            {"Game Binding","Oyun tusu"}, {"System Space","Sistem Space"}
+            {"Game Binding"}, {"System Space"}
         };
         static const d fields[]{
-            d::choice("mode", {"Jump Input","Ziplama girisi"}, &config::mode, modes),
-            d::integer("chance", {"Activation Chance","Uygulama olasiligi"}, &config::chance, 0, 100, "%d%%"),
-            d::integer("jump_delay_ms", {"Delay after Damage","Darbe sonrasi gecikme"}, &config::jump_delay_ms, 0, 100, "%d ms"),
-            d::toggle("only_combat", {"Living Attacks Only","Yalnizca canli saldirilari"}, &config::only_combat)
+            d::choice("mode", {"Jump Input"}, &config::mode, modes),
+            d::integer("chance", {"Activation Chance"}, &config::chance, 0, 100, "%d%%"),
+            d::integer("jump_delay_ms", {"Delay after Damage"}, &config::jump_delay_ms, 0, 100, "%d ms"),
+            d::toggle("only_combat", {"Living Attacks Only"}, &config::only_combat)
         };
         return fields;
     }

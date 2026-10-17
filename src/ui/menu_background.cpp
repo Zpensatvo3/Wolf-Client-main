@@ -1,5 +1,4 @@
 #include "menu_background.hpp"
-#include "../gui/language.hpp"
 #include "../gui/ui_state.hpp"
 
 bool gui::background::render(ImDrawList* draw, ImVec2 minimum, ImVec2 size, const options& raw)
@@ -22,15 +21,14 @@ void gui::background::render_settings(ImU32 accent)
 {
     ImGui::PushID("menu_background");
     auto& value = aegis::get_preferences().menu_background;
-    ImGui::TextUnformatted(gui::text("Menu background", "Menü arka planı"));
-    ImGui::TextDisabled("%s", gui::text("Local only. Your gameplay configs are unchanged.",
-        "Yalnızca bu bilgisayarda saklanır; oyun configlerini değiştirmez."));
+    ImGui::TextUnformatted("Menu background");
+    ImGui::TextDisabled("%s", "Local only. Your gameplay configs are unchanged.");
     ImGui::Spacing();
 
     const char* labels[] = {
-        gui::text("Classic", "Klasik"), gui::text("Citadel", "Hisar"),
-        gui::text("Candy Dusk", "Pamuk Alacakaranlığı"), "Nebula", "Aurora",
-        gui::text("My image", "Görselim")
+        "Classic", "Citadel",
+        "Candy Dusk", "Nebula", "Aurora",
+        "My image"
     };
     const float gap = 10.f, width = ImGui::GetContentRegionAvail().x;
     const int columns = std::clamp(static_cast<int>((width + gap) / 170.f), 1, 3);
@@ -78,28 +76,25 @@ void gui::background::render_settings(ImU32 accent)
 
     const auto state = status();
     ImGui::BeginDisabled(state == import_state::choosing);
-    if (ImGui::Button(gui::text("Add image...", "Görsel ekle..."))) begin_import();
+    if (ImGui::Button("Add image...")) begin_import();
     ImGui::EndDisabled();
     ImGui::SameLine();
-    ImGui::TextDisabled("%s", gui::text("PNG / JPG · up to 16 MB", "PNG / JPG · en fazla 16 MB"));
+    ImGui::TextDisabled("%s", "PNG / JPG · up to 16 MB");
     if (state == import_state::choosing)
-        ImGui::TextDisabled("%s", gui::text("Choose an image in the file window.", "Dosya penceresinden bir görsel seç."));
+        ImGui::TextDisabled("%s", "Choose an image in the file window.");
     else if (state == import_state::failed)
-        ImGui::TextWrapped("%s", gui::text("Image could not be loaded. Use PNG/JPG, at most 8192 px per side and 16 megapixels.",
-            "Görsel yüklenemedi. PNG/JPG, kenar başına en fazla 8192 piksel ve toplam 16 megapiksel kullan."));
+        ImGui::TextWrapped("%s", "Image could not be loaded. Use PNG/JPG, at most 8192 px per side and 16 megapixels.");
     else if (state == import_state::save_failed)
-        ImGui::TextWrapped("%s", gui::text("Image could not be saved. Your previous background is unchanged.",
-            "Görsel kaydedilemedi. Önceki arka planın korundu."));
+        ImGui::TextWrapped("%s", "Image could not be saved. Your previous background is unchanged.");
     else if (state == import_state::imported)
-        ImGui::TextDisabled("%s", gui::text("Image saved on this computer.", "Görsel bu bilgisayara kaydedildi."));
+        ImGui::TextDisabled("%s", "Image saved on this computer.");
     else if (value.selected == style::custom && !texture(style::custom).id)
-        ImGui::TextWrapped("%s", gui::text("Saved image is missing. Classic background is used until you add an image again.",
-            "Kayıtlı görsel bulunamadı. Tekrar görsel ekleyene kadar klasik arka plan kullanılır."));
+        ImGui::TextWrapped("%s", "Saved image is missing. Classic background is used until you add an image again.");
 
     ImGui::BeginDisabled(value.selected == style::classic);
-    if (ImGui::SliderFloat(gui::text("Image opacity", "Görsel yoğunluğu"), &value.opacity, 0.f, 1.f, "%.2f"))
+    if (ImGui::SliderFloat("Image opacity", &value.opacity, 0.f, 1.f, "%.2f"))
         aegis::mark_preferences_dirty();
-    if (ImGui::SliderFloat(gui::text("Darkening", "Karartma"), &value.dimming, .25f, .85f, "%.2f"))
+    if (ImGui::SliderFloat("Darkening", &value.dimming, .25f, .85f, "%.2f"))
         aegis::mark_preferences_dirty();
     ImGui::EndDisabled();
     ImGui::PopID();

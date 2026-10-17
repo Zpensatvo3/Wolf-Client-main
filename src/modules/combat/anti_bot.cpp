@@ -20,7 +20,5 @@ void modules::anti_bot::on_disable(::cache&) { services::anti_bot::configure(fal
 void modules::anti_bot::render_options()
 {
     gui::settings::render(settings_, module_settings::anti_bot::schema());
-    ImGui::TextWrapped("%s", gui::text(
-        "Shared player filter for aim, trigger and visuals. Unknown data is allowed; hidden Tab names alone are not bots.",
-        "Aim, trigger ve gorseller icin ortak oyuncu filtresi. Belirsiz veri elenmez; Tab'da gizli isim tek basina bot sayilmaz."));
+    ImGui::TextWrapped("%s", "Shared player filter for aim, trigger and visuals. Unknown data is allowed; hidden Tab names alone are not bots.");
 }

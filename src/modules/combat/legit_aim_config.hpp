@@ -17,14 +17,14 @@ namespace legit_aim_engine
     {
         using d = modules::settings::descriptor<config>;
         using label = modules::settings::label;
-        static constexpr label points[]{{"Adaptive","Uyarlanabilir"},{"Upper Body","Ust Govde"},{"Head","Bas"}};
+        static constexpr label points[]{{"Adaptive"},{"Upper Body"},{"Head"}};
         static constexpr int values[]{4,1,0};
         static const d fields[]{
-            d::number("strength", {"Assist Strength","Yardim Gucu"}, &config::strength, 0.f, 100.f, "%.0f%%"),
-            d::number("fov", {"FOV","FOV"}, &config::fov, 20.f, 120.f, "%.0f deg"),
-            d::number("max_distance", {"Range","Menzil"}, &config::max_distance, 2.5f, 5.f, "%.1f blocks"),
-            d::enumeration<&config::point>("aim_point", {"Aim Point","Nisan Noktasi"}, points, values),
-            d::toggle("weapon_only", {"Weapon Only","Sadece Silah"}, &config::weapon_only)
+            d::number("strength", {"Assist Strength"}, &config::strength, 0.f, 100.f, "%.0f%%"),
+            d::number("fov", {"FOV"}, &config::fov, 20.f, 120.f, "%.0f deg"),
+            d::number("max_distance", {"Range"}, &config::max_distance, 2.5f, 5.f, "%.1f blocks"),
+            d::enumeration<&config::point>("aim_point", {"Aim Point"}, points, values),
+            d::toggle("weapon_only", {"Weapon Only"}, &config::weapon_only)
         };
         return fields;
     }

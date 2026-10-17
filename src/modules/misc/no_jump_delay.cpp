@@ -44,7 +44,5 @@ void modules::no_jump_delay::render_overlay()
 
 void modules::no_jump_delay::render_options()
 {
-    ImGui::TextWrapped("%s", gui::text(
-        "Removes the repeat-jump cooldown. Does not press jump for you.",
-        "Tekrarlanan ziplama beklemesini kaldirir. Senin yerine ziplama tusuna basmaz."));
+    ImGui::TextWrapped("%s", "Removes the repeat-jump cooldown. Does not press jump for you.");
 }

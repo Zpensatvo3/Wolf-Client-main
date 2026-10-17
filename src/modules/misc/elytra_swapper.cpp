@@ -218,7 +218,5 @@ void modules::elytra_swapper::on_disable(::cache&)
 void modules::elytra_swapper::render_options()
 {
 	gui::settings::render(settings_, module_settings::elytra_swapper::schema());
-	ImGui::TextDisabled("%s", gui::text(
-		"One use: swaps the chest item and turns itself off.",
-		"Tek kullanim: gogus esyasini degistirir ve kendini kapatir."));
+	ImGui::TextDisabled("%s", "One use: swaps the chest item and turns itself off.");
 }

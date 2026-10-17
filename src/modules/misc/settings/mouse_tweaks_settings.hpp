@@ -16,9 +16,9 @@ namespace module_settings
             using model = mouse_tweaks;
             using setting = modules::settings::descriptor<model>;
             static const setting fields[]{
-                setting::toggle("right_click_tweak", {"RMB Drag Distribution", "Sağ Tıkla Sürükleyerek Dağıt"}, &model::right_click_tweak),
-                setting::toggle("left_click_with_item", {"LMB Collect Matching Stacks", "Sol Tıkla Benzer Yığınları Topla"}, &model::left_click_with_item),
-                setting::toggle("left_click_without_item", {"Shift + LMB Quick Move", "Shift + Sol Tık Hızlı Taşı"}, &model::left_click_without_item),
+                setting::toggle("right_click_tweak", {"RMB Drag Distribution"}, &model::right_click_tweak),
+                setting::toggle("left_click_with_item", {"LMB Collect Matching Stacks"}, &model::left_click_with_item),
+                setting::toggle("left_click_without_item", {"Shift + LMB Quick Move"}, &model::left_click_without_item),
             };
             return fields;
         }

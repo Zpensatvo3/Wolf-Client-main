@@ -27,8 +27,8 @@ assert "ImGui::CalcTextSize(profile_names[index]).x + 16.f <= button_width" in i
 panel = implementation[implementation.index("void modules::jump_reset::render_options()") :]
 assert "help(" not in panel and "PushTextWrapPos" not in panel
 assert "return 320.0f" in header
-assert 'gui::option_section(gui::text("Timing",' in implementation
-assert 'gui::option_section(gui::text("Input / conditions",' in implementation
+assert 'gui::option_section("Timing")' in implementation
+assert 'gui::option_section("Input / conditions")' in implementation
 assert "GetAsyncKeyState" not in implementation
 worker = re.search(r'void modules::jump_reset::run\([^)]*\)\s*\{(.*?)\}', implementation, re.S).group(1)
 assert "setPressed" not in worker and "engine" not in worker

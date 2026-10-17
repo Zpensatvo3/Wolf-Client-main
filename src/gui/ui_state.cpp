@@ -164,11 +164,8 @@ void gui::aegis::load_preferences()
     read_number(source, "window_height", height);
 
     int theme = 0;
-    int language = 0;
     if (read_integer(source, "theme", theme))
         gui::active_theme = std::clamp(theme, 0, gui::theme::count - 1);
-    if (read_integer(source, "language", language))
-        gui::active_language = std::clamp(language, 0, 1);
 
     state.layout = static_cast<layout_mode>(layout);
     state.energy = static_cast<energy_quality>(energy);
@@ -209,7 +206,6 @@ void gui::aegis::flush_preferences(bool force)
     normalize(state);
     const std::filesystem::path path = preferences_path();
     gui::active_theme = std::clamp(gui::active_theme, 0, gui::theme::count - 1);
-    gui::active_language = std::clamp(gui::active_language, 0, 1);
     if (path.empty()) return;
     std::error_code error;
     std::filesystem::create_directories(path.parent_path(), error);
@@ -224,7 +220,6 @@ void gui::aegis::flush_preferences(bool force)
             << "  \"layout\": " << static_cast<int>(state.layout) << ",\n"
             << "  \"energy\": " << static_cast<int>(state.energy) << ",\n"
             << "  \"theme\": " << gui::active_theme << ",\n"
-            << "  \"language\": " << gui::active_language << ",\n"
             << "  \"reduce_motion\": " << (state.reduce_motion ? "true" : "false") << ",\n"
             << "  \"menu_background\": " << static_cast<int>(state.menu_background.selected) << ",\n"
             << "  \"menu_background_opacity\": " << state.menu_background.opacity << ",\n"
@@ -254,7 +249,6 @@ void gui::aegis::reset_preferences()
 {
     state = {};
     gui::active_theme = 0;
-    gui::active_language = 0;
     loaded = true;
     geometry_reset = true;
     mark_preferences_dirty();

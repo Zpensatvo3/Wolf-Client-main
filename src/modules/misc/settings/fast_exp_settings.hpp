@@ -14,9 +14,9 @@ namespace module_settings
             using model = fast_exp;
             using setting = modules::settings::descriptor<model>;
             static const setting fields[]{
-                setting::integer("min_cps", {"Minimum CPS", "Minimum CPS"}, &model::min_cps, 1, 50, "%d CPS").display_minimum(5).display_maximum(40),
-                setting::integer("max_cps", {"Maximum CPS", "Maksimum CPS"}, &model::max_cps, 1, 50, "%d CPS").display_minimum(5).display_maximum(40),
-                setting::integer("cps", {"Legacy CPS","Eski CPS"}, &model::legacy_cps, -1000000, 1000000).hidden(),
+                setting::integer("min_cps", {"Minimum CPS"}, &model::min_cps, 1, 50, "%d CPS").display_minimum(5).display_maximum(40),
+                setting::integer("max_cps", {"Maximum CPS"}, &model::max_cps, 1, 50, "%d CPS").display_minimum(5).display_maximum(40),
+                setting::integer("cps", {"Legacy CPS"}, &model::legacy_cps, -1000000, 1000000).hidden(),
             };
             return fields;
         }

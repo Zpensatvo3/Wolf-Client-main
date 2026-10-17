@@ -13,8 +13,8 @@ namespace module_settings
             using model = mace_swap;
             using setting = modules::settings::descriptor<model>;
             static const setting fields[]{
-                setting::integer("preferred_mace_slot", {"Preferred Mace Slot", "Tercih Edilen Mace Slotu"}, &model::preferred_mace_slot, 1, 9, "Slot %d"),
-                setting::integer("return_delay", {"Return Delay", "Geri Donus Gecikmesi"}, &model::return_delay, 0, 75, "%d ms"),
+                setting::integer("preferred_mace_slot", {"Preferred Mace Slot"}, &model::preferred_mace_slot, 1, 9, "Slot %d"),
+                setting::integer("return_delay", {"Return Delay"}, &model::return_delay, 0, 75, "%d ms"),
             };
             return fields;
         }

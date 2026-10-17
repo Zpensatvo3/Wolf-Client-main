@@ -13,9 +13,9 @@ namespace module_settings
         {
             using d = modules::settings::descriptor<inv_walk>;
             static const d fields[]{
-                d::toggle("allow_containers", {"Container Screens", "Sandik ve Diger Esya Ekranlari"}, &inv_walk::allow_containers),
-                d::toggle("allow_jump", {"Allow Jump", "Ziplamaya Izin Ver"}, &inv_walk::allow_jump),
-                d::toggle("allow_sneak", {"Allow Sneak", "Egilmeye Izin Ver"}, &inv_walk::allow_sneak)
+                d::toggle("allow_containers", {"Container Screens"}, &inv_walk::allow_containers),
+                d::toggle("allow_jump", {"Allow Jump"}, &inv_walk::allow_jump),
+                d::toggle("allow_sneak", {"Allow Sneak"}, &inv_walk::allow_sneak)
             };
             return fields;
         }

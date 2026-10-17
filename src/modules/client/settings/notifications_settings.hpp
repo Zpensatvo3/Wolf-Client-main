@@ -14,15 +14,15 @@ namespace module_settings
         {
             using d = modules::settings::descriptor<notifications>;
             static constexpr modules::settings::label positions[]{
-                {"Bottom Right", "Sag Alt"}, {"Top Right", "Sag Ust"},
-                {"Bottom Left", "Sol Alt"}, {"Top Left", "Sol Ust"}
+                {"Bottom Right"}, {"Top Right"},
+                {"Bottom Left"}, {"Top Left"}
             };
             static const d fields[]{
-                d::choice("position", {"Position", "Konum"}, &notifications::position, positions),
-                d::number("duration", {"Duration", "Sure"}, &notifications::duration, 2.f, 8.f, "%.1f s"),
-                d::integer("max_visible", {"Visible Cards", "Gorunen Bildirim"}, &notifications::max_visible, 1, 5),
-                d::toggle("module_changes", {"Module Changes", "Modul Degisiklikleri"}, &notifications::module_changes),
-                d::toggle("operation_results", {"Operation Results", "Islem Sonuclari"}, &notifications::operation_results)
+                d::choice("position", {"Position"}, &notifications::position, positions),
+                d::number("duration", {"Duration"}, &notifications::duration, 2.f, 8.f, "%.1f s"),
+                d::integer("max_visible", {"Visible Cards"}, &notifications::max_visible, 1, 5),
+                d::toggle("module_changes", {"Module Changes"}, &notifications::module_changes),
+                d::toggle("operation_results", {"Operation Results"}, &notifications::operation_results)
             };
             return fields;
         }

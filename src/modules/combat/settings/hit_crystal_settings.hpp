@@ -15,10 +15,10 @@ namespace module_settings
             using model = hit_crystal;
             using setting = modules::settings::descriptor<model>;
             static const setting fields[]{
-                setting::toggle("auto_switch", {"Auto Switch", "Otomatik Gecis"}, &model::auto_switch),
-                setting::toggle("restore_slot", {"Restore Slot", "Slotu Geri Yukle"}, &model::restore_slot),
-                setting::integer("place_delay", {"Place Delay", "Yerlestirme Gecikmesi"}, &model::place_delay, 0, 250, "%d ms"),
-                setting::integer("break_delay", {"Break Delay", "Kirma Gecikmesi"}, &model::break_delay, 0, 200, "%d ms"),
+                setting::toggle("auto_switch", {"Auto Switch"}, &model::auto_switch),
+                setting::toggle("restore_slot", {"Restore Slot"}, &model::restore_slot),
+                setting::integer("place_delay", {"Place Delay"}, &model::place_delay, 0, 250, "%d ms"),
+                setting::integer("break_delay", {"Break Delay"}, &model::break_delay, 0, 200, "%d ms"),
             };
             return fields;
         }

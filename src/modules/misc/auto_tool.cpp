@@ -107,7 +107,5 @@ void modules::auto_tool::run(::cache& cache)
 void modules::auto_tool::render_options()
 {
 	gui::settings::render(settings_, module_settings::auto_tool::schema());
-	ImGui::TextDisabled("%s", gui::text(
-		"Chooses the strongest matching pickaxe, axe, or shovel from your hotbar.",
-		"Hotbardaki en güçlü uygun kazma, balta veya küreği seçer."));
+	ImGui::TextDisabled("%s", "Chooses the strongest matching pickaxe, axe, or shovel from your hotbar.");
 }

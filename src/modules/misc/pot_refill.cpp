@@ -274,8 +274,7 @@ void modules::pot_refill::render_overlay()
 		{
 			state.expected = maps::ItemStack{};
 			live_status = 7;
-			services::notifications::operation_result(gui::text(
-				"PotRefill stopped: reopen inventory to retry.", "PotRefill durdu: tekrar denemek icin envanteri ac."), false);
+			services::notifications::operation_result("PotRefill stopped: reopen inventory to retry.", false);
 		}
 		else live_status = 8;
 		return;
@@ -348,20 +347,20 @@ void modules::pot_refill::on_disable(::cache&)
 void modules::pot_refill::render_options()
 {
 	gui::settings::render(settings_, module_settings::pot_refill::schema());
-	ImGui::TextDisabled("%s", gui::text("Last inventory scan:", "Son envanter taramasi:"));
-	ImGui::TextDisabled("%s: %d | %s: %d", gui::text("Health Potions", "Can Iksiri"), live_health_potions,
-		gui::text("Empty Hotbar", "Bos Hotbar"), live_empty_hotbar);
-	const char* status = gui::text("Open inventory to refill", "Doldurmak icin envanteri ac");
+	ImGui::TextDisabled("%s", "Last inventory scan:");
+	ImGui::TextDisabled("%s: %d | %s: %d", "Health Potions", live_health_potions,
+		"Empty Hotbar", live_empty_hotbar);
+	const char* status = "Open inventory to refill";
 	switch (live_status)
 	{
-	case 1: status = gui::text("Waiting for inventory", "Envanter bekleniyor"); break;
-	case 2: status = gui::text("Paused for manual interaction", "Elle islem icin bekliyor"); break;
-	case 3: status = gui::text("Hotbar is full", "Hotbar dolu"); break;
-	case 4: status = gui::text("No health potions in inventory", "Envanterde can iksiri yok"); break;
-	case 5: case 7: status = gui::text("Stopped: reopen inventory", "Durdu: envanteri yeniden ac"); break;
-	case 6: status = gui::text("Refilling", "Dolduruluyor"); break;
-	case 8: status = gui::text("Checking inventory change", "Envanter degisimi kontrol ediliyor"); break;
-	case 9: status = gui::text("Paused while menu is open", "Menu acikken duraklatildi"); break;
+	case 1: status = "Waiting for inventory"; break;
+	case 2: status = "Paused for manual interaction"; break;
+	case 3: status = "Hotbar is full"; break;
+	case 4: status = "No health potions in inventory"; break;
+	case 5: case 7: status = "Stopped: reopen inventory"; break;
+	case 6: status = "Refilling"; break;
+	case 8: status = "Checking inventory change"; break;
+	case 9: status = "Paused while menu is open"; break;
 	}
 	ImGui::TextDisabled("%s", status);
 }
