@@ -6,16 +6,21 @@
 #include "../core/module_registry.hpp"
 #include "../../../resource.h"
 #include <Windows.h>
+#include <jvmti.h>
 #include <gl/GL.h>
 #include <wincodec.h>
 #include <wrl/client.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <array>
+#include <atomic>
+#include <cstring>
 #include <cmath>
 #include <stdexcept>
 #include <string>
 #include <vector>
+
+extern JavaVM* jvm;
 
 namespace
 {
@@ -220,11 +225,115 @@ struct sky_panorama::renderer::runtime
     GLuint program=0,vao=0;
     std::array<GLuint,6> textures{};
     jclass bridge=nullptr;
-    jmethodID stop=nullptr,shader_check=nullptr,healthy=nullptr;
+    jmethodID stop=nullptr,shader_check=nullptr,healthy=nullptr,color_configure=nullptr;
+    jvmtiEnv* tooling=nullptr;
+    jclass fog_class=nullptr,transformer=nullptr,fog_bridge=nullptr;
+    jmethodID transform=nullptr,fog_configure=nullptr,fog_stop=nullptr;
+    inline static std::atomic<runtime*> transforming{nullptr};
+    bool fog_changed=false;
     module_settings::sky config;
     bool enabled=false,reduced=false,failed=false;
     std::string failure;
     double phase=0,last_time=0;
+
+    static jboolean JNICALL read_uniform(JNIEnv* env,jclass,jint buffer,jlong offset,jlong available,jfloatArray values)
+    {
+        if (!wglGetCurrentContext() || buffer<=0 || offset<0 || available<0 || !values) return JNI_FALSE;
+        const auto count=env->GetArrayLength(values);
+        if (count<1 || count>16 || available<static_cast<jlong>(count*sizeof(float))) return JNI_FALSE;
+        using bind_fn=void(APIENTRY*)(GLenum,GLuint);
+        using size_fn=void(APIENTRY*)(GLenum,GLenum,GLint*);
+        using read_fn=void(APIENTRY*)(GLenum,std::intptr_t,std::intptr_t,void*);
+        const auto bind=reinterpret_cast<bind_fn>(wglGetProcAddress("glBindBuffer"));
+        const auto size=reinterpret_cast<size_fn>(wglGetProcAddress("glGetBufferParameteriv"));
+        const auto read=reinterpret_cast<read_fn>(wglGetProcAddress("glGetBufferSubData"));
+        const auto valid=[](auto function) { const auto address=reinterpret_cast<std::intptr_t>(function); return address>3 || address<-1; };
+        if (!valid(bind) || !valid(size) || !valid(read)) return JNI_FALSE;
+        constexpr GLenum copy_read=0x8F36,buffer_size=0x8764;
+        GLint previous=0,capacity=0; glGetIntegerv(copy_read,&previous);
+        bind(copy_read,static_cast<GLuint>(buffer));
+        struct restore { bind_fn bind; GLint previous; ~restore() { bind(0x8F36,previous); } } guard{bind,previous};
+        size(copy_read,buffer_size,&capacity);
+        const jlong bytes=count*sizeof(float);
+        if (offset>capacity || bytes>capacity-offset) return JNI_FALSE;
+        std::array<float,16> data{};
+        read(copy_read,static_cast<std::intptr_t>(offset),static_cast<std::intptr_t>(bytes),data.data());
+        for (int index=0;index<count;++index) if (!std::isfinite(data[index])) return JNI_FALSE;
+        env->SetFloatArrayRegion(values,0,count,data.data());
+        return env->ExceptionCheck() ? JNI_FALSE : JNI_TRUE;
+    }
+
+    static void JNICALL fog_bytes(jvmtiEnv* tools,JNIEnv* env,jclass redefining,jobject,
+        const char* name,jobject,jint length,const unsigned char* bytes,jint* output_length,unsigned char** output)
+    {
+        auto* self=transforming.load(std::memory_order_acquire);
+        if (!self || !redefining || !name || std::strcmp(name,ONESTEP_MC_NAME("net/minecraft/class_758"))!=0 ||
+            !env->IsSameObject(redefining,self->fog_class)) return;
+        if (env->PushLocalFrame(8)!=JNI_OK) { if (env->ExceptionCheck()) env->ExceptionClear(); return; }
+        auto original=env->NewByteArray(length);
+        if (original) env->SetByteArrayRegion(original,0,length,reinterpret_cast<const jbyte*>(bytes));
+        auto result=original && !env->ExceptionCheck()
+            ? static_cast<jbyteArray>(env->CallStaticObjectMethod(self->transformer,self->transform,original)) : nullptr;
+        if (result && !env->ExceptionCheck())
+        {
+            const auto count=env->GetArrayLength(result);
+            unsigned char* copy=nullptr;
+            if (count>0 && count<length*4+65536 && tools->Allocate(count,&copy)==JVMTI_ERROR_NONE)
+            {
+                env->GetByteArrayRegion(result,0,count,reinterpret_cast<jbyte*>(copy));
+                if (!env->ExceptionCheck()) { *output_length=count; *output=copy; self->fog_changed=true; }
+                else tools->Deallocate(copy);
+            }
+        }
+        if (env->ExceptionCheck()) env->ExceptionClear();
+        env->PopLocalFrame(nullptr);
+    }
+
+    void install_fog(JNIEnv* env,jobject loader,jobject game_loader)
+    {
+#if ONESTEP_MINECRAFT_VERSION >= 12111
+        auto loader_class=env->GetObjectClass(game_loader);
+        auto load=env->GetMethodID(loader_class,"loadClass","(Ljava/lang/String;)Ljava/lang/Class;");
+        auto name=env->NewStringUTF("net.onestep.visual.SkyFogBridge");
+        auto fog_type=static_cast<jclass>(env->CallObjectMethod(game_loader,load,name));
+        if (env->ExceptionCheck()) env->ExceptionClear();
+        if (!fog_type)
+        {
+            const auto bridge_bytes=resource(IDR_SKY_FOG_BRIDGE);
+            if (bridge_bytes.empty()) throw std::runtime_error("Missing fog bridge");
+            fog_type=env->DefineClass("net/onestep/visual/SkyFogBridge",game_loader,
+                reinterpret_cast<const jbyte*>(bridge_bytes.data()),static_cast<jsize>(bridge_bytes.size()));
+        }
+        if (!fog_type || env->ExceptionCheck()) throw std::runtime_error("Fog bridge class");
+        fog_bridge=static_cast<jclass>(env->NewGlobalRef(fog_type));
+        auto prepare=env->GetStaticMethodID(fog_bridge,"prepare","(Ljava/lang/ClassLoader;)V");
+        fog_configure=env->GetStaticMethodID(fog_bridge,"configure","(IIFZZ)V");
+        fog_stop=env->GetStaticMethodID(fog_bridge,"stop","()V");
+        if (!prepare || !fog_configure || !fog_stop || env->ExceptionCheck()) throw std::runtime_error("Fog bridge interface");
+        env->CallStaticVoidMethod(fog_bridge,prepare,game_loader);
+        if (env->ExceptionCheck()) throw std::runtime_error("Fog bridge initialization");
+        const auto bytes=resource(IDR_SKY_TRANSFORMER);
+        if (bytes.empty()) throw std::runtime_error("Missing fog transformer");
+        auto type=env->DefineClass("net/onestep/visual/SkyTransformer",loader,
+            reinterpret_cast<const jbyte*>(bytes.data()),static_cast<jsize>(bytes.size()));
+        if (!type || env->ExceptionCheck()) throw std::runtime_error("Fog transformer");
+        transformer=static_cast<jclass>(env->NewGlobalRef(type));
+        transform=env->GetStaticMethodID(transformer,"transform","([B)[B");
+        auto klass=jni::_custom_find_class ? jni::_custom_find_class(ONESTEP_MC_NAME("net/minecraft/class_758")) : nullptr;
+        if (!klass || !transform || env->ExceptionCheck()) throw std::runtime_error("Fog class");
+        fog_class=static_cast<jclass>(env->NewGlobalRef(klass));
+        if (jvm->GetEnv(reinterpret_cast<void**>(&tooling),JVMTI_VERSION_1_2)!=JNI_OK || !tooling)
+            throw std::runtime_error("Fog JVMTI");
+        jvmtiCapabilities capabilities{}; capabilities.can_retransform_classes=1;
+        if (tooling->AddCapabilities(&capabilities)!=JVMTI_ERROR_NONE) throw std::runtime_error("Fog capabilities");
+        jvmtiEventCallbacks callbacks{}; callbacks.ClassFileLoadHook=&fog_bytes;
+        if (tooling->SetEventCallbacks(&callbacks,sizeof(callbacks))!=JVMTI_ERROR_NONE) throw std::runtime_error("Fog callback");
+        transforming.store(this,std::memory_order_release);
+        if (tooling->SetEventNotificationMode(JVMTI_ENABLE,JVMTI_EVENT_CLASS_FILE_LOAD_HOOK,nullptr)!=JVMTI_ERROR_NONE ||
+            tooling->RetransformClasses(1,&fog_class)!=JVMTI_ERROR_NONE || !fog_changed)
+            throw std::runtime_error("Fog transformation");
+#endif
+    }
 
     static void JNICALL draw(JNIEnv* env,jclass,jfloatArray projection,jfloatArray position,jfloatArray fog)
     {
@@ -378,16 +487,21 @@ bool sky_panorama::renderer::connect()
         if (bytes.empty()) throw std::runtime_error("Missing bridge");
         auto bridge=checked(env->DefineClass("net/onestep/visual/SkyBridge",loader,
             reinterpret_cast<const jbyte*>(bytes.data()),static_cast<jsize>(bytes.size())));
-        JNINativeMethod method{const_cast<char*>("draw"),const_cast<char*>("([F[F[F)V"),reinterpret_cast<void*>(&runtime::draw)};
-        if (env->RegisterNatives(bridge,&method,1)!=JNI_OK) throw std::runtime_error("Native bridge");
+        JNINativeMethod methods[]{
+            {const_cast<char*>("draw"),const_cast<char*>("([F[F[F)V"),reinterpret_cast<void*>(&runtime::draw)},
+            {const_cast<char*>("readUniform"),const_cast<char*>("(IJJ[F)Z"),reinterpret_cast<void*>(&runtime::read_uniform)}
+        };
+        if (env->RegisterNatives(bridge,methods,2)!=JNI_OK) throw std::runtime_error("Native bridge");
         s.bridge=static_cast<jclass>(checked(env->NewGlobalRef(bridge)));
         s.stop=checked(env->GetStaticMethodID(bridge,"stop","()V"));
         s.shader_check=checked(env->GetStaticMethodID(bridge,"shaderBlocked","()Z"));
         s.healthy=checked(env->GetStaticMethodID(bridge,"healthy","()Z"));
-        auto install=checked(env->GetStaticMethodID(bridge,"install","(Ljava/lang/ClassLoader;)V"));
+        s.color_configure=checked(env->GetStaticMethodID(bridge,"configureColors","(IIFZZ)V"));
+        auto install=checked(env->GetStaticMethodID(bridge,"install","(Ljava/lang/ClassLoader;I)V"));
         runtime::current=&s;
-        env->CallStaticVoidMethod(bridge,install,parent);
+        env->CallStaticVoidMethod(bridge,install,parent,static_cast<jint>(mc::target.build_id));
         if (env->ExceptionCheck()) throw std::runtime_error("Fabric callback");
+        s.install_fog(env,loader,parent);
         s.failure.clear(); return true;
     }
     catch (...)
@@ -402,6 +516,28 @@ void sky_panorama::renderer::configure(const module_settings::sky& config,bool e
     state_->config=config; state_->enabled=enabled && !state_->failed; state_->reduced=reduced;
     if (!enabled) state_->last_time=0;
 }
+void sky_panorama::renderer::configure_colors(int sky,int fog,float strength,bool match_fog,bool enabled)
+{
+    auto& s=*state_;
+    if (!s.bridge || !s.color_configure || !jni::get_env()) return;
+    if (enabled)
+    {
+        const bool alive=s.healthy && jni::get_env()->CallStaticBooleanMethod(s.bridge,s.healthy)==JNI_TRUE;
+        bool failed=platform::jni_context::clear_exception();
+        const bool blocked=!failed && s.shader_check && jni::get_env()->CallStaticBooleanMethod(s.bridge,s.shader_check)==JNI_TRUE;
+        failed=platform::jni_context::clear_exception() || failed;
+        enabled=alive && !blocked && !failed;
+    }
+    jni::get_env()->CallStaticVoidMethod(s.bridge,s.color_configure,static_cast<jint>(sky),static_cast<jint>(fog),
+        static_cast<jfloat>(strength),match_fog ? JNI_TRUE : JNI_FALSE,enabled ? JNI_TRUE : JNI_FALSE);
+    platform::jni_context::clear_exception();
+    if (s.fog_bridge && s.fog_configure)
+    {
+        jni::get_env()->CallStaticVoidMethod(s.fog_bridge,s.fog_configure,static_cast<jint>(sky),static_cast<jint>(fog),
+            static_cast<jfloat>(strength),match_fog ? JNI_TRUE : JNI_FALSE,enabled ? JNI_TRUE : JNI_FALSE);
+        platform::jni_context::clear_exception();
+    }
+}
 void sky_panorama::renderer::shutdown()
 {
     auto& s=*state_; s.enabled=false;
@@ -409,7 +545,19 @@ void sky_panorama::renderer::shutdown()
     {
         auto* env=jni::get_env();
         if (s.stop) env->CallStaticVoidMethod(s.bridge,s.stop);
+        if (s.fog_bridge && s.fog_stop) env->CallStaticVoidMethod(s.fog_bridge,s.fog_stop);
         platform::jni_context::clear_exception();
+        if (s.tooling)
+        {
+            s.tooling->SetEventNotificationMode(JVMTI_DISABLE,JVMTI_EVENT_CLASS_FILE_LOAD_HOOK,nullptr);
+            if (s.fog_changed && s.fog_class) s.tooling->RetransformClasses(1,&s.fog_class);
+            s.tooling->DisposeEnvironment(); s.tooling=nullptr;
+        }
+        if (runtime::transforming.load(std::memory_order_acquire)==&s) runtime::transforming.store(nullptr,std::memory_order_release);
+        if (s.fog_class) { env->DeleteGlobalRef(s.fog_class); s.fog_class=nullptr; }
+        if (s.transformer) { env->DeleteGlobalRef(s.transformer); s.transformer=nullptr; }
+        if (s.fog_bridge) { env->DeleteGlobalRef(s.fog_bridge); s.fog_bridge=nullptr; }
+        s.fog_changed=false;
         env->UnregisterNatives(s.bridge); env->DeleteGlobalRef(s.bridge); s.bridge=nullptr;
     }
     if (runtime::current==&s) runtime::current=nullptr;

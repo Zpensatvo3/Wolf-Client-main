@@ -31,7 +31,9 @@ assert "geometry::stop_motion(state.motion)" in engine
 assert "damped_axis" in texts["src/modules/combat/legit_aim_math.hpp"]
 assert "strength = 42.f" in texts["src/modules/combat/legit_aim_config.hpp"]
 assert "check_visibility" not in engine
-mapping = (ROOT / "src/sdk/minecraft/fabric_1_21_1/entities.hpp").read_text(encoding="utf-8")
+mapping = (ROOT / "src/sdk/minecraft/common/entities.hpp").read_text(encoding="utf-8")
+# The 1.21 spellings remain the macro's input; 26.1 selects its own compile-time names.
+mapping = re.sub(r'ONESTEP_MC_NAME\(("[^"]+")\)', r'\1', mapping)
 assert re.search(r'jni::method<jdouble,\s*"method_23320">\s+getEyeY', mapping)
 assert re.search(r'jni::method<jfloat,\s*"method_5751">\s+getStandingEyeHeight', mapping)
 assert "context.player.getEyeY.is_valid()" in engine

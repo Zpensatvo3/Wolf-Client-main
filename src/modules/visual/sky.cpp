@@ -12,12 +12,14 @@
 
 namespace
 {
+#if ONESTEP_MINECRAFT_VERSION < 12111
     struct saved_color { int original=0,last=0; bool owned=false; };
     struct saved_effects
     {
         sky_bindings::Effects object{nullptr,true};
         saved_color sky,fog;
     };
+#endif
     int blend_rgb(int original,ImVec4 target,float strength)
     {
         const auto channel=[&](int shift,float value) {
@@ -26,6 +28,7 @@ namespace
         };
         return channel(16,target.x)<<16 | channel(8,target.y)<<8 | channel(0,target.z);
     }
+#if ONESTEP_MINECRAFT_VERSION < 12111
     bool restore(auto& field,saved_color& saved)
     {
         if (!saved.owned) return true;
@@ -54,27 +57,34 @@ namespace
         saved.last=next; saved.owned=true;
         return true;
     }
+#endif
 }
 
 struct modules::sky::runtime
 {
     services::game::overlay_session session;
     sky_panorama::renderer panorama;
+#if ONESTEP_MINECRAFT_VERSION < 12111
     std::vector<saved_effects> effects;
+#endif
     unsigned generation=0;
     double next_update=0,next_capture=0;
 
     bool reset()
     {
         bool complete=true;
+#if ONESTEP_MINECRAFT_VERSION < 12111
         for (auto& entry:effects)
         {
             if (!restore(entry.object.skyColor,entry.sky)) complete=false;
             if (!restore(entry.object.fogColor,entry.fog)) complete=false;
         }
-        if (complete) { effects.clear(); session.reset(); next_update=next_capture=0; }
+        if (complete) effects.clear();
+#endif
+        if (complete) { session.reset(); next_update=next_capture=0; }
         return complete;
     }
+#if ONESTEP_MINECRAFT_VERSION < 12111
     bool capture(const services::game::client_context& context)
     {
         using platform::jni_context::clear_exception;
@@ -120,6 +130,7 @@ struct modules::sky::runtime
         }
         return false; // Refuse an unbounded/modded registry without changing it.
     }
+#endif
 };
 
 modules::sky::sky() : module("sky","Visual","sky"),state_(std::make_unique<runtime>()) {}
@@ -141,15 +152,23 @@ void modules::sky::render_overlay()
     auto& state=*state_;
     const auto config=settings_.read();
     const bool reduced=gui::aegis::get_preferences().reduce_motion;
-    bool panorama_ready=false;
+    bool panorama_ready=false,colors_ready=false;
+    int sky_rgb=0,fog_rgb=0;
     struct publish_panorama
     {
         sky_panorama::renderer& renderer;
         const module_settings::sky& config;
         const bool& ready;
+        const bool& colors_ready;
+        const int& sky_rgb;
+        const int& fog_rgb;
         bool reduced;
-        ~publish_panorama() { renderer.configure(config,ready,reduced); }
-    } publish{state.panorama,config,panorama_ready,reduced};
+        ~publish_panorama()
+        {
+            renderer.configure(config,ready,reduced);
+            renderer.configure_colors(sky_rgb,fog_rgb,std::clamp(config.strength,0.f,1.f),config.match_fog,colors_ready);
+        }
+    } publish{state.panorama,config,panorama_ready,colors_ready,sky_rgb,fog_rgb,reduced};
     try
     {
         const auto generation=reset_generation_.load(std::memory_order_acquire);
@@ -186,6 +205,10 @@ void modules::sky::render_overlay()
             state.session.observe(identity);
         }
         if (!std::isfinite(config.strength) || config.strength<=0) { state.reset(); return; }
+#if ONESTEP_MINECRAFT_VERSION >= 12111
+        colors_ready=state.panorama.connect();
+        panorama_ready=config.mode==1 && colors_ready;
+#else
         panorama_ready=config.mode==1 && state.panorama.connect();
         const double now=ImGui::GetTime();
         if (state.effects.empty())
@@ -196,6 +219,7 @@ void modules::sky::render_overlay()
         }
         if (now<state.next_update) return;
         state.next_update=now+1./15.;
+#endif
         ImVec4 color;
         if (config.mode==1)
         {
@@ -223,6 +247,10 @@ void modules::sky::render_overlay()
             fog.x=fog.x*.67f+.28f; fog.y=fog.y*.67f+.28f; fog.z=fog.z*.67f+.28f;
         }
         const float strength=std::clamp(config.strength,0.f,1.f);
+#if ONESTEP_MINECRAFT_VERSION >= 12111
+        sky_rgb=blend_rgb(0,color,1.f);
+        fog_rgb=blend_rgb(0,fog,1.f);
+#else
         for (auto& entry:state.effects)
         {
             if (!apply(entry.object.skyColor,entry.sky,color,strength)) { state.reset(); return; }
@@ -230,8 +258,9 @@ void modules::sky::render_overlay()
                 : restore(entry.object.fogColor,entry.fog);
             if (!ok) { state.reset(); return; }
         }
+#endif
     }
-    catch (...) { platform::jni_context::clear_exception(); panorama_ready=false; state.reset(); }
+    catch (...) { platform::jni_context::clear_exception(); panorama_ready=colors_ready=false; state.reset(); }
 }
 
 void modules::sky::render_options()

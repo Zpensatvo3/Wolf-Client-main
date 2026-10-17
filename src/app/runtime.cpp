@@ -17,6 +17,10 @@
 #include <string>
 #include <thread>
 
+#if ONESTEP_MINECRAFT_VERSION == 26100
+#error The 26.1 SDK port is offline-only until its Java bridges and application integration pass validation
+#endif
+
 namespace
 {
     constexpr auto worker_interval = std::chrono::milliseconds(5);
@@ -59,7 +63,13 @@ void app::run()
         if (!session.open()) { loader_ui::fail(session.error().c_str()); return; }
 
         loader_ui::stage(2, "Resolving Minecraft runtime and mappings");
-        mc::detect(session.env(), session.classes());
+        if (!mc::matches_target(mc::detect(session.env(), session.classes())))
+        {
+            const auto message = std::string("This DLL requires Fabric ") + std::string(mc::target.name) +
+                "; detected " + mc::get_version_name() + ". Select the matching OneStep DLL.";
+            loader_ui::fail(message.c_str());
+            return;
+        }
         platform::adapter::initialize(mc::get_version());
         const std::string version = std::string("Detected runtime: Fabric ") + mc::get_version_name();
         loader_ui::stage(2, version.c_str());

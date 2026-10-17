@@ -139,9 +139,8 @@ void modules::elytra_swapper::render_overlay()
 		if (current_state == state::idle)
 		{
 			maps::ItemStack cursor = handler.getCursorStack.call();
-			maps::DefaultedList armor = inventory.armor.get();
 			maps::DefaultedList main = inventory.main.get();
-			if (!cursor || !armor || !main || platform::jni_context::clear_exception() ||
+			if (!cursor || !main || platform::jni_context::clear_exception() ||
 				cursor.isEmpty.call() != JNI_TRUE || platform::jni_context::clear_exception())
 			{
 				finish();
@@ -149,7 +148,7 @@ void modules::elytra_swapper::render_overlay()
 			}
 
 			// PlayerInventory armor index 2 is the chest equipment slot.
-			maps::Object chest_object = armor.get.call(2);
+			maps::ItemStack chest_object = inventory.armor_stack(2);
 			if (chest_object && !platform::jni_context::clear_exception() &&
 				stack_matches_mode(maps::ItemStack(chest_object.object_instance, false), settings_snapshot.target_mode))
 			{

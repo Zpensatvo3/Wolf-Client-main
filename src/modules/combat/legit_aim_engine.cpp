@@ -28,7 +28,7 @@ namespace
         if (platform::jni_context::clear_exception() || empty) return false;
         auto item = stack.item.get();
         if (platform::jni_context::clear_exception() || !item) return false;
-        const bool sword = item.is_instance_of<maps::SwordItem>();
+        const bool sword = item.is_sword();
         const bool axe = item.is_instance_of<maps::AxeItem>();
         const bool mace = item.is_instance_of<maps::MaceItem>();
         if (platform::jni_context::clear_exception()) return false;

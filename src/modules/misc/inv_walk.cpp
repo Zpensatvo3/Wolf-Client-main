@@ -86,16 +86,13 @@ namespace
             auto field = maps::CreativeInventoryScreen(screen.object_instance, false).searchBox.get();
             if (platform::jni_context::clear_exception() || focused_text(field)) return true;
         }
-        if (screen.is_instance_of<maps::RecipeBookProvider>())
+        auto book = maps::recipe_book(screen);
+        if (platform::jni_context::clear_exception()) return true;
+        if (book)
         {
-            auto book = maps::RecipeBookProvider(screen.object_instance, false).getRecipeBookWidget.call();
-            if (platform::jni_context::clear_exception()) return true;
-            if (book)
-            {
-                const bool open = book.isOpen.call() == JNI_TRUE;
-                auto field = book.searchField.get();
-                if (platform::jni_context::clear_exception() || (open && focused_text(field))) return true;
-            }
+            const bool open = book.isOpen.call() == JNI_TRUE;
+            auto field = book.searchField.get();
+            if (platform::jni_context::clear_exception() || (open && focused_text(field))) return true;
         }
         return platform::jni_context::clear_exception();
     }

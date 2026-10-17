@@ -114,8 +114,7 @@ void modules::auto_armor::run(::cache& cache)
 		{
 			maps::ItemStack cursor = handler.getCursorStack.call();
 			maps::DefaultedList main = inventory.main.get();
-			maps::DefaultedList armor = inventory.armor.get();
-			if (!cursor || !main || !armor || platform::jni_context::clear_exception() || cursor.isEmpty.call() != JNI_TRUE || platform::jni_context::clear_exception())
+			if (!cursor || !main || platform::jni_context::clear_exception() || cursor.isEmpty.call() != JNI_TRUE || platform::jni_context::clear_exception())
 				return;
 
 			int selected_source = -1;
@@ -130,8 +129,7 @@ void modules::auto_armor::run(::cache& cache)
 				const int candidate_score = armor_score(candidate);
 				if (type < 0 || candidate_score < 0) continue;
 
-				maps::Object worn_object = armor.get.call(type);
-				maps::ItemStack worn(worn_object.object_instance, false);
+				maps::ItemStack worn = inventory.armor_stack(type);
 				if (settings_snapshot.protect_elytra && type == 2 && is_elytra(worn)) continue;
 				const int worn_score = armor_score(worn);
 				const int gain = candidate_score - worn_score;

@@ -39,6 +39,8 @@ TESTS = {
     "trigger_config": ["tests/trigger_config_test.cpp", "src/modules/core/config_fields.cpp", "src/modules/combat/trigger_engine.cpp"],
     "vape_config": ["tests/vape_config_test.cpp", "src/modules/core/config_fields.cpp"],
     "sdk_mappings": ["tests/sdk_mappings_test.cpp"],
+    "minecraft_version": ["tests/minecraft_version_test.cpp"],
+    "jni_member_cache": ["tests/jni_member_cache_test.cpp"],
     "settings_store": ["tests/settings_store_test.cpp"],
     "utility_settings": ["tests/utility_settings_test.cpp", "src/modules/core/config_fields.cpp"],
     "remaining_settings": ["tests/remaining_settings_test.cpp", "src/modules/core/config_fields.cpp"],
@@ -52,6 +54,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--compiler", default=os.environ.get("CXX", "cl" if os.name == "nt" else "g++"))
     parser.add_argument("--jobs", type=int, default=2)
+    parser.add_argument("--minecraft-version", choices=("1.21.1", "1.21.4", "1.21.8", "1.21.11"), default="1.21.1")
     parser.add_argument("--test", action="append", choices=TESTS, help="Run only these tests (repeatable).")
     args = parser.parse_args()
     compiler = shutil.which(args.compiler)
@@ -71,14 +74,18 @@ def main():
                 command += ["/nologo", "/std:c++20", "/EHsc", "/UNDEBUG", "/W4", f"/Fe:{output}"]
             else:
                 command += ["-std=c++20", "-UNDEBUG", "-Wall", "-Wextra", "-pedantic", "-pthread", "-o", str(output)]
+            target_id = {"1.21.1": 12101, "1.21.4": 12104, "1.21.8": 12108, "1.21.11": 12111}[args.minecraft_version]
+            target_define = f"ONESTEP_MINECRAFT_VERSION={target_id}"
+            command += [f"/D{target_define}"] if msvc else [f"-D{target_define}"]
             if name in ("settings_renderer", "notification_renderer", "menu_background", "menu_background_renderer"):
                 command += [f"/I{ROOT / 'include'}"] if msvc else ["-I", str(ROOT / "include")]
-            if name == "sdk_mappings":
+            if name in ("sdk_mappings", "minecraft_version"):
                 platform = "win32" if os.name == "nt" else "linux"
                 includes = [ROOT / "include/jni", ROOT / "include/jni" / platform]
                 for include in includes:
                     command += [f"/I{include}"] if msvc else ["-I", str(include)]
-                sdk = ROOT / "src/sdk/minecraft/fabric_1_21_1"
+            if name == "sdk_mappings":
+                sdk = ROOT / "src/sdk/minecraft/common"
                 headers = [sdk / name for name in json.loads((sdk / "manifest.json").read_text(encoding="utf-8"))["headers"]]
                 headers += [ROOT / name for name in (
                     "src/services/game/overlay_context.hpp",
@@ -98,6 +105,7 @@ def main():
                             encoding="utf-8")
                     syntax = [compiler]
                     syntax += ["/nologo", "/std:c++20", "/EHsc", "/Zs"] if msvc else ["-std=c++20", "-fsyntax-only", "-pthread"]
+                    syntax += [f"/D{target_define}"] if msvc else [f"-D{target_define}"]
                     for include in includes:
                         syntax += [f"/I{include}"] if msvc else ["-I", str(include)]
                     checked = subprocess.run(syntax + [str(probe)], cwd=work, capture_output=True, text=True)

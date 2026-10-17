@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../sdk/minecraft/fabric_1_21_1/client_entities.hpp"
+#include "../../sdk/minecraft/common/client_entities.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include <cstdint>
 #include <unordered_set>

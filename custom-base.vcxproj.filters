@@ -388,8 +388,11 @@
     <Filter Include="Header Files\src\modules\visual\settings">
       <UniqueIdentifier>{4B805C01-041D-5A18-B518-86F60AB3EFC1}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Header Files\src\sdk\minecraft\fabric_1_21_1">
-      <UniqueIdentifier>{DF828092-83F2-5579-819D-EA151900B788}</UniqueIdentifier>
+    <Filter Include="Header Files\src\sdk\minecraft\common">
+      <UniqueIdentifier>{243639C1-7E95-5687-B5BF-E754C9226FC7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\src\sdk\minecraft\fabric_26_1">
+      <UniqueIdentifier>{3B9D768D-B615-5F8B-81DB-6959A53C9AAA}</UniqueIdentifier>
     </Filter>
     <Filter Include="Header Files\src\modules\vape\engines\**">
       <UniqueIdentifier>{935CE363-2ADD-598F-98A1-652A5444A80C}</UniqueIdentifier>
@@ -585,6 +588,9 @@
     <ClCompile Include="src\platform\adapter\game_adapter.cpp">
       <Filter>Source Files\src\platform\adapter</Filter>
     </ClCompile>
+    <ClCompile Include="src\platform\adapter\item_model.cpp">
+      <Filter>Source Files\src\platform\adapter</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\ui\grim_ui.hpp">
@@ -598,6 +604,24 @@
     </ClInclude>
     <ClInclude Include="src\platform\adapter\game_adapter.hpp">
       <Filter>Header Files\src\platform\adapter</Filter>
+    </ClInclude>
+    <ClInclude Include="src\platform\adapter\item_model.hpp">
+      <Filter>Header Files\src\platform\adapter</Filter>
+    </ClInclude>
+    <ClInclude Include="src\platform\adapter\target_version.hpp">
+      <Filter>Header Files\src\platform\adapter</Filter>
+    </ClInclude>
+    <ClInclude Include="src\platform\adapter\bindings_profile.hpp">
+      <Filter>Header Files\src\platform\adapter</Filter>
+    </ClInclude>
+    <ClInclude Include="src\platform\adapter\runtime_names.hpp">
+      <Filter>Header Files\src\platform\adapter</Filter>
+    </ClInclude>
+    <ClInclude Include="src\platform\adapter\item_transform.hpp">
+      <Filter>Header Files\src\platform\adapter</Filter>
+    </ClInclude>
+    <ClInclude Include="src\sdk\minecraft\fabric_26_1\official_names.hpp">
+      <Filter>Header Files\src\sdk\minecraft\fabric_26_1</Filter>
     </ClInclude>
     <ClInclude Include="src\utils\version_manager.hpp">
       <Filter>Header Files\src\utils</Filter>
@@ -1667,10 +1691,13 @@
     <ClInclude Include="src\ui\settings_renderer.hpp">
       <Filter>Header Files\src\ui</Filter>
     </ClInclude>
-    <ClInclude Include="src\sdk\minecraft\fabric_1_21_1\*.hpp">
-      <Filter>Header Files\src\sdk\minecraft\fabric_1_21_1</Filter>
+    <ClInclude Include="src\sdk\minecraft\common\*.hpp">
+      <Filter>Header Files\src\sdk\minecraft\common</Filter>
     </ClInclude>
     <ClInclude Include="src\platform\jni\jvm_session.hpp">
+      <Filter>Header Files\src\platform\jni</Filter>
+    </ClInclude>
+    <ClInclude Include="src\platform\jni\member_id_cache.hpp">
       <Filter>Header Files\src\platform\jni</Filter>
     </ClInclude>
     <ClInclude Include="src\app\runtime.hpp">
@@ -1767,11 +1794,14 @@
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
+    <None Include="build-config\MinecraftTarget.props">
+      <Filter>Source Files</Filter>
+    </None>
     <None Include="src\modules\settings_manifest.json">
       <Filter>Header Files\src\modules</Filter>
     </None>
-    <None Include="src\sdk\minecraft\fabric_1_21_1\manifest.json">
-      <Filter>Header Files\src\sdk\minecraft\fabric_1_21_1</Filter>
+    <None Include="src\sdk\minecraft\common\manifest.json">
+      <Filter>Header Files\src\sdk\minecraft\common</Filter>
     </None>
     <None Include="include\glm\detail\func_common.inl">
       <Filter>Third Party\include\glm\detail</Filter>

@@ -1,5 +1,5 @@
 #pragma once
-#include "../../sdk/minecraft/fabric_1_21_1/entities.hpp"
+#include "../../sdk/minecraft/common/entities.hpp"
 #include "../../modules/combat/settings/anti_bot_settings.hpp"
 
 namespace services::anti_bot

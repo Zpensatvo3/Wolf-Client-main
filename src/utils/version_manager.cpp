@@ -1,204 +1,78 @@
 #include "version_manager.hpp"
-#include <Windows.h>
-#include <algorithm>
-#include <iostream>
-#include <string>
+#include "../jvmti/jvmti.hpp"
+#include "../meta_jni.hpp"
 
 namespace mc
 {
-    static version g_current_version = version::v1_21_1;
-    static std::string g_version_str = "1.21.1";
-    static std::string g_runtime_label = "NATIVE RUNTIME  //  1.21.1";
-
-    version get_version()
+    namespace
     {
-        return g_current_version;
-    }
+        version current = version::unknown;
+        std::string detected_name = "unknown";
+        std::string runtime_label = "NATIVE RUNTIME  //  unknown";
 
-    const char* get_version_name()
-    {
-        return g_version_str.c_str();
-    }
-
-    const char* get_runtime_label()
-    {
-        return g_runtime_label.c_str();
-    }
-
-    bool is_1_21_1()
-    {
-        return g_current_version == version::v1_21_1;
-    }
-
-    bool is_1_21_11()
-    {
-        return g_current_version == version::v1_21_11;
-    }
-
-    void set_version(version ver)
-    {
-        g_current_version = ver;
-        if (ver == version::v1_21_11)
+        // Fabric API names are independent of Minecraft's intermediary mappings.
+        // Resolve the game's loader through JVMTI on the attached native thread.
+        std::string read_fabric_version(JNIEnv* env, jvmti* classes)
         {
-            g_version_str = "1.21.11";
-            g_runtime_label = "NATIVE RUNTIME  //  1.21.11";
-        }
-        else
-        {
-            g_current_version = version::v1_21_1;
-            g_version_str = "1.21.1";
-            g_runtime_label = "NATIVE RUNTIME  //  1.21.1";
+            if (!env || !classes || !*classes) return {};
+            jni::frame local_frame{32};
+            const auto checked = [env]<class Result>(Result result) -> Result {
+                if (env->ExceptionCheck()) { env->ExceptionClear(); return {}; }
+                return result;
+            };
+            auto loader = classes->find_loaded_class("net/fabricmc/loader/api/FabricLoader");
+            if (!loader) return {};
+            auto get_instance = checked(env->GetStaticMethodID(loader, "getInstance", "()Lnet/fabricmc/loader/api/FabricLoader;"));
+            auto get_mod = checked(env->GetMethodID(loader, "getModContainer", "(Ljava/lang/String;)Ljava/util/Optional;"));
+            if (!get_instance || !get_mod) return {};
+            auto instance = checked(env->CallStaticObjectMethod(loader, get_instance));
+            auto id = checked(env->NewStringUTF("minecraft"));
+            if (!instance || !id) return {};
+            auto optional = checked(env->CallObjectMethod(instance, get_mod, id));
+            auto optional_type = checked(env->FindClass("java/util/Optional"));
+            if (!optional || !optional_type) return {};
+            auto or_null = checked(env->GetMethodID(optional_type, "orElse", "(Ljava/lang/Object;)Ljava/lang/Object;"));
+            if (!or_null) return {};
+            auto container = checked(env->CallObjectMethod(optional, or_null, nullptr));
+            if (!container) return {};
+            auto container_type = checked(env->GetObjectClass(container));
+            auto metadata_method = container_type ? checked(env->GetMethodID(container_type, "getMetadata", "()Lnet/fabricmc/loader/api/metadata/ModMetadata;")) : nullptr;
+            if (!metadata_method) return {};
+            auto metadata = checked(env->CallObjectMethod(container, metadata_method));
+            auto metadata_type = metadata ? checked(env->GetObjectClass(metadata)) : nullptr;
+            auto version_method = metadata_type ? checked(env->GetMethodID(metadata_type, "getVersion", "()Lnet/fabricmc/loader/api/Version;")) : nullptr;
+            if (!version_method) return {};
+            auto value = checked(env->CallObjectMethod(metadata, version_method));
+            auto value_type = value ? checked(env->GetObjectClass(value)) : nullptr;
+            auto friendly = value_type ? checked(env->GetMethodID(value_type, "getFriendlyString", "()Ljava/lang/String;")) : nullptr;
+            if (!friendly) return {};
+            auto name = static_cast<jstring>(checked(env->CallObjectMethod(value, friendly)));
+            if (!name) return {};
+            const char* utf8 = checked(env->GetStringUTFChars(name, nullptr));
+            if (!utf8) return {};
+            std::string result(utf8);
+            env->ReleaseStringUTFChars(name, utf8);
+            return result;
         }
     }
 
-    static std::string probe_window_title()
+    version get_version() { return current; }
+    const char* get_version_name() { return detected_name.c_str(); }
+    const char* get_runtime_label() { return runtime_label.c_str(); }
+    bool is_1_21_1() { return current == version::v1_21_1; }
+    bool is_1_21_11() { return current == version::v1_21_11; }
+    void set_version(version value)
     {
-        std::string found_title;
-        EnumWindows([](HWND hwnd, LPARAM lParam) -> BOOL {
-            if (!IsWindowVisible(hwnd)) return TRUE;
-            char title[512]{};
-            GetWindowTextA(hwnd, title, sizeof(title));
-            std::string st = title;
-            if (st.find("Minecraft") != std::string::npos || st.find("Fabric") != std::string::npos)
-            {
-                auto* out = reinterpret_cast<std::string*>(lParam);
-                *out = st;
-                return FALSE; // stop enum
-            }
-            return TRUE;
-        }, reinterpret_cast<LPARAM>(&found_title));
-
-        return found_title;
+        current = value;
+        detected_name = version_name(value);
+        runtime_label = "NATIVE RUNTIME  //  " + detected_name;
     }
-
-    static std::string jstring_to_utf8(JNIEnv* env, jstring jstr)
+    version detect(JNIEnv* env, jvmti* classes)
     {
-        if (!env || !jstr) return {};
-        const char* chars = env->GetStringUTFChars(jstr, nullptr);
-        if (!chars) return {};
-        std::string res(chars);
-        env->ReleaseStringUTFChars(jstr, chars);
-        return res;
-    }
-
-    version detect(JNIEnv* env, jvmti* jvmti_env)
-    {
-        (void)jvmti_env;
-        std::string detected_str;
-
-        // Method 1: Check MinecraftClient.getGameVersion() or SharedConstants
-        if (env)
-        {
-            // Probe net.minecraft.class_155 (SharedConstants)
-            jclass shared_constants = env->FindClass("net/minecraft/class_155");
-            if (env->ExceptionCheck())
-            {
-                env->ExceptionClear();
-            }
-
-            if (shared_constants)
-            {
-                // method_16673 ()Lnet/minecraft/class_6489;
-                jmethodID get_game_version = env->GetStaticMethodID(shared_constants, "method_16673", "()Lnet/minecraft/class_6489;");
-                if (env->ExceptionCheck()) env->ExceptionClear();
-
-                if (get_game_version)
-                {
-                    jobject gv_obj = env->CallStaticObjectMethod(shared_constants, get_game_version);
-                    if (env->ExceptionCheck()) env->ExceptionClear();
-
-                    if (gv_obj)
-                    {
-                        jclass gv_cls = env->GetObjectClass(gv_obj);
-                        // method_37987 or comp_617 ()Ljava/lang/String;
-                        jmethodID get_name = env->GetMethodID(gv_cls, "method_37987", "()Ljava/lang/String;");
-                        if (env->ExceptionCheck()) env->ExceptionClear();
-                        if (!get_name)
-                        {
-                            get_name = env->GetMethodID(gv_cls, "comp_617", "()Ljava/lang/String;");
-                            if (env->ExceptionCheck()) env->ExceptionClear();
-                        }
-                        if (!get_name)
-                        {
-                            get_name = env->GetMethodID(gv_cls, "getName", "()Ljava/lang/String;");
-                            if (env->ExceptionCheck()) env->ExceptionClear();
-                        }
-
-                        if (get_name)
-                        {
-                            jstring name_str = (jstring)env->CallObjectMethod(gv_obj, get_name);
-                            if (env->ExceptionCheck()) env->ExceptionClear();
-                            if (name_str)
-                            {
-                                detected_str = jstring_to_utf8(env, name_str);
-                                env->DeleteLocalRef(name_str);
-                            }
-                        }
-                        env->DeleteLocalRef(gv_cls);
-                        env->DeleteLocalRef(gv_obj);
-                    }
-                }
-                env->DeleteLocalRef(shared_constants);
-            }
-
-            // Fallback Method 2: Check MinecraftClient.getGameVersion()
-            if (detected_str.empty())
-            {
-                jclass mc_cls = env->FindClass("net/minecraft/class_310");
-                if (env->ExceptionCheck()) env->ExceptionClear();
-                if (mc_cls)
-                {
-                    jfieldID inst_fid = env->GetStaticFieldID(mc_cls, "field_1700", "Lnet/minecraft/class_310;");
-                    if (env->ExceptionCheck()) env->ExceptionClear();
-                    if (inst_fid)
-                    {
-                        jobject mc_inst = env->GetStaticObjectField(mc_cls, inst_fid);
-                        if (env->ExceptionCheck()) env->ExceptionClear();
-                        if (mc_inst)
-                        {
-                            jmethodID get_ver_mid = env->GetMethodID(mc_cls, "method_1547", "()Ljava/lang/String;");
-                            if (env->ExceptionCheck()) env->ExceptionClear();
-                            if (get_ver_mid)
-                            {
-                                jstring v_str = (jstring)env->CallObjectMethod(mc_inst, get_ver_mid);
-                                if (env->ExceptionCheck()) env->ExceptionClear();
-                                if (v_str)
-                                {
-                                    detected_str = jstring_to_utf8(env, v_str);
-                                    env->DeleteLocalRef(v_str);
-                                }
-                            }
-                            env->DeleteLocalRef(mc_inst);
-                        }
-                    }
-                    env->DeleteLocalRef(mc_cls);
-                }
-            }
-        }
-
-        // Method 3: Fallback to Window Title
-        if (detected_str.empty())
-        {
-            detected_str = probe_window_title();
-        }
-
-        // Evaluate version string
-        if (!detected_str.empty())
-        {
-            if (detected_str.find("1.21.11") != std::string::npos)
-            {
-                set_version(version::v1_21_11);
-                return version::v1_21_11;
-            }
-            if (detected_str.find("1.21.1") != std::string::npos)
-            {
-                set_version(version::v1_21_1);
-                return version::v1_21_1;
-            }
-        }
-
-        // Default: 1.21.1 (keeps 100% backward compatibility)
-        set_version(version::v1_21_1);
-        return version::v1_21_1;
+        const auto name = read_fabric_version(env, classes);
+        set_version(parse_version(name));
+        if (!name.empty()) detected_name = name;
+        runtime_label = "NATIVE RUNTIME  //  " + detected_name;
+        return current;
     }
 }

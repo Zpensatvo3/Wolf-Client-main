@@ -10,10 +10,12 @@ KINDS = {"ClCompile", "ClInclude", "ResourceCompile", "None"}
 
 def validate_sdk():
     errors = []
-    sdk = ROOT / "src/sdk/minecraft/fabric_1_21_1"
+    sdk = ROOT / "src/sdk/minecraft/common"
     manifest = json.loads((sdk / "manifest.json").read_text(encoding="utf-8"))
-    if manifest.get("version") != "1.21.1" or manifest.get("loader") != "Fabric" or manifest.get("namespace") != "maps":
+    if manifest.get("baseline_version") != "1.21.1" or manifest.get("loader") != "Fabric" or manifest.get("namespace") != "maps":
         errors.append("Unexpected SDK target in mapping manifest")
+    if manifest.get("targets") != ["1.21.1", "1.21.4", "1.21.8", "1.21.11"]:
+        errors.append("SDK manifest must list each explicit Minecraft build target")
     if set(manifest["headers"]) != {p.name for p in sdk.glob("*.hpp")}:
         errors.append("SDK header list and manifest differ")
     classes = {}
@@ -21,7 +23,12 @@ def validate_sdk():
         source = (sdk / filename).read_text(encoding="utf-8")
         if '#include "../../../mappings.hpp"' in source:
             errors.append(f"SDK domain depends on compatibility umbrella: {filename}")
-        for name, java_name in re.findall(r'(?:BEGIN_KLASS_DEF(?:_EX)?|KLASS_DECLARATION)\(\s*([\w$]+),\s*"([^"]+)"', source):
+        for name, java_name in re.findall(r'(?:BEGIN_KLASS_DEF(?:_EX)?|KLASS_DECLARATION)\(\s*([\w$]+),\s*(?:ONESTEP_MC_NAME\()?"([^"]+)"', source):
+            # Target-only helper is not part of the existing 1.21.x class manifest.
+            if name in manifest.get("staged_classes", {}).get("26.1", {}):
+                if java_name != manifest["staged_classes"]["26.1"][name]:
+                    errors.append(f"Staged 26.1 class differs from manifest: {name}")
+                continue
             if name in classes:
                 errors.append(f"Duplicate SDK mapping: {name}")
             classes[name] = java_name

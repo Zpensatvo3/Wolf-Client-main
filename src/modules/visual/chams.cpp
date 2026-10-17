@@ -39,6 +39,9 @@ namespace chams_detail
     struct model
     {
         chams_model::Model object{nullptr, true};
+#if ONESTEP_MINECRAFT_VERSION >= 12104
+        chams_model::RenderState pose{nullptr, true};
+#endif
         std::array<part, 6> parts;
     };
     struct face
@@ -164,10 +167,12 @@ namespace chams_detail
         if (!empty.constructor.is_valid()) return false;
         const jboolean thin = slim ? JNI_TRUE : JNI_FALSE;
         candidate.object = chams_model::Model::new_object(&chams_model::Model::constructor, root, thin);
-        if (platform::jni_context::clear_exception() || !candidate.object ||
-            !candidate.object.setAngles.is_valid() || !candidate.object.animateModel.is_valid() ||
+        if (platform::jni_context::clear_exception() || !candidate.object || !candidate.object.setAngles.is_valid()) return false;
+#if ONESTEP_MINECRAFT_VERSION < 12104
+        if (!candidate.object.animateModel.is_valid() ||
             !candidate.object.sneaking.is_valid() || !candidate.object.handSwingProgress.is_valid() ||
             !candidate.object.child.is_valid() || !candidate.object.riding.is_valid()) return false;
+#endif
         const char* names[]{"head", "body", "right_arm", "left_arm", "right_leg", "left_leg"};
         for (int index = 0; index < 6; ++index) {
             jni::frame frame{48};
@@ -374,12 +379,24 @@ void modules::chams::render_overlay()
             const float age = static_cast<float>(entity.age.get())+delta;
             if (platform::jni_context::clear_exception() || !std::isfinite(body) || !std::isfinite(head) ||
                 !std::isfinite(head_pitch) || !std::isfinite(limb_pos) || !std::isfinite(speed)) continue;
-            model.object.child.set(JNI_FALSE); model.object.riding.set(JNI_FALSE);
             const jboolean crouching = pose.isInSneakingPose.call();
+#if ONESTEP_MINECRAFT_VERSION >= 12104
+            auto dispatcher = context.instance.entityRenderDispatcher.get();
+            auto renderer = chams_model::Dispatcher(dispatcher.object_instance, false).getRenderer.call(entity);
+            if (!renderer || platform::jni_context::clear_exception()) continue;
+            // Own the render state; do not overwrite the renderer's shared state.
+            if (!model.pose) model.pose = renderer.createRenderState.call();
+            if (!model.pose || platform::jni_context::clear_exception()) continue;
+            renderer.updateRenderState.call(entity, model.pose, delta);
+            if (platform::jni_context::clear_exception()) continue;
+            model.object.setAngles.call(chams_model::PlayerPose(model.pose.object_instance, false));
+#else
+            model.object.child.set(JNI_FALSE); model.object.riding.set(JNI_FALSE);
             model.object.sneaking.set(crouching);
             model.object.handSwingProgress.set(pose.getHandSwingProgress.call(delta));
             model.object.animateModel.call(living,limb_pos,speed,delta);
             model.object.setAngles.call(living,limb_pos,speed,age,std::remainder(head-body,360.f),head_pitch);
+#endif
             if (platform::jni_context::clear_exception()) continue;
             ImVec4 color;
             if (visible && config.theme_color) color = gui::get_dynamic_color(index*12).Value;

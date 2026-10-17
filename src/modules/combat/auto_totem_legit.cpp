@@ -203,13 +203,13 @@ void modules::auto_totem::run_legit(::cache& cache, const module_settings::auto_
 		if (!inventory || !totem || !handler || platform::jni_context::clear_exception())
 			return;
 
-		maps::DefaultedList offhand = inventory.offHand.get();
+		maps::ItemStack offhand = inventory.offhand_stack();
 		maps::DefaultedList main = inventory.main.get();
 		if (!offhand || !main || platform::jni_context::clear_exception())
 			return;
 
 		const int target_hotbar_index = std::clamp(settings_snapshot.legit_hotbar_slot, 1, 9) - 1;
-		const bool offhand_has_totem = item_at_is_totem(offhand, 0, totem);
+		const bool offhand_has_totem = is_totem(offhand, totem);
 		const bool hotbar_has_totem = item_at_is_totem(main, target_hotbar_index, totem);
 		const float health = cache.player.getHealth.call();
 		if (platform::jni_context::clear_exception())

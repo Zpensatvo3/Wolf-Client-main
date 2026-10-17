@@ -1,6 +1,6 @@
 // Compile real JNI mapping macros without creating Java objects or attaching to a JVM.
-#include "../src/sdk/minecraft/fabric_1_21_1/inventory_network.hpp"
-#include "../src/sdk/minecraft/fabric_1_21_1/client.hpp"
+#include "../src/sdk/minecraft/common/inventory_network.hpp"
+#include "../src/sdk/minecraft/common/client.hpp"
 #include "../src/mappings.hpp"
 #include <iostream>
 #include <string_view>
@@ -150,22 +150,26 @@ static_assert(std::string_view(decltype(maps::Blocks_members::BEDROCK)::get_name
 static_assert(std::string_view(decltype(maps::BlockState_members::isOpaque)::get_name()) == "method_26225");
 static_assert(std::string_view(decltype(maps::ActionResult_members::isAccepted)::get_name()) == "method_23665");
 static_assert(std::string_view(decltype(maps::ActionResult_members::isAccepted)::get_signature()) == "()Z");
+#if ONESTEP_MINECRAFT_VERSION < 12108
 static_assert(std::string_view(decltype(maps::Input_members::movementForward)::get_name()) == "field_3905");
 static_assert(std::string_view(decltype(maps::Input_members::movementForward)::get_signature()) == "F");
 static_assert(std::string_view(decltype(maps::Input_members::movementSideways)::get_name()) == "field_3907");
 static_assert(std::string_view(decltype(maps::Input_members::movementSideways)::get_signature()) == "F");
+#endif
 static_assert(std::string_view(decltype(maps::Entity_members::isInLava)::get_name()) == "method_5771");
 static_assert(std::string_view(decltype(maps::Entity_members::isInLava)::get_signature()) == "()Z");
 static_assert(std::string_view(decltype(maps::Entity_members::setVelocity)::get_signature()) == "(DDD)V");
 static_assert(std::string_view(decltype(maps::GameProfile_members::getId)::get_signature()) == "()Ljava/util/UUID;");
 static_assert(std::string_view(decltype(maps::ClientPlayNetworkHandler_members::getPlayerListEntry)::get_signature()) == "(Ljava/util/UUID;)Lnet/minecraft/class_640;");
 static_assert(std::string_view(decltype(maps::ClientPlayNetworkHandler_members::getPlayerListEntry)::get_name()) == "method_2871");
-static_assert(std::string_view(decltype(maps::Entity_members::getWorld)::get_name()) == "method_37908");
+static_assert(std::string_view(decltype(maps::Entity_members::getWorld)::get_name()) == std::string_view(maps::bindings_profile::entity_world));
 static_assert(std::string_view(maps::TextFieldWidget::get_name()) == "net/minecraft/class_342");
 static_assert(std::string_view(maps::ParentElement::get_name()) == "net/minecraft/class_4069");
 static_assert(std::string_view(decltype(maps::ParentElement_members::children)::get_signature()) == "()Ljava/util/List;");
 static_assert(std::string_view(decltype(maps::Element_members::isFocused)::get_name()) == "method_25370");
+#if ONESTEP_MINECRAFT_VERSION == 12101
 static_assert(std::string_view(decltype(maps::RecipeBookProvider_members::getRecipeBookWidget)::get_signature()) == "()Lnet/minecraft/class_507;");
+#endif
 static_assert(std::string_view(decltype(maps::CreativeInventoryScreen_members::searchBox)::get_name()) == "field_2894");
 static_assert(std::string_view(maps::ItemEntity::get_name()) == "net/minecraft/class_1542");
 static_assert(std::string_view(maps::ClientChunkManager::get_name()) == "net/minecraft/class_631");
@@ -186,5 +190,5 @@ static_assert(std::string_view(attack::get_signature()) == "()Z");
 
 int main()
 {
-    std::cout << "Fabric 1.21.1 SDK: class names, item/chunk JNI signatures and umbrella compatibility passed\n";
+    std::cout << "Fabric " << mc::target.name << " SDK: class names, item/chunk JNI signatures and umbrella compatibility passed\n";
 }

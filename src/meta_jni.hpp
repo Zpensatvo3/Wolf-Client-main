@@ -6,6 +6,7 @@
 	#include <pthread.h>
 #endif
 #include <jni.h>
+#include <algorithm>
 #include <string_view>
 #include <type_traits>
 #include <memory>
@@ -15,6 +16,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <functional>
+#include "platform/jni/member_id_cache.hpp"
 
 #ifdef NDEBUG
 	#define assertm(exp, msg) ;
@@ -447,18 +449,20 @@ namespace jni
 		field(const empty_members& m) :
 			m(m)
 		{
-			if (attempted) return;
-			attempted = true;
-			if (m.owner_klass)
-			{
-				if constexpr (is_static)
-					id = get_env()->GetStaticFieldID(m.owner_klass, get_name(), get_signature());
-				if constexpr (!is_static)
-					id = get_env()->GetFieldID(m.owner_klass, get_name(), get_signature());
-			}
-			if (!id && get_env()->ExceptionCheck())
-				get_env()->ExceptionClear();
-			assertm(id, (const char*)(concat<"failed to find fieldID: ", get_name(), " ", get_signature()>()));
+			id = platform::jni_detail::member_id_cache<jclass, jfieldID, field>::get(m.owner_klass, [&] {
+				jfieldID resolved = nullptr;
+				if (m.owner_klass)
+				{
+					if constexpr (is_static)
+						resolved = get_env()->GetStaticFieldID(m.owner_klass, get_name(), get_signature());
+					if constexpr (!is_static)
+						resolved = get_env()->GetFieldID(m.owner_klass, get_name(), get_signature());
+				}
+				if (!resolved && get_env()->ExceptionCheck())
+					get_env()->ExceptionClear();
+				assertm(resolved, (const char*)(concat<"failed to find fieldID: ", get_name(), " ", get_signature()>()));
+				return resolved;
+			});
 		}
 
 		field(const field& other) = delete; // make sure field won't be copied (we store a empty_members reference which must not be copied)
@@ -644,8 +648,7 @@ namespace jni
 		}
 	private:
 		const empty_members& m;
-		inline static jfieldID id = nullptr;
-		inline static bool attempted = false;
+		jfieldID id = nullptr;
 	};
 
 	template<typename field_type, string_litteral name_1, string_litteral name_2 = "", is_static_t is_static = NOT_STATIC>
@@ -655,40 +658,42 @@ namespace jni
 		multi_field(const empty_members& m) :
 			m(m)
 		{
-			if (attempted) return;
-			attempted = true;
-			if (m.owner_klass)
-			{
-				if constexpr (is_static)
+			id = platform::jni_detail::member_id_cache<jclass, jfieldID, multi_field>::get(m.owner_klass, [&] {
+				jfieldID resolved = nullptr;
+				if (m.owner_klass)
 				{
-					id = get_env()->GetStaticFieldID(m.owner_klass, name_1, get_signature());
-					if (!id && get_env()->ExceptionCheck())
+					if constexpr (is_static)
 					{
-						get_env()->ExceptionClear();
-						if constexpr (name_2.value[0] != '\0')
+						resolved = get_env()->GetStaticFieldID(m.owner_klass, name_1, get_signature());
+						if (!resolved && get_env()->ExceptionCheck())
 						{
-							id = get_env()->GetStaticFieldID(m.owner_klass, name_2, get_signature());
-							if (!id && get_env()->ExceptionCheck()) get_env()->ExceptionClear();
+							get_env()->ExceptionClear();
+							if constexpr (name_2.value[0] != '\0')
+							{
+								resolved = get_env()->GetStaticFieldID(m.owner_klass, name_2, get_signature());
+								if (!resolved && get_env()->ExceptionCheck()) get_env()->ExceptionClear();
+							}
+						}
+					}
+					if constexpr (!is_static)
+					{
+						resolved = get_env()->GetFieldID(m.owner_klass, name_1, get_signature());
+						if (!resolved && get_env()->ExceptionCheck())
+						{
+							get_env()->ExceptionClear();
+							if constexpr (name_2.value[0] != '\0')
+							{
+								resolved = get_env()->GetFieldID(m.owner_klass, name_2, get_signature());
+								if (!resolved && get_env()->ExceptionCheck()) get_env()->ExceptionClear();
+							}
 						}
 					}
 				}
-				if constexpr (!is_static)
-				{
-					id = get_env()->GetFieldID(m.owner_klass, name_1, get_signature());
-					if (!id && get_env()->ExceptionCheck())
-					{
-						get_env()->ExceptionClear();
-						if constexpr (name_2.value[0] != '\0')
-						{
-							id = get_env()->GetFieldID(m.owner_klass, name_2, get_signature());
-							if (!id && get_env()->ExceptionCheck()) get_env()->ExceptionClear();
-						}
-					}
-				}
-			}
-			if (!id && get_env()->ExceptionCheck())
-				get_env()->ExceptionClear();
-			assertm(id, (const char*)(concat<"failed to find multi_fieldID: ", name_1, " ", get_signature()>()));
+				if (!resolved && get_env()->ExceptionCheck())
+					get_env()->ExceptionClear();
+				assertm(resolved, (const char*)(concat<"failed to find multi_fieldID: ", name_1, " ", get_signature()>()));
+				return resolved;
+			});
 		}
 
 		multi_field(const multi_field& other) = delete;
@@ -869,8 +874,7 @@ namespace jni
 		}
 	private:
 		const empty_members& m;
-		inline static jfieldID id = nullptr;
-		inline static bool attempted = false;
+		jfieldID id = nullptr;
 	};
 
 
@@ -881,18 +885,20 @@ namespace jni
 		method(const empty_members& m) :
 			m(m)
 		{
-			if (attempted) return;
-			attempted = true;
-			if (m.owner_klass)
-			{
-				if constexpr (is_static)
-					id = get_env()->GetStaticMethodID(m.owner_klass, get_name(), get_signature());
-				if constexpr (!is_static)
-					id = get_env()->GetMethodID(m.owner_klass, get_name(), get_signature());
-			}
-			if (!id && get_env()->ExceptionCheck())
-				get_env()->ExceptionClear();
-			assertm(id, (const char*)(concat<"failed to find methodID: ", get_name(), " ", get_signature()>()));
+			id = platform::jni_detail::member_id_cache<jclass, jmethodID, method>::get(m.owner_klass, [&] {
+				jmethodID resolved = nullptr;
+				if (m.owner_klass)
+				{
+					if constexpr (is_static)
+						resolved = get_env()->GetStaticMethodID(m.owner_klass, get_name(), get_signature());
+					if constexpr (!is_static)
+						resolved = get_env()->GetMethodID(m.owner_klass, get_name(), get_signature());
+				}
+				if (!resolved && get_env()->ExceptionCheck())
+					get_env()->ExceptionClear();
+				assertm(resolved, (const char*)(concat<"failed to find methodID: ", get_name(), " ", get_signature()>()));
+				return resolved;
+			});
 		}
 
 		method(const method& other) = delete; // make sure method won't be copied (we store a empty_members reference which must not be copied)
@@ -1021,8 +1027,7 @@ namespace jni
 
 	private:
 		const empty_members& m;
-		inline static jmethodID id = nullptr;
-		inline static bool attempted = false;
+		jmethodID id = nullptr;
 	};
 
 	template<typename method_return_type, string_litteral name_1, string_litteral name_2 = "", is_static_t is_static = NOT_STATIC, class... method_parameters_type>
@@ -1032,40 +1037,42 @@ namespace jni
 		multi_method(const empty_members& m) :
 			m(m)
 		{
-			if (attempted) return;
-			attempted = true;
-			if (m.owner_klass)
-			{
-				if constexpr (is_static)
+			id = platform::jni_detail::member_id_cache<jclass, jmethodID, multi_method>::get(m.owner_klass, [&] {
+				jmethodID resolved = nullptr;
+				if (m.owner_klass)
 				{
-					id = get_env()->GetStaticMethodID(m.owner_klass, name_1, get_signature());
-					if (!id && get_env()->ExceptionCheck())
+					if constexpr (is_static)
 					{
-						get_env()->ExceptionClear();
-						if constexpr (name_2.value[0] != '\0')
+						resolved = get_env()->GetStaticMethodID(m.owner_klass, name_1, get_signature());
+						if (!resolved && get_env()->ExceptionCheck())
 						{
-							id = get_env()->GetStaticMethodID(m.owner_klass, name_2, get_signature());
-							if (!id && get_env()->ExceptionCheck()) get_env()->ExceptionClear();
+							get_env()->ExceptionClear();
+							if constexpr (name_2.value[0] != '\0')
+							{
+								resolved = get_env()->GetStaticMethodID(m.owner_klass, name_2, get_signature());
+								if (!resolved && get_env()->ExceptionCheck()) get_env()->ExceptionClear();
+							}
+						}
+					}
+					if constexpr (!is_static)
+					{
+						resolved = get_env()->GetMethodID(m.owner_klass, name_1, get_signature());
+						if (!resolved && get_env()->ExceptionCheck())
+						{
+							get_env()->ExceptionClear();
+							if constexpr (name_2.value[0] != '\0')
+							{
+								resolved = get_env()->GetMethodID(m.owner_klass, name_2, get_signature());
+								if (!resolved && get_env()->ExceptionCheck()) get_env()->ExceptionClear();
+							}
 						}
 					}
 				}
-				if constexpr (!is_static)
-				{
-					id = get_env()->GetMethodID(m.owner_klass, name_1, get_signature());
-					if (!id && get_env()->ExceptionCheck())
-					{
-						get_env()->ExceptionClear();
-						if constexpr (name_2.value[0] != '\0')
-						{
-							id = get_env()->GetMethodID(m.owner_klass, name_2, get_signature());
-							if (!id && get_env()->ExceptionCheck()) get_env()->ExceptionClear();
-						}
-					}
-				}
-			}
-			if (!id && get_env()->ExceptionCheck())
-				get_env()->ExceptionClear();
-			assertm(id, (const char*)(concat<"failed to find multi_methodID: ", name_1, " ", get_signature()>()));
+				if (!resolved && get_env()->ExceptionCheck())
+					get_env()->ExceptionClear();
+				assertm(resolved, (const char*)(concat<"failed to find multi_methodID: ", name_1, " ", get_signature()>()));
+				return resolved;
+			});
 		}
 
 		multi_method(const multi_method& other) = delete;
@@ -1188,8 +1195,7 @@ namespace jni
 
 	private:
 		const empty_members& m;
-		inline static jmethodID id = nullptr;
-		inline static bool attempted = false;
+		jmethodID id = nullptr;
 	};
 
 

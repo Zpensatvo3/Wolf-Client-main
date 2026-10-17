@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <MinecraftVersion Condition="'$(MinecraftVersion)' == ''">1.21.1</MinecraftVersion>
+    <MinecraftTargetId Condition="'$(MinecraftVersion)' == '1.21.1'">12101</MinecraftTargetId>
+    <MinecraftTargetId Condition="'$(MinecraftVersion)' == '1.21.4'">12104</MinecraftTargetId>
+    <MinecraftTargetId Condition="'$(MinecraftVersion)' == '1.21.8'">12108</MinecraftTargetId>
+    <MinecraftTargetId Condition="'$(MinecraftVersion)' == '1.21.11'">12111</MinecraftTargetId>
+    <MinecraftDefines>ONESTEP_MINECRAFT_VERSION=$(MinecraftTargetId);</MinecraftDefines>
+    <!-- Preserve the existing launcher/release path for the default target. -->
+    <MinecraftOutputDir Condition="'$(MinecraftVersion)' == '1.21.1'">$(MSBuildProjectDirectory)\build\</MinecraftOutputDir>
+    <MinecraftOutputDir Condition="'$(MinecraftVersion)' != '1.21.1'">$(MSBuildProjectDirectory)\build\minecraft\$(MinecraftVersion)\</MinecraftOutputDir>
+  </PropertyGroup>
+  <Target Name="ValidateMinecraftTarget" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(MinecraftVersion)' != '1.21.1' and '$(MinecraftVersion)' != '1.21.4' and '$(MinecraftVersion)' != '1.21.8' and '$(MinecraftVersion)' != '1.21.11'" Text="Unsupported MinecraftVersion. Choose 1.21.1, 1.21.4, 1.21.8 or 1.21.11." />
+    <Error Condition="'$(MinecraftTargetId)' == ''" Text="Unsupported MinecraftVersion. Choose 1.21.1, 1.21.4, 1.21.8 or 1.21.11." />
+    <Error Condition="'$(Platform)' != 'x64'" Text="Minecraft targets require Windows x64." />
+  </Target>
+</Project>

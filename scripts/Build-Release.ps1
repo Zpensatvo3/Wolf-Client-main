@@ -1,4 +1,7 @@
 param(
+    [ValidateSet('1.21.1', '1.21.4', '1.21.8', '1.21.11')]
+    [string]$MinecraftVersion = '1.21.1',
+    [switch]$AllMinecraftVersions,
     [switch]$Clean,
     [switch]$SkipSign,
     [string]$PlatformToolset = '',
@@ -11,6 +14,15 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+if ($AllMinecraftVersions) {
+    foreach ($minecraftTarget in @('1.21.1', '1.21.4', '1.21.8', '1.21.11')) {
+        $minecraftBuildOptions = @{} + $PSBoundParameters
+        $minecraftBuildOptions.Remove('AllMinecraftVersions')
+        $minecraftBuildOptions['MinecraftVersion'] = $minecraftTarget
+        & $PSCommandPath @minecraftBuildOptions
+    }
+    return
+}
 if ($ProtectWithVMProtect -and (-not $VMProtectProject -or -not (Test-Path -LiteralPath $VMProtectProject))) {
     throw 'VMProtect icin GUI ile hazirlanmis .vmp projesini VMProtectProject ile belirtin.'
 }
@@ -35,6 +47,7 @@ if (-not $msbuild) {
 
 $target = if ($Clean) { 'Rebuild' } else { 'Build' }
 $buildArgs = @($project, '/m', "/t:$target", '/p:Configuration=Release', '/p:Platform=x64', '/v:minimal', '/nologo')
+$buildArgs += "/p:MinecraftVersion=$MinecraftVersion"
 if ($PlatformToolset) { $buildArgs += "/p:PlatformToolset=$PlatformToolset" }
 if ($RequireAuth) { $buildArgs += '/p:AuthRequired=true' }
 if ($AuthServerDomain) { $buildArgs += "/p:AuthServerDomain=$AuthServerDomain" }
@@ -45,7 +58,8 @@ if ($LASTEXITCODE -ne 0) {
     throw "Release derlemesi basarisiz oldu ($LASTEXITCODE)."
 }
 
-$output = Join-Path $projectRoot 'build\Onestep.dll'
+$minecraftOutput = if ($MinecraftVersion -eq '1.21.1') { 'build\Onestep.dll' } else { "build\minecraft\$MinecraftVersion\Onestep.dll" }
+$output = Join-Path $projectRoot $minecraftOutput
 if (-not (Test-Path -LiteralPath $output)) {
     throw "Derleme ciktisi bulunamadi: $output"
 }
@@ -71,4 +85,4 @@ if (-not $SkipSign) {
 }
 
 $file = Get-Item -LiteralPath $output
-Write-Host ("Hazir: {0} ({1:N2} MB)" -f $file.FullName, ($file.Length / 1MB))
+Write-Host ("Fabric {0}: {1} ({2:N2} MB)" -f $MinecraftVersion, $file.FullName, ($file.Length / 1MB))

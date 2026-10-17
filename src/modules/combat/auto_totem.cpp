@@ -186,12 +186,12 @@ void modules::auto_totem::run_normal(::cache& cache, const module_settings::auto
             return;
 
         maps::DefaultedList main_items = inventory.main.get();
-        maps::DefaultedList offhand_items = inventory.offHand.get();
-        if (!main_items || !offhand_items || platform::jni_context::clear_exception())
+        maps::ItemStack offhand_item = inventory.offhand_stack();
+        if (!main_items || !offhand_item || platform::jni_context::clear_exception())
             return;
 
         const int target_hotbar_index = std::clamp(settings_snapshot.hotbar_slot, 1, 9) - 1;
-		const bool need_offhand = settings_snapshot.fill_offhand && !list_slot_is_totem(offhand_items, 0, totem_item);
+		const bool need_offhand = settings_snapshot.fill_offhand && !stack_is_totem(offhand_item, totem_item);
 		const bool need_hotbar = settings_snapshot.fill_hotbar && !list_slot_is_totem(main_items, target_hotbar_index, totem_item);
 
 		// clickSlot is server-authoritative. Wait for the inventory update before

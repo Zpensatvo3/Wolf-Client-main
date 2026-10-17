@@ -1,15 +1,18 @@
 #pragma once
+// Shared SDK layout; target-specific JNI differences are selected at compile time.
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstring>
 #include <string>
 #include "../../../meta_jni.hpp"
+#include "../../../platform/adapter/bindings_profile.hpp"
 #include "../../../maths/maths.hpp"
 
-// Fabric 1.21.1 intermediary bindings; original member definitions preserved.
+// Shared Fabric bindings with compile-time target profiles.
 namespace maps
 {
+    using bindings_profile = platform::adapter::bindings::selected;
     BEGIN_KLASS_DEF(Object, "java/lang/Object")
         END_KLASS_DEF()
 
@@ -58,7 +61,7 @@ namespace maps
         jni::method<Object, "get", jni::NOT_STATIC, jint> get{ *this };
     END_KLASS_DEF()
 
-        BEGIN_KLASS_DEF_EX(DefaultedList, "net/minecraft/class_2371", List)
+        BEGIN_KLASS_DEF_EX(DefaultedList, ONESTEP_MC_NAME("net/minecraft/class_2371"), List)
     END_KLASS_DEF()
 
         BEGIN_KLASS_DEF(Iterator, "java/util/Iterator")

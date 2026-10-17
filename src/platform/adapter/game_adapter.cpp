@@ -2,6 +2,7 @@
 #include "../jni/jni_context.hpp"
 #include <cmath>
 #include <algorithm>
+#include <stdexcept>
 
 namespace platform::adapter
 {
@@ -194,6 +195,15 @@ namespace platform::adapter
 
                     if (cam)
                     {
+#if ONESTEP_MINECRAFT_VERSION == 26100
+                        if (cam.getFov.is_valid())
+                        {
+                            const float render_fov = cam.getFov.call();
+                            if (!platform::jni_context::clear_exception() && std::isfinite(render_fov) &&
+                                render_fov >= 1.0f && render_fov <= 175.0f)
+                                return render_fov;
+                        }
+#else
                         if (renderer.getFov.is_valid())
                         {
                             double render_fov = renderer.getFov.call(cam, tick_delta, JNI_TRUE);
@@ -210,7 +220,7 @@ namespace platform::adapter
                             jclass gr_cls = env->GetObjectClass(renderer.object_instance);
                             if (gr_cls)
                             {
-                                jmethodID mid_f = env->GetMethodID(gr_cls, "method_3196", "(Lnet/minecraft/class_4184;FZ)F");
+                                jmethodID mid_f = env->GetMethodID(gr_cls, ONESTEP_MC_NAME("method_3196"), ONESTEP_MC_NAME("(Lnet/minecraft/class_4184;FZ)F"));
                                 if (mid_f && !env->ExceptionCheck())
                                 {
                                     jfloat rf = env->CallFloatMethod(renderer.object_instance, mid_f, cam.object_instance, (jfloat)tick_delta, JNI_TRUE);
@@ -224,6 +234,7 @@ namespace platform::adapter
                                 env->DeleteLocalRef(gr_cls);
                             }
                         }
+#endif
                     }
                 }
             }
@@ -314,7 +325,7 @@ namespace platform::adapter
                             jclass gr_cls = env->GetObjectClass(renderer.object_instance);
                             if (gr_cls)
                             {
-                                jmethodID mid_gc = env->GetMethodID(gr_cls, "method_19418", "()Lnet/minecraft/class_4184;");
+                                jmethodID mid_gc = env->GetMethodID(gr_cls, ONESTEP_MC_NAME("method_19418"), ONESTEP_MC_NAME("()Lnet/minecraft/class_4184;"));
                                 if (mid_gc && !env->ExceptionCheck())
                                 {
                                     jobject cam_obj = env->CallObjectMethod(renderer.object_instance, mid_gc);
@@ -377,9 +388,9 @@ namespace platform::adapter
                         jclass cam_cls = env->GetObjectClass(cam.object_instance);
                         if (cam_cls)
                         {
-                            jmethodID mid_pos = env->GetMethodID(cam_cls, "method_19326", "()Lnet/minecraft/class_243;");
-                            jmethodID mid_yaw = env->GetMethodID(cam_cls, "method_19330", "()F");
-                            jmethodID mid_pitch = env->GetMethodID(cam_cls, "method_19329", "()F");
+                            jmethodID mid_pos = env->GetMethodID(cam_cls, maps::bindings_profile::camera_position, ONESTEP_MC_NAME("()Lnet/minecraft/class_243;"));
+                            jmethodID mid_yaw = env->GetMethodID(cam_cls, ONESTEP_MC_NAME("method_19330"), "()F");
+                            jmethodID mid_pitch = env->GetMethodID(cam_cls, ONESTEP_MC_NAME("method_19329"), "()F");
                             if (mid_pos && mid_yaw && mid_pitch && !env->ExceptionCheck())
                             {
                                 jobject pos_obj = env->CallObjectMethod(cam.object_instance, mid_pos);
@@ -526,41 +537,35 @@ namespace platform::adapter
         }
     };
 
-    // =========================================================================
-    // Version 1.21.1 Adapter Implementation
-    // =========================================================================
-    class adapter_1_21_1 final : public base_adapter
+    // Each binary uses one mapping profile, selected at compile time.
+    class target_adapter final : public base_adapter
     {
     public:
-        mc::version get_version() const override { return mc::version::v1_21_1; }
-        const char* get_version_name() const override { return "1.21.1"; }
+        mc::version get_version() const override { return mc::target.id; }
+        const char* get_version_name() const override { return mc::target.name.data(); }
+        maps::HitResult crosshair_target(const maps::MinecraftClient& client,
+            const maps::ClientPlayerEntity& player, const maps::Entity& camera,
+            double block_range, double entity_range, float delta) const override
+        {
+#if ONESTEP_MINECRAFT_VERSION >= 12111
+            return player.findCrosshairTarget.call(camera, block_range, entity_range, delta);
+#else
+            auto renderer = client.gameRenderer.get();
+            return renderer ? renderer.findCrosshairTarget.call(camera, block_range, entity_range, delta) : maps::HitResult{};
+#endif
+        }
     };
 
-    // =========================================================================
-    // Version 1.21.11 Adapter Implementation
-    // =========================================================================
-    class adapter_1_21_11 final : public base_adapter
-    {
-    public:
-        mc::version get_version() const override { return mc::version::v1_21_11; }
-        const char* get_version_name() const override { return "1.21.11"; }
-    };
-
-    // Global Adapter Instances
-    static adapter_1_21_1 g_adapter_1_21_1;
-    static adapter_1_21_11 g_adapter_1_21_11;
-    static IGameAdapter* g_active_adapter = &g_adapter_1_21_1;
+    static target_adapter active_adapter;
 
     IGameAdapter& get()
     {
-        return *g_active_adapter;
+        return active_adapter;
     }
 
     void initialize(mc::version ver)
     {
-        if (ver == mc::version::v1_21_11)
-            g_active_adapter = &g_adapter_1_21_11;
-        else
-            g_active_adapter = &g_adapter_1_21_1;
+        if (!mc::matches_target(ver))
+            throw std::runtime_error("Minecraft adapter target does not match the loaded game");
     }
 }

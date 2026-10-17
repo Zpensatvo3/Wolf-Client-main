@@ -541,12 +541,10 @@ void modules::nametag::run(::cache& cache)
 				entry.health = std::clamp(entry.health, 0.0f, entry.max_health);
 
 				maps::PlayerInventory inventory = player.getInventory();
-				maps::DefaultedList armor = inventory ? inventory.armor.get() : maps::DefaultedList{};
 				static constexpr int armor_indices[4] = { 3, 2, 1, 0 };
-				for (int slot = 0; slot < 4 && armor; ++slot)
+				for (int slot = 0; slot < 4 && inventory; ++slot)
 				{
-					maps::Object armor_object = armor.get.call(static_cast<jint>(armor_indices[slot]));
-					maps::ItemStack stack(armor_object ? armor_object.object_instance : nullptr);
+					maps::ItemStack stack = inventory.armor_stack(armor_indices[slot]);
 					if (!stack || stack.isEmpty.call() == JNI_TRUE || platform::jni_context::clear_exception())
 						continue;
 					maps::Item item = stack.item.get();

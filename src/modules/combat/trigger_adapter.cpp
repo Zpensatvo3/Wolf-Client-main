@@ -37,7 +37,7 @@ namespace
         if (empty) return weapon_type::empty;
         auto item = stack.item.get();
         if (platform::jni_context::clear_exception() || !item) return std::nullopt;
-        const bool sword = item.is_instance_of<maps::SwordItem>();
+        const bool sword = item.is_sword();
         if (platform::jni_context::clear_exception()) return std::nullopt;
         if (sword) return weapon_type::sword;
         const bool axe = item.is_instance_of<maps::AxeItem>();
@@ -91,7 +91,7 @@ namespace
     bool read_critical_conditions(const maps::ClientPlayerEntity& player, observation& frame)
     {
         frame.on_ground = player.isOnGround.call() == JNI_TRUE;
-        const float falling = player.fallDistance.get();
+        const auto falling = player.fallDistance.get();
         const bool water = player.isTouchingWater.call() == JNI_TRUE;
         const bool swimming = player.isSwimming.call() == JNI_TRUE;
         const bool flying = player.isFallFlying.call() == JNI_TRUE;

@@ -41,7 +41,7 @@ bool services::inventory::slot_matches(const maps::DefaultedList& items,
     bool class_match = false;
     switch (kind)
     {
-    case hotbar_item_kind::sword: class_match = item.is_instance_of<maps::SwordItem>(); break;
+    case hotbar_item_kind::sword: class_match = item.is_sword(); break;
     case hotbar_item_kind::axe: class_match = item.is_instance_of<maps::AxeItem>(); break;
     case hotbar_item_kind::mace: class_match = item.is_instance_of<maps::MaceItem>(); break;
     }

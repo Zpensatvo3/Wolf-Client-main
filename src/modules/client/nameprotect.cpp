@@ -43,14 +43,14 @@ struct modules::nameprotect::runtime
         const char* class_name,jobject,jint size,const unsigned char* bytes,jint* new_size,unsigned char** new_bytes)
     {
         auto* self=transforming.load(std::memory_order_acquire);
-        if (!self || !redefining || !class_name || std::strcmp(class_name,"net/minecraft/class_327")!=0 ||
+        if (!self || !redefining || !class_name || std::strcmp(class_name,ONESTEP_MC_NAME("net/minecraft/class_327"))!=0 ||
             !env->IsSameObject(redefining,self->font)) return;
         // Retransformation is synchronous. No native hook remains on the render hot path.
         if (env->PushLocalFrame(8)!=JNI_OK) { if (env->ExceptionCheck()) env->ExceptionClear(); return; }
         auto original=env->NewByteArray(size);
         if (original) env->SetByteArrayRegion(original,0,size,reinterpret_cast<const jbyte*>(bytes));
         auto result=original && !env->ExceptionCheck()
-            ? static_cast<jbyteArray>(env->CallStaticObjectMethod(self->transformer,self->transform,original)) : nullptr;
+            ? static_cast<jbyteArray>(env->CallStaticObjectMethod(self->transformer,self->transform,original,static_cast<jint>(mc::target.build_id))) : nullptr;
         if (result && !env->ExceptionCheck())
         {
             const jint length=env->GetArrayLength(result);
@@ -117,12 +117,12 @@ struct modules::nameprotect::runtime
             };
             bridge=load("net.onestep.privacy.NameProtectBridge","net/onestep/privacy/NameProtectBridge",IDR_NAMEPROTECT_BRIDGE);
             transformer=load("net.onestep.privacy.NameProtectTransformer","net/onestep/privacy/NameProtectTransformer",IDR_NAMEPROTECT_TRANSFORMER);
-            font=load("net.minecraft.class_327",nullptr,0);
+            font=load(ONESTEP_MC_NAME("net.minecraft.class_327"),nullptr,0);
             configure=checked(env,env->GetStaticMethodID(bridge,"configure","(Ljava/lang/String;Ljava/lang/String;)V"));
             auto prepare=checked(env,env->GetStaticMethodID(bridge,"prepare","(Ljava/lang/ClassLoader;)V"));
             env->CallStaticVoidMethod(bridge,prepare,loader);
             if (env->ExceptionCheck()) throw std::runtime_error("Text interfaces");
-            transform=checked(env,env->GetStaticMethodID(transformer,"transform","([B)[B"));
+            transform=checked(env,env->GetStaticMethodID(transformer,"transform","([BI)[B"));
             if (jvm->GetEnv(reinterpret_cast<void**>(&tooling),JVMTI_VERSION_1_2)!=JNI_OK || !tooling)
                 throw std::runtime_error("JVMTI");
             jvmtiCapabilities capabilities{}; capabilities.can_retransform_classes=1;

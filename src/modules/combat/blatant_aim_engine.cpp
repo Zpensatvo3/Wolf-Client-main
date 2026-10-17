@@ -85,7 +85,7 @@ void deactivate(blatant_aim_engine::runtime& state)
 		if (!item || platform::jni_context::clear_exception())
 			return false;
 
-		if (item.is_instance_of<maps::SwordItem>() ||
+		if (item.is_sword() ||
 			item.is_instance_of<maps::AxeItem>() ||
 			item.is_instance_of<maps::MaceItem>())
 			return !platform::jni_context::clear_exception();

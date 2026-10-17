@@ -1,11 +1,18 @@
 # Onestep
 
-Windows x64 üzerinde Minecraft Fabric 1.21.1 için geliştirilen native C++20 istemci.
+Windows x64 üzerinde Minecraft Fabric için geliştirilen native C++20 istemci.
 OpenGL ve ImGui tabanlı arayüz, HUD düzenleyicisi, modül sistemi ve public config
 istemcisi içerir.
 
 ## Güncel durum
 
+- Ortak kaynak koddan 1.21.1, 1.21.4, 1.21.8 ve 1.21.11 için ayrı DLL hedefleri
+  oluşturuldu. Yeni hedefler Windows derlemesi ve oyun içi doğrulama tamamlanana
+  kadar geliştirme hedefidir. Adaptör yapısı, çıktı yolları ve kontrol listesi:
+  [Minecraft hedefleri](docs/MINECRAFT_TARGETS.md).
+  26.1 native adaptörünün ilk etabı ve çevrimdışı kontrolleri eklendi; Java köprüleri
+  ve uygulama doğrulaması bitmediğinden henüz DLL hedefi değil:
+  [26.x geçiş durumu](docs/MINECRAFT_26_PORT.md).
 - Auth kaynakları modüllere ayrıldı; koyu temalı yeni yönetim paneli, sayfalı lisans
   listesi, ayrıntı çekmecesi, işlem geçmişi ve sistem durumu hazırlandı. Bu kaynak
   değişikliği yereldir; canlı servise deploy edilmedi. Mimari, test ve güvenli yayın
@@ -277,7 +284,7 @@ istemcisi içerir.
 - Windows x64
 - Visual Studio C++ Build Tools / MSBuild ve Windows SDK
 - PowerShell; altyapı kontrolleri ve proje filtreleri için Python 3.9+
-- Oyun içi kullanım için Minecraft Fabric 1.21.1
+- Hedef DLL ile tam eşleşen Minecraft Fabric sürümü; Sky için Fabric API
 
 ## Derleme
 
@@ -293,6 +300,10 @@ Komutları depo kökünde çalıştır:
 # İmzasız yerel derleme
 .\scripts\Build-Release.ps1 -SkipSign
 
+# Belirli sürüm veya dört hedefin tamamı
+.\scripts\Build-Release.ps1 -MinecraftVersion 1.21.8 -SkipSign
+.\scripts\Build-Release.ps1 -AllMinecraftVersions -SkipSign
+
 ```
 
 Proje yalnızca DLL olarak derlenir:
@@ -300,11 +311,13 @@ Proje yalnızca DLL olarak derlenir:
 | Çıktı | Yol |
 | --- | --- |
 | İstemci DLL | `build\Onestep.dll` |
+| Ek sürüm DLL'leri | `build\minecraft\<sürüm>\Onestep.dll` |
 
 İmzalama scriptleri, mevcut kullanıcı sertifika deposundaki
 `CN=Thedorius Lite Test` sertifikasını arar. Sertifika adı henüz değiştirilmedi.
-GitHub Actions, `main` güncellendiğinde offline testlerden sonra Windows x64
-DLL'yi derler ve `Onestep-Windows-x64` artifact'i olarak saklar. Bu çıktı imzasızdır.
+GitHub Actions yapılandırması, offline testlerden sonra dört Windows x64 hedefini
+ayrı işler olarak derler. 1.21.1 artifact'i `Onestep-Windows-x64`, diğerleri
+`Onestep-<sürüm>-Windows-x64` adını kullanır. Bu çıktılar imzasızdır.
 
 ## Kaynak yapısı
 
@@ -332,7 +345,7 @@ src/
     render/settings/      Watermark ve Arraylist tercihleri
     settings_manifest.json  Modül stable ID'leri için model ve panel sahipliği
   sdk/minecraft/
-    fabric_1_21_1/        Alanlara bölünmüş JNI mapping'leri ve sürüm manifesti
+    common/               Ortak JNI domain başlıkları ve hedef manifesti
   mappings.hpp            Eski include yolları için ince uyumluluk başlığı
   platform/               Oyun adaptörü, sahipli JVM oturumu ve client-thread iş kuyruğu
   services/               Ortak oyun ve input servisleri
@@ -382,7 +395,7 @@ Kalan ayar modellerinin testi eski alan adlarını, renk/dizi/liste türlerini,
 seyrek enum değerlerini, EXP/Anchor uyumluluğunu ve geçersiz içe aktarmaların
 atomik reddini doğrular. Renderer testi gerçek çizim yapmadan kontrol
 bağlantılarını, koşullu görünürlüğü, yüzde dönüşümünü ve UI/import limitlerini sınar.
-SDK testi 127 sınıf adını, temel JNI imzalarını ve dokuz domain başlığının
+SDK testi sınıf adlarını, temel JNI imzalarını ve her domain başlığının
 tek başına derlenmesini kontrol eder; JVM başlatmaz veya oyuna bağlanmaz.
 ESP oturum testi ani bağlantı kopmasını, hızlı dünya/sunucu değişimini,
 oyuncu nesnesinin yenilenmesini ve eski worker sonuçlarının reddini doğrular.
@@ -444,11 +457,13 @@ yanında Auto Totem, Legit Auto Totem ve Fast EXP'nin de UI ve import limitleri
 ayrı tanımlanır; Auto Tool'un görünmeyen eski config alanı da korunur.
 Radar konumları geniş ekranlarda slider sınırlarıyla kırpılmaz.
 
-Mapping tanımları `sdk/minecraft/fabric_1_21_1/` altında Java tipleri, geometri,
+Mapping tanımları `sdk/minecraft/common/` altında Java tipleri, geometri,
 blok/world, inventory/network, entity tipleri, entity, client entity, input ve
 client başlıklarına ayrılır. Domain bağımlılıkları açık include zincirleriyle
 kurulur; JNI sınıf isimleri `manifest.json` ile denetlenir. `mappings.hpp` eski
 kullanıcılar için tüm SDK'yı sunar; yeni kod ihtiyaç duyduğu domain'i kullanmalı.
+Sürüme bağlı ad/tipler `platform/adapter/bindings_profile.hpp` içinde seçilir.
+Modül hesapları ortaktır; başka bir sürüm için modül klasörleri kopyalanmaz.
 
 ## Config dosyaları
 

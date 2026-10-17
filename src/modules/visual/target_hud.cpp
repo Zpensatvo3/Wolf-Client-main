@@ -6,6 +6,7 @@
 #include "../../gui/gui.hpp"
 #include "../../gui/ui_state.hpp"
 #include "../../platform/jni/jni_context.hpp"
+#include "../../platform/adapter/item_model.hpp"
 #include "../../services/game/overlay_context.hpp"
 #include "../../services/game/anti_bot_service.hpp"
 #include "../../ui/hud_editor_layout.hpp"
@@ -62,127 +63,45 @@ namespace
         return result;
     }
 
-    glm::vec3 model_vector(const maps::ModelVector3f& vector)
-    {
-        if (!vector) return {};
-        return {vector.x.get(), vector.y.get(), vector.z.get()};
-    }
-
     std::vector<icon_quad> read_item_icon(const maps::ItemStack& stack,
         const services::game::client_context& context, const maps::PlayerEntity& player, const std::string& key)
     {
-        using platform::jni_context::clear_exception;
+        const auto source = platform::adapter::read_item_model(context.instance,
+            maps::World(context.world.object_instance, false), maps::LivingEntity(player.object_instance, false), stack, key);
         std::vector<icon_quad> result;
-        jni::frame model_frame{96};
-        maps::ItemRenderer renderer = context.instance.getItemRenderer.call();
-        if (clear_exception() || !renderer) return result;
-        maps::World world(context.world.object_instance, false);
-        maps::LivingEntity entity(player.object_instance, false);
-        maps::ItemBakedModel model = renderer.getModel.call(stack, world, entity, 0);
-        if (clear_exception() || !model) return result;
-        // The held trident/spyglass models differ from their inventory models.
-        if (key.ends_with(".trident") || key.ends_with(".spyglass"))
+        for (const auto& data : source)
         {
-            maps::ItemModels models = renderer.getModels.call();
-            if (clear_exception() || !models) return result;
-            model = models.getModel.call(stack);
-            if (clear_exception() || !model) return result;
-        }
-        maps::ItemModelTransformation transformations = model.getTransformation.call();
-        if (clear_exception() || !transformations) return result;
-        maps::ItemTransformation gui = transformations.gui.get();
-        if (clear_exception() || !gui) return result;
-        const glm::vec3 rotation = model_vector(gui.rotation.get());
-        if (clear_exception()) return result;
-        const glm::vec3 translation = model_vector(gui.translation.get());
-        if (clear_exception()) return result;
-        const glm::vec3 scaling = model_vector(gui.scale.get());
-        if (clear_exception()) return result;
-        for (int axis = 0; axis < 3; ++axis)
-            if (!std::isfinite(rotation[axis]) || !std::isfinite(translation[axis]) || !std::isfinite(scaling[axis])) return result;
-        glm::mat4 transform = glm::translate(glm::mat4(1.f), translation);
-        transform = glm::rotate(transform, glm::radians(rotation.x), glm::vec3(1, 0, 0));
-        transform = glm::rotate(transform, glm::radians(rotation.y), glm::vec3(0, 1, 0));
-        transform = glm::rotate(transform, glm::radians(rotation.z), glm::vec3(0, 0, 1));
-        transform = glm::scale(transform, scaling);
-        const bool side_lit = model.isSideLit.call() == JNI_TRUE;
-        if (clear_exception()) return result;
-        maps::ItemColors colors = renderer.colors.get();
-        if (clear_exception()) return result;
-        maps::TextureManager manager = context.instance.getTextureManager.call();
-        if (clear_exception() || !manager) return result;
-        maps::ModelRandom random = maps::ModelRandom{}.createSeeded.call(static_cast<jlong>(42));
-        if (clear_exception() || !random) return result;
-        const std::array<maps::Direction, 7> faces = {maps::Direction(nullptr), maps::Direction{}.DOWN.get(),
-            maps::Direction{}.UP.get(), maps::Direction{}.NORTH.get(), maps::Direction{}.SOUTH.get(),
-            maps::Direction{}.WEST.get(), maps::Direction{}.EAST.get()};
-        if (clear_exception()) return result;
-        for (const auto& face : faces)
-        {
-            jni::frame face_frame{32};
-            random.setSeed.call(static_cast<jlong>(42));
-            if (clear_exception()) return {};
-            maps::List quads = model.getQuads.call(maps::BlockState(nullptr), face, random);
-            if (clear_exception() || !quads) return {};
-            auto objects = quads.toArray.call();
-            if (clear_exception() || !objects) return {};
-            const int count = objects.get_length();
-            if (clear_exception() || count < 0 || count > 512) return {};
-            for (int index = 0; index < count; ++index)
+            const glm::vec3 rotation(data.rotation[0], data.rotation[1], data.rotation[2]);
+            const glm::vec3 translation(data.translation[0], data.translation[1], data.translation[2]);
+            const glm::vec3 scaling(data.scale[0], data.scale[1], data.scale[2]);
+            glm::mat4 transform = glm::translate(glm::mat4(1.f), translation);
+            transform = glm::rotate(transform, glm::radians(rotation.x), glm::vec3(1, 0, 0));
+            transform = glm::rotate(transform, glm::radians(rotation.y), glm::vec3(0, 1, 0));
+            transform = glm::rotate(transform, glm::radians(rotation.z), glm::vec3(0, 0, 1));
+            transform = glm::scale(transform, scaling);
+            icon_quad quad;
+            std::array<glm::vec3, 4> vertex{};
+            bool valid = true;
+            for (int point = 0; point < 4; ++point)
             {
-                jni::frame quad_frame{32};
-                maps::ItemBakedQuad baked(jni::get_env()->GetObjectArrayElement(
-                    static_cast<jobjectArray>(objects.object_instance), index), false);
-                if (clear_exception() || !baked) return {};
-                auto packed = baked.getVertexData.call();
-                if (clear_exception() || !packed) return {};
-                const int length = packed.get_length();
-                if (clear_exception() || length < 32 || length > 256 || length % 4) return {};
-                const auto data = packed.to_vector();
-                if (clear_exception()) return {};
-                const int stride = length / 4;
-                icon_quad quad;
-                std::array<glm::vec3, 4> vertex{};
-                bool valid = true;
-                for (int point = 0; point < 4; ++point)
-                {
-                    const auto number = [&](int offset) { return std::bit_cast<float>(data[point * stride + offset]); };
-                    vertex[point] = glm::vec3(transform * glm::vec4(number(0) - .5f, number(1) - .5f, number(2) - .5f, 1.f));
-                    quad.position[point] = {.5f + vertex[point].x, .5f - vertex[point].y};
-                    quad.uv[point] = {number(4), number(5)};
-                    quad.depth += vertex[point].z * .25f;
-                    valid &= std::isfinite(quad.position[point].x) && std::isfinite(quad.position[point].y)
-                        && std::isfinite(vertex[point].z) && std::isfinite(quad.uv[point].x) && std::isfinite(quad.uv[point].y)
-                        && std::abs(quad.position[point].x) < 8.f && std::abs(quad.position[point].y) < 8.f;
-                }
-                if (!valid) continue;
-                const glm::vec3 normal = glm::cross(vertex[1] - vertex[0], vertex[2] - vertex[0]);
-                // GUI projection looks along -Z; back faces/zero-area item edges are invisible.
-                if (normal.z <= .000001f) continue;
-                maps::ItemSprite sprite = baked.getSprite.call();
-                if (clear_exception() || !sprite) return {};
-                maps::Identifier atlas = sprite.getAtlasId.call();
-                if (clear_exception() || !atlas) return {};
-                maps::Texture texture = manager.getTexture.call(atlas);
-                if (clear_exception() || !texture) return {};
-                const int texture_id = texture.getGlId.call();
-                if (clear_exception() || texture_id <= 0) return {};
-                quad.texture = static_cast<std::uintptr_t>(texture_id);
-                const int tint_index = baked.getColorIndex.call();
-                if (clear_exception()) return {};
-                int tint = -1;
-                if (tint_index >= 0 && colors)
-                {
-                    tint = colors.getColor.call(stack, tint_index);
-                    if (clear_exception()) return {};
-                }
-                const float light = side_lit ? .65f + .35f * std::clamp(glm::dot(glm::normalize(normal),
-                    glm::normalize(glm::vec3(-.2f, 1.f, .7f))), 0.f, 1.f) : 1.f;
-                quad.tint = IM_COL32(static_cast<int>(((tint >> 16) & 255) * light),
-                    static_cast<int>(((tint >> 8) & 255) * light), static_cast<int>((tint & 255) * light), 255);
-                result.push_back(quad);
-                if (result.size() > 512) return {};
+                vertex[point] = glm::vec3(transform * glm::vec4(data.position[point][0] - .5f,
+                    data.position[point][1] - .5f, data.position[point][2] - .5f, 1.f));
+                quad.position[point] = {.5f + vertex[point].x, .5f - vertex[point].y};
+                quad.uv[point] = {data.uv[point][0], data.uv[point][1]};
+                quad.depth += vertex[point].z * .25f;
+                valid &= std::isfinite(quad.position[point].x) && std::isfinite(quad.position[point].y)
+                    && std::isfinite(vertex[point].z) && std::isfinite(quad.uv[point].x) && std::isfinite(quad.uv[point].y)
+                    && std::abs(quad.position[point].x) < 8.f && std::abs(quad.position[point].y) < 8.f;
             }
+            if (!valid) continue;
+            const glm::vec3 normal = glm::cross(vertex[1] - vertex[0], vertex[2] - vertex[0]);
+            if (normal.z <= .000001f) continue;
+            quad.texture = data.texture;
+            const float light = data.side_lit ? .65f + .35f * std::clamp(glm::dot(glm::normalize(normal),
+                glm::normalize(glm::vec3(-.2f, 1.f, .7f))), 0.f, 1.f) : 1.f;
+            quad.tint = IM_COL32(static_cast<int>(((data.tint >> 16) & 255) * light),
+                static_cast<int>(((data.tint >> 8) & 255) * light), static_cast<int>((data.tint & 255) * light), 255);
+            result.push_back(quad);
         }
         std::stable_sort(result.begin(), result.end(), [](const auto& a, const auto& b) { return a.depth < b.depth; });
         return result;
@@ -383,7 +302,7 @@ void modules::target_hud::refresh(bool preview)
                 for (int index = 0; index < 4; ++index)
                 {
                     jni::frame slot_frame{32};
-                    next.armor[index] = read_equipment(inventory.getArmorStack.call(3 - index), context, player);
+                    next.armor[index] = read_equipment(inventory.armor_stack(3 - index), context, player);
                 }
             next.hand = read_equipment(player.getMainHandStack.call(), context, player);
             state.equipment_update = now + std::chrono::milliseconds(50);

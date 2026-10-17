@@ -3,6 +3,7 @@
 
 #include "../../friends/friends.hpp"
 #include "../../platform/jni/jni_context.hpp"
+#include "../../platform/adapter/game_adapter.hpp"
 #include <cmath>
 
 maps::Entity services::target::fresh_crosshair_entity(const maps::MinecraftClient& instance,
@@ -20,7 +21,7 @@ maps::Entity services::target::fresh_crosshair_entity(const maps::MinecraftClien
         !std::isfinite(entities) || blocks <= 0 || entities <= 0) return {};
     // Tick delta 1 uses the latest local position, not an earlier interpolated
     // camera position. Do not overwrite vanilla's crosshairTarget or aim.
-    auto hit = renderer.findCrosshairTarget.call(camera, blocks, entities, 1.f);
+    auto hit = platform::adapter::get().crosshair_target(instance, player, camera, blocks, entities, 1.f);
     if (platform::jni_context::clear_exception() || !hit) return {};
     auto entity_type = maps::HitResult$Type{}.ENTITY.get();
     if (platform::jni_context::clear_exception() || !entity_type ||
