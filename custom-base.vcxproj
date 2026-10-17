@@ -208,6 +208,8 @@
     <ClCompile Include="src\ui\menu_background.cpp" />
     <ClCompile Include="src\ui\hud_editor.cpp" />
     <ClCompile Include="src\ui\config_page.cpp" />
+    <ClCompile Include="src\ui\friends_page.cpp" />
+    <ClCompile Include="src\ui\themes_page.cpp" />
     <ClCompile Include="src\ui\notification_renderer.cpp" />
     <ClCompile Include="src\services\notifications\notification_service.cpp" />
     <ClCompile Include="src\jvmti\jvmti.cpp" />
@@ -582,6 +584,8 @@
     <ClInclude Include="src\gui\watermark_draw.hpp" />
     <ClInclude Include="src\ui\hud_editor.hpp" />
     <ClInclude Include="src\ui\config_page.hpp" />
+    <ClInclude Include="src\ui\friends_page.hpp" />
+    <ClInclude Include="src\ui\themes_page.hpp" />
     <ClInclude Include="src\ui\config_page_model.hpp" />
     <ClInclude Include="src\ui\hud_editor_layout.hpp" />
     <ClInclude Include="src\gui\widgets.hpp" />

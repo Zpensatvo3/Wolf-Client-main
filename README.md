@@ -84,13 +84,52 @@ istemcisi içerir.
   ESC onu kapatır; HUD düzenleyicide ESC menüye döner. Tuş ataması sırasında ESC
   atamayı temizler; menüyü kapatmaz. Menü kapanışındaki ESC tekrarı Minecraft'a
   iletilmez. Oyun içi Windows doğrulaması ayrıca yapılmalıdır.
-- Arama düğmesi, sol altta oyuncu bilgisinin üstündeki kutudadır. Arama sonuçları
-  kutunun yanında açılır; mevcut klavye gezinmesi ve otomatik tamamlama korunur.
+- Arama alanı sol altta oyuncu bilgisinin üstündedir; doğrudan kutuya yazılır.
+  Yarı saydam zemini vardır. Sonuçlar ayrı panel açmadan ana modül alanında tüm
+  kategorilerden filtrelenir. Oklar/Enter ve otomatik tamamlama korunur; X veya
+  ilk ESC aramayı temizler, eski sayfayı geri getirir. Sonraki ESC menüyü kapatır.
   Profilde yerel oyuncunun skin kafası (ikinci katman dahil) ve adı gösterilir.
   Skin yüklenene kadar varsayılan kafa kullanılır. Rastgele UID yerine doğrulanmış
   lisans bitiş tarihinden kalan süre (`30 days`, `2 hours`) veya `Lifetime` yazılır;
   bilinmeyen süre lifetime kabul edilmez. Bu etiket yalnızca görseldir, yetkilendirme
   ve oturum süresi kontrollerini değiştirmez.
+- Features ve Other sayfaları aynı 960×620 menü boyutunu kullanır.
+  Features tek sütunlu modül listesi kullanır. Sol menü ve modül
+  alanı tek arka planda birleşir; panel yüksekliği sabittir ve liste çubuksuz kayar.
+  Movement ve Player sekmeleri Misc altında birleşir (World modülleri dahil);
+  bu yalnızca UI gruplamasıdır, modül kategorileri, kimlikler ve configler değişmez.
+  Features görünümü, açık oyuncu önizlemesi dahil ekrana ortalanır;
+  elle sürükleme konumu merkezden göreli fark olarak korunur.
+  Other sayfaları (Friends, Configs, Themes ve HUD) mevcut geniş görünümü korur.
+  Modüller 64 piksel yüksekliğinde kompakt satırlardır: solda isim ve
+  açıklama, sağda ayar dişlisi ve bağımsız aç/kapat anahtarı bulunur. Etkin modül
+  adı tema rengini kullanır. Dar modül kartları solda kalır; dişli ayarları ana
+  panelin sağdaki boş alanında açar. Ayarlar dışarı taşmaz; açılıp kapanırken
+  ana panelin boyutu/konumu ve kart genişliği değişmez.
+  Tuş ataması ve mevcut modül ayarları korunur. Uzun ayarlar çubuksuz kayar.
+  Anahtar, ayarları açmadan modül durumunu değiştirir.
+  Arama sonuçları aynı düzeni kullanır. Ayarsız
+  modüllerin dişlisi pasiftir; Panic anahtar yerine anlık çıkış düğmesidir.
+- Config ekranı tek paneldir: üstte isim alanı, altında sade kayıt satırları vardır.
+  İsim yazılınca açıklama ve oluşturma düğmesi aşağı açılır; isim silinince kapanır.
+  Hareketi azalt tercihi bu geçişi doğrudan uygular. İndirme/modül sayaçları yoktur.
+  Satır ikonları yükleme, mevcut ayarlarla güncelleme ve silme içindir; güncelleme
+  ve silme onay ister. Kayıt adına tıklamak isim/açıklama düzenlemesini açar.
+  My Configs yalnızca kendi kayıtlarını, Public Configs yalnızca diğer kullanıcıların
+  kayıtlarını gösterir. Favourites seçimi ve mevcut lisanslı public config servisi korunur.
+- Friends ekranı da tek paneldir: Settings bölümündeki orta tık anahtarı mevcut
+  Friends Manager modülünü açar/kapatır. Name modunda Enter veya artı ile isim
+  eklenir; Server players modunda mevcut sunucu listesi aranıp arkadaş seçilebilir.
+  Sade satırlardan arkadaş silinir; boş liste açıklaması, tema renkleri ve çubuksuz
+  kaydırma kullanılır. Arkadaş listesi oturumluk kalır; mevcut combat korumaları
+  değişmez. Yarıçapla ekleme veya global ESP override seçeneği eklenmedi.
+- HUD sayfasında Watermark, ArrayList ve Target HUD ölçeği satırdaki Scale
+  kontrollerinden ayarlanır; Spotify ölçeği sabittir. Satıra tıklamak öğeyi seçer,
+  listenin altındaki tek Edit düğmesi ekran üzerindeki yerleşim düzenleyicisini açar.
+  Başlık ve satır yazıları aynı sol hizadadır. Modül aç/kapat ve diğer ayarlar
+  mevcut kategorilerinde kalır. Undo/Reset ve Grid/Snap düzenleyicinin araç
+  çubuğundadır. Sürükleme, Alt ile
+  serbest hareket, oklar/Shift, Ctrl+Z, ESC dönüşü ve yerel yerleşim kaydı korunur.
 - Temalar sayfasında menü arka planı seçilebilir: Klasik (eski görünüm), Hisar,
   Pamuk Alacakaranlığı, Nebula ve Aurora. Hazır görseller DLL'e gömülüdür; indirme
   gerektirmez. **Görsel ekle** ile PNG/JPG seçilebilir (16 MB, kenar başına 8192
@@ -100,6 +139,10 @@ istemcisi içerir.
   değiştirilmez. Seçim UI tercihlerine kaydedilir, paylaşılan oyun configlerine
   eklenmez. Eski tercihler klasik görünümü korur; kayıp görselde klasik görünüm
   kullanılır. Windows dosya seçicisi ve oyun içi görünüm ayrıca denenmelidir.
+  Yeni görünümde sekiz vurgu paleti üstte küçük renk kartlarıyla, altı arka plan
+  altta görsel kartlarla seçilir. Add image ve boş Custom image kartı aynı dosya
+  seçicisini açar. Yoğunluk ve karartma yüzde olarak, geniş panelde yan yana
+  gösterilir; dar panelde alt alta dizilir. Standart menü boyutunda tek ekrana sığar.
 - Eski UI/Qt kaynakları ve arayüz ses sistemi kaldırıldı.
 - Player > Auto Totem artık tek modüldür: Normal / Legit seçimi aynı paneldedir.
   Normal otomatik envanter açmayı, Legit yalnızca açık envanterde çalışmayı ve

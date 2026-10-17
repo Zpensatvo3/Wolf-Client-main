@@ -1,5 +1,7 @@
 #include "menu_background.hpp"
 #include "../gui/ui_state.hpp"
+#include <cfloat>
+#include <cstdio>
 
 bool gui::background::render(ImDrawList* draw, ImVec2 minimum, ImVec2 size, const options& raw)
 {
@@ -17,85 +19,165 @@ bool gui::background::render(ImDrawList* draw, ImVec2 minimum, ImVec2 size, cons
     return true;
 }
 
+namespace
+{
+    constexpr ImU32 background_primary = IM_COL32(234, 234, 241, 255);
+    constexpr ImU32 background_muted = IM_COL32(139, 137, 151, 255);
+
+    void background_label(ImVec2 at, const char* text, float size = 12.f,
+        ImU32 color = background_muted, float width = FLT_MAX)
+    {
+        const ImVec4 clip(at.x, at.y, at.x + width, at.y + size + 4);
+        ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), size, at,
+            ImGui::GetColorU32(ImGui::ColorConvertU32ToFloat4(color)), text, nullptr, 0.f, &clip);
+    }
+    void background_slider(const char* id, const char* title, float* value, float low, float high, float width)
+    {
+        ImGui::PushID(id);
+        const auto p = ImGui::GetCursorScreenPos();
+        background_label(p, title, 11.f);
+        char number[16];
+        std::snprintf(number, sizeof(number), "%d%%", static_cast<int>(std::lround(*value * 100)));
+        const auto extent = ImGui::GetFont()->CalcTextSizeA(11.f, FLT_MAX, 0, number);
+        background_label(ImVec2(p.x + width - extent.x, p.y), number, 11.f, background_primary);
+        ImGui::Dummy(ImVec2(0, 14));
+        ImGui::SetCursorScreenPos(ImVec2(p.x, p.y + 20));
+        ImGui::SetNextItemWidth(width);
+        if (ImGui::SliderFloat("##value", value, low, high, "", ImGuiSliderFlags_AlwaysClamp))
+            gui::aegis::mark_preferences_dirty();
+        ImGui::PopID();
+    }
+}
+
 void gui::background::render_settings(ImU32 accent)
 {
     ImGui::PushID("menu_background");
     auto& value = aegis::get_preferences().menu_background;
-    ImGui::TextUnformatted("Menu background");
-    ImGui::TextDisabled("%s", "Local only. Your gameplay configs are unchanged.");
-    ImGui::Spacing();
+    const auto import = status();
+    const bool choosing = import == import_state::choosing;
+    const float width = ImGui::GetContentRegionAvail().x;
+    auto* draw = ImGui::GetWindowDrawList();
 
-    const char* labels[] = {
-        "Classic", "Citadel",
-        "Candy Dusk", "Nebula", "Aurora",
-        "My image"
-    };
-    const float gap = 10.f, width = ImGui::GetContentRegionAvail().x;
-    const int columns = std::clamp(static_cast<int>((width + gap) / 170.f), 1, 3);
-    const ImVec2 card(std::max(1.f, (width - gap * (columns - 1)) / columns), 104.f);
-    const ImVec2 start = ImGui::GetCursorScreenPos();
-    for (int index = 0; index < static_cast<int>(style::count); ++index)
-    {
-        ImGui::PushID(index);
-        const auto selected = static_cast<style>(index);
-        const auto image = selected == style::classic ? texture_view{} : texture(selected);
-        const bool available = selected == style::classic || image.id;
-        const ImVec2 minimum(start.x + (index % columns) * (card.x + gap),
-            start.y + (index / columns) * (card.y + gap));
-        const ImVec2 maximum(minimum.x + card.x, minimum.y + card.y);
-        ImGui::SetCursorScreenPos(minimum);
-        ImGui::BeginDisabled(!available);
-        if (ImGui::InvisibleButton("##select", card))
-        {
-            value.selected = selected;
-            aegis::mark_preferences_dirty();
+    const auto heading = ImGui::GetCursorScreenPos();
+    background_label(ImVec2(heading.x, heading.y + 8), "Menu background", 13.f, background_primary, std::max(1.f, width - 110));
+    ImGui::SetCursorScreenPos(ImVec2(heading.x + width - 104, heading.y));
+    ImGui::BeginDisabled(choosing);
+    const auto button = ImGui::GetCursorScreenPos();
+    if (ImGui::InvisibleButton("##import", ImVec2(104, 30))) begin_import();
+    const bool hovered = ImGui::IsItemHovered();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip("%s", "PNG / JPG, up to 16 MB");
+    draw->AddRectFilled(button, ImVec2(button.x + 104, button.y + 30), IM_COL32(255, 255, 255, hovered ? 15 : 6), 6.f);
+    draw->AddRect(button, ImVec2(button.x + 104, button.y + 30), IM_COL32(255, 255, 255, hovered ? 30 : 18), 6.f);
+    background_label(ImVec2(button.x + 22, button.y + 9), "Add image", 11.f, background_primary);
+    const auto center = ImVec2(button.x + 12, button.y + 15);
+    draw->AddLine(ImVec2(center.x - 3.5f, center.y), ImVec2(center.x + 3.5f, center.y), background_muted, 1.2f);
+    draw->AddLine(ImVec2(center.x, center.y - 3.5f), ImVec2(center.x, center.y + 3.5f), background_muted, 1.2f);
+    ImGui::EndDisabled();
+    ImGui::SetCursorScreenPos(ImVec2(heading.x, heading.y + 38));
+
+    const char* names[] = { "Classic", "Citadel", "Candy Dusk", "Nebula", "Aurora", "Custom image" };
+    constexpr float gap = 10.f;
+    const int columns = std::clamp(static_cast<int>((width + gap) / 180.f), 1, 3);
+    const ImVec2 size(std::max(1.f, (width - gap * (columns - 1)) / columns), 94.f);
+    const auto start = ImGui::GetCursorScreenPos();
+    for (int i = 0; i < static_cast<int>(style::count); ++i) {
+        ImGui::PushID(i);
+        const auto preset = static_cast<style>(i);
+        const auto image = preset == style::classic ? texture_view{} : texture(preset);
+        const bool empty_custom = preset == style::custom && !image.id;
+        const bool available = preset == style::classic || image.id || empty_custom;
+        const float x = start.x + (i % columns) * (size.x + gap);
+        const float y = start.y + (i / columns) * (size.y + gap);
+        const ImVec2 p(std::floor(x), std::floor(y));
+        const ImVec2 maximum(std::floor(x + size.x), std::floor(y + size.y));
+        ImGui::SetCursorScreenPos(p);
+        ImGui::BeginDisabled(!available || (empty_custom && choosing));
+        if (ImGui::InvisibleButton("##select", ImVec2(maximum.x - p.x, maximum.y - p.y))) {
+            if (empty_custom) begin_import();
+            else if (value.selected != preset) {
+                value.selected = preset;
+                aegis::mark_preferences_dirty();
+            }
         }
-        const bool hovered = ImGui::IsItemHovered();
+        const bool hover = ImGui::IsItemHovered();
         ImGui::EndDisabled();
-        auto* draw = ImGui::GetWindowDrawList();
-        draw->AddRectFilled(minimum, maximum, IM_COL32(14, 15, 21, 245), 9.f);
-        if (image.id)
-        {
-            const auto uv = cover_uv(image.size, card);
-            draw->AddImageRounded(image.id, minimum, maximum, uv.minimum, uv.maximum,
-                IM_COL32_WHITE, 9.f);
-            draw->AddRectFilled(minimum, maximum, IM_COL32(0, 0, 0, 55), 9.f);
+        const bool selected = value.selected == preset;
+        // Draw the frame as a filled ring. The thumbnail and footer stay inside
+        // it, so fractional stroke widths cannot overlap their textured edges.
+        const float border = selected ? 2.f : 1.f;
+        const ImVec2 inside(p.x + border, p.y + border);
+        const ImVec2 inside_max(maximum.x - border, maximum.y - border);
+        const ImVec2 image_max(inside_max.x, inside_max.y - 26.f);
+        draw->AddRectFilled(p, maximum, selected ? accent : IM_COL32(hover ? 58 : 36, hover ? 55 : 34, hover ? 70 : 44, 255), 7.f);
+        draw->AddRectFilled(inside, inside_max, IM_COL32(21, 20, 28, 255), 7.f - border);
+        if (image.id) {
+            const auto uv = cover_uv(image.size, ImVec2(image_max.x - inside.x, image_max.y - inside.y));
+            draw->AddImageRounded(image.id, inside, image_max, uv.minimum, uv.maximum,
+                IM_COL32_WHITE, 7.f - border, ImDrawFlags_RoundCornersTop);
+            draw->AddRectFilled(inside, image_max, IM_COL32(0, 0, 0, hover ? 8 : 24),
+                7.f - border, ImDrawFlags_RoundCornersTop);
+        } else if (preset == style::classic) {
+            // A miniature classic menu, instead of an empty black thumbnail.
+            const ImVec2 mini(p.x + 17, p.y + 12), mini_max(maximum.x - 17, maximum.y - 33);
+            draw->AddRectFilled(mini, mini_max, IM_COL32(9, 9, 14, 255), 4.f);
+            draw->AddRectFilled(mini, ImVec2(mini.x + size.x * .18f, mini_max.y), IM_COL32(29, 26, 39, 255), 4.f, ImDrawFlags_RoundCornersLeft);
+            draw->AddRectFilled(ImVec2(mini.x + 6, mini.y + 10), ImVec2(mini.x + size.x * .18f - 6, mini.y + 15), accent, 2.f);
+            for (int row = 0; row < 3; ++row)
+                draw->AddRectFilled(ImVec2(mini.x + size.x * .18f + 8, mini.y + 8 + row * 10),
+                    ImVec2(mini_max.x - 8, mini.y + 13 + row * 10), IM_COL32(52, 48, 65, 255), 2.f);
+        } else if (empty_custom) {
+            const ImVec2 c(p.x + size.x * .5f, p.y + 31);
+            draw->AddCircle(c, 12.f, IM_COL32(255, 255, 255, 27), 0, 1.f);
+            draw->AddLine(ImVec2(c.x - 4, c.y), ImVec2(c.x + 4, c.y), background_muted, 1.3f);
+            draw->AddLine(ImVec2(c.x, c.y - 4), ImVec2(c.x, c.y + 4), background_muted, 1.3f);
         }
-        draw->AddRectFilled(ImVec2(minimum.x, maximum.y - 29.f), maximum,
-            IM_COL32(5, 6, 10, 210), 9.f, ImDrawFlags_RoundCornersBottom);
-        draw->AddRect(minimum, maximum, value.selected == selected ? accent :
-            IM_COL32(255, 255, 255, hovered ? 50 : 20), 9.f, 0, value.selected == selected ? 2.f : 1.f);
-        draw->AddText(ImGui::GetFont(), 12.f,
-            ImVec2(minimum.x + 10.f, maximum.y - 23.f), available ? IM_COL32_WHITE : IM_COL32(140, 140, 150, 255), labels[index]);
-        if (value.selected == selected)
-            draw->AddCircleFilled(ImVec2(maximum.x - 13.f, minimum.y + 13.f), 4.f, accent);
+        draw->AddRectFilled(ImVec2(inside.x, image_max.y), inside_max, IM_COL32(12, 11, 17, 255),
+            7.f - border, ImDrawFlags_RoundCornersBottom);
+        background_label(ImVec2(p.x + 10, maximum.y - 19), names[i], 11.5f,
+            available ? background_primary : background_muted, size.x - 20);
+        if (selected) {
+            const ImVec2 c(maximum.x - 14, p.y + 14);
+            draw->AddCircleFilled(c, 7.f, accent);
+            const ImVec2 check[] = { {c.x - 3, c.y}, {c.x - 1, c.y + 2}, {c.x + 3, c.y - 3} };
+            draw->AddPolyline(check, 3, IM_COL32_WHITE, 0, 1.4f);
+        }
+        if (!available && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("%s", "This background could not be loaded.");
         ImGui::PopID();
     }
     const int rows = (static_cast<int>(style::count) + columns - 1) / columns;
-    ImGui::SetCursorScreenPos(ImVec2(start.x, start.y + rows * (card.y + gap)));
+    ImGui::SetCursorScreenPos(ImVec2(start.x, start.y + rows * (size.y + gap) - gap + 14));
 
-    const auto state = status();
-    ImGui::BeginDisabled(state == import_state::choosing);
-    if (ImGui::Button("Add image...")) begin_import();
-    ImGui::EndDisabled();
-    ImGui::SameLine();
-    ImGui::TextDisabled("%s", "PNG / JPG · up to 16 MB");
-    if (state == import_state::choosing)
-        ImGui::TextDisabled("%s", "Choose an image in the file window.");
-    else if (state == import_state::failed)
-        ImGui::TextWrapped("%s", "Image could not be loaded. Use PNG/JPG, at most 8192 px per side and 16 megapixels.");
-    else if (state == import_state::save_failed)
-        ImGui::TextWrapped("%s", "Image could not be saved. Your previous background is unchanged.");
-    else if (state == import_state::imported)
-        ImGui::TextDisabled("%s", "Image saved on this computer.");
-    else if (value.selected == style::custom && !texture(style::custom).id)
-        ImGui::TextWrapped("%s", "Saved image is missing. Classic background is used until you add an image again.");
-
+    const auto controls = ImGui::GetCursorScreenPos();
+    const bool side_by_side = width >= 360.f;
+    const float control_width = side_by_side ? (width - 20) * .5f : width;
     ImGui::BeginDisabled(value.selected == style::classic);
-    if (ImGui::SliderFloat("Image opacity", &value.opacity, 0.f, 1.f, "%.2f"))
-        aegis::mark_preferences_dirty();
-    if (ImGui::SliderFloat("Darkening", &value.dimming, .25f, .85f, "%.2f"))
-        aegis::mark_preferences_dirty();
+    background_slider("opacity", "Image opacity", &value.opacity, 0.f, 1.f, control_width);
+    if (side_by_side) ImGui::SetCursorScreenPos(ImVec2(controls.x + control_width + 20, controls.y));
+    background_slider("dimming", "Darkening", &value.dimming, .25f, .85f, control_width);
     ImGui::EndDisabled();
+    ImGui::Dummy(ImVec2(0, 3));
+
+    const char* message = nullptr;
+    bool error = false;
+    if (choosing) message = "Choose an image in the file window.";
+    else if (import == import_state::failed) {
+        message = "Could not load image. Use PNG/JPG, up to 8192 px per side and 16 megapixels.";
+        error = true;
+    } else if (import == import_state::save_failed) {
+        message = "Could not save image. Your previous background is unchanged.";
+        error = true;
+    } else if (value.selected == style::custom && !texture(style::custom).id) {
+        message = "Saved image is missing. Classic is used until you add an image again.";
+        error = true;
+    }
+    if (message) {
+        ImGui::PushStyleColor(ImGuiCol_Text, error ? IM_COL32(240, 112, 128, 255) : background_muted);
+        ImGui::PushTextWrapPos(0);
+        ImGui::TextUnformatted(message);
+        ImGui::PopTextWrapPos();
+        ImGui::PopStyleColor();
+    }
     ImGui::PopID();
 }

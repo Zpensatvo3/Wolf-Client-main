@@ -465,6 +465,12 @@
     <ClCompile Include="src\ui\config_page.cpp">
       <Filter>Source Files\src\ui</Filter>
     </ClCompile>
+    <ClCompile Include="src\ui\friends_page.cpp">
+      <Filter>Source Files\src\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ui\themes_page.cpp">
+      <Filter>Source Files\src\ui</Filter>
+    </ClCompile>
     <ClCompile Include="src\ui\notification_renderer.cpp">
       <Filter>Source Files\src\ui</Filter>
     </ClCompile>
@@ -1590,6 +1596,12 @@
       <Filter>Header Files\src\ui</Filter>
     </ClInclude>
     <ClInclude Include="src\ui\config_page.hpp">
+      <Filter>Header Files\src\ui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ui\friends_page.hpp">
+      <Filter>Header Files\src\ui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ui\themes_page.hpp">
       <Filter>Header Files\src\ui</Filter>
     </ClInclude>
     <ClInclude Include="src\ui\config_page_model.hpp">

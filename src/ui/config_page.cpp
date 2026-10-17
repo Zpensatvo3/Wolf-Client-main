@@ -4,7 +4,8 @@
 #include "config_page.hpp"
 #include "config_page_model.hpp"
 #include "../gui/gui.hpp"
-#include "../gui/surface_style.hpp"
+#include "../gui/control_draw.hpp"
+#include "../gui/ui_state.hpp"
 #include "../modules/core/module_registry.hpp"
 #include "../modules/core/public_config.hpp"
 #include "../friends/friends.hpp"
@@ -18,138 +19,55 @@ namespace gui::config_page
         enum class operation { none, refresh, publish, load, remove };
         struct page_state
         {
-            bool requested = false, editor = false, narrow_details = false;
-            int selected = 0, editing = 0, deleting = 0, sort = 0;
-            model::collection tab = model::collection::community;
+            bool requested = false, focus_name = false;
+            int selected = 0, editing = 0, deleting = 0, saving = 0, pending_id = 0;
+            float expansion = 0.f;
+            model::collection tab = model::collection::mine;
             std::unordered_set<int> favourites;
-            char search[96]{}, name[49]{}, description[181]{};
+            char name[49]{}, description[181]{};
             operation pending = operation::none;
             std::uint64_t started_revision = 0;
-            std::string delete_name;
+            std::string confirm_name;
         };
         page_state state;
-        constexpr ImU32 primary = IM_COL32(234, 238, 246, 255);
-        constexpr ImU32 muted = IM_COL32(143, 151, 169, 255);
-        constexpr ImU32 faint = IM_COL32(103, 113, 133, 255);
-        constexpr ImU32 danger = IM_COL32(247, 117, 132, 255);
+        constexpr ImU32 primary = IM_COL32(234, 234, 241, 255);
+        constexpr ImU32 muted = IM_COL32(139, 137, 151, 255);
+        constexpr ImU32 faint = IM_COL32(98, 96, 110, 255);
+        constexpr ImU32 danger = IM_COL32(240, 112, 128, 255);
 
         ImFont* font(bool bold = false)
         {
-            ImFont* result = bold ? gui::ui_bold_font : gui::ui_font;
+            auto* result = bold ? gui::ui_bold_font : gui::ui_font;
             return result ? result : ImGui::GetFont();
         }
-        ImU32 tint(ImU32 color, float alpha)
+        ImU32 tint(ImU32 color, float opacity)
         {
             auto value = ImGui::ColorConvertU32ToFloat4(color);
-            value.w *= alpha;
+            value.w *= opacity;
             return ImGui::GetColorU32(value);
         }
         ImU32 accent() { return gui::get_dynamic_color(); }
-
-        std::string elide(std::string_view value, float width, float size, bool bold = false)
+        void label(ImVec2 at, std::string_view value, float size = 12.f,
+            ImU32 color = muted, bool bold = false, float width = FLT_MAX)
         {
-            std::string output(value);
-            if (font(bold)->CalcTextSizeA(size, FLT_MAX, 0, output.c_str()).x <= width) return output;
-            const float dots = font(bold)->CalcTextSizeA(size, FLT_MAX, 0, "...").x;
-            if (width <= dots) return "";
-            while (!output.empty()) {
-                std::size_t end = output.size() - 1;
-                while (end && (static_cast<unsigned char>(output[end]) & 0xc0) == 0x80) --end;
-                output.resize(end);
-                if (font(bold)->CalcTextSizeA(size, FLT_MAX, 0, output.c_str()).x + dots <= width) break;
-            }
-            return output + "...";
-        }
-        void label(ImVec2 at, std::string_view text, float size = 13.f, ImU32 color = muted,
-            bool bold = false, float width = FLT_MAX)
-        {
-            const auto display = elide(text, width, size, bold);
-            ImGui::GetWindowDrawList()->AddText(font(bold), size, at, ImGui::GetColorU32(ImGui::ColorConvertU32ToFloat4(color)), display.c_str());
-        }
-        void tooltip(const char* value)
-        {
-            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", value);
-        }
-        enum class icon { none, plus, refresh, back, close, star };
-        void draw_icon(ImVec2 c, icon glyph, ImU32 color)
-        {
-            auto* draw = ImGui::GetWindowDrawList();
-            if (glyph == icon::plus) {
-                draw->AddLine(ImVec2(c.x - 5, c.y), ImVec2(c.x + 5, c.y), color, 1.6f);
-                draw->AddLine(ImVec2(c.x, c.y - 5), ImVec2(c.x, c.y + 5), color, 1.6f);
-            } else if (glyph == icon::close) {
-                draw->AddLine(ImVec2(c.x - 4, c.y - 4), ImVec2(c.x + 4, c.y + 4), color, 1.5f);
-                draw->AddLine(ImVec2(c.x - 4, c.y + 4), ImVec2(c.x + 4, c.y - 4), color, 1.5f);
-            } else if (glyph == icon::back) {
-                draw->AddLine(ImVec2(c.x + 3, c.y - 5), ImVec2(c.x - 3, c.y), color, 1.5f);
-                draw->AddLine(ImVec2(c.x - 3, c.y), ImVec2(c.x + 3, c.y + 5), color, 1.5f);
-            } else if (glyph == icon::refresh) {
-                draw->PathArcTo(c, 5.5f, .65f, 5.8f);
-                draw->PathStroke(color, 0, 1.5f);
-                draw->AddTriangleFilled(ImVec2(c.x + 7, c.y - 5), ImVec2(c.x + 2, c.y - 5), ImVec2(c.x + 6, c.y), color);
-            } else if (glyph == icon::star) {
-                for (int p = 0; p < 10; ++p) {
-                    const float angle = -1.5707963f + p * .6283185f;
-                    const float radius = p % 2 ? 3.1f : 7.f;
-                    draw->PathLineTo(ImVec2(c.x + std::cos(angle) * radius, c.y + std::sin(angle) * radius));
+            std::string display(value);
+            if (font(bold)->CalcTextSizeA(size, FLT_MAX, 0, display.c_str()).x > width) {
+                const auto dots = font(bold)->CalcTextSizeA(size, FLT_MAX, 0, "...").x;
+                while (!display.empty()) {
+                    auto end = display.size() - 1;
+                    while (end && (static_cast<unsigned char>(display[end]) & 0xc0) == 0x80) --end;
+                    display.resize(end);
+                    if (font(bold)->CalcTextSizeA(size, FLT_MAX, 0, display.c_str()).x + dots <= width) break;
                 }
-                draw->PathStroke(color, ImDrawFlags_Closed, 1.4f);
+                display += "...";
             }
+            const ImVec4 clip(at.x, at.y, at.x + width, at.y + size + 4);
+            ImGui::GetWindowDrawList()->AddText(font(bold), size, at, tint(color, 1.f),
+                display.c_str(), nullptr, 0.f, &clip);
         }
-        bool button(const char* id, const char* text, ImVec2 size, bool strong = false,
-            bool destructive = false, icon glyph = icon::none)
+        void tooltip(const char* text)
         {
-            const auto p = ImGui::GetCursorScreenPos();
-            const bool pressed = ImGui::InvisibleButton(id, size);
-            const bool hover = ImGui::IsItemHovered(), held = ImGui::IsItemActive();
-            const auto tone = destructive ? danger : accent();
-            auto* draw = ImGui::GetWindowDrawList();
-            const auto fill = strong ? gui::surface_style::mix(IM_COL32(26, 30, 39, 245), tone, held ? .38f : hover ? .28f : .20f)
-                : destructive ? tint(danger, hover ? .14f : .06f) : IM_COL32(255, 255, 255, held ? 20 : hover ? 14 : 6);
-            draw->AddRectFilled(p, ImVec2(p.x + size.x, p.y + size.y), ImGui::GetColorU32(ImGui::ColorConvertU32ToFloat4(fill)), 7.f);
-            draw->AddRect(p, ImVec2(p.x + size.x, p.y + size.y), tint(strong || destructive ? tone : IM_COL32_WHITE, strong ? .36f : .08f), 7.f);
-            const auto color = ImGui::GetColorU32(ImGui::ColorConvertU32ToFloat4(destructive ? danger : strong ? tone : primary));
-            const auto display = elide(text, size.x - (glyph == icon::none ? 14.f : 36.f), 12.5f, true);
-            const float text_width = font(true)->CalcTextSizeA(12.5f, FLT_MAX, 0, display.c_str()).x;
-            const float group_width = text_width + (glyph == icon::none || !text[0] ? 0 : 20.f);
-            const float x = p.x + (size.x - group_width) * .5f;
-            if (glyph != icon::none) draw_icon(ImVec2(text[0] ? x + 6 : p.x + size.x * .5f, p.y + size.y * .5f), glyph, color);
-            if (text[0]) draw->AddText(font(true), 12.5f, ImVec2(x + (glyph == icon::none ? 0 : 20), p.y + (size.y - 12.5f) * .5f - 1), color, display.c_str());
-            return pressed;
-        }
-        void track(operation op, const configs::snapshot& library)
-        {
-            state.pending = op;
-            state.started_revision = library.revision;
-        }
-        void open_editor(const configs::public_config* entry = nullptr)
-        {
-            state.editor = true;
-            state.editing = entry ? entry->id : 0;
-            model::copy_utf8(state.name, entry ? entry->name : "");
-            model::copy_utf8(state.description, entry ? entry->description : "");
-        }
-        bool begin_panel(const char* id, ImVec2 size)
-        {
-            ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 11.f);
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14, 14));
-            ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(.047f, .056f, .072f, .74f));
-            ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(1, 1, 1, .065f));
-            return ImGui::BeginChild(id, size, true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-        }
-        void end_panel()
-        {
-            ImGui::EndChild();
-            ImGui::PopStyleColor(2);
-            ImGui::PopStyleVar(2);
-        }
-        void document(ImVec2 p, float size, bool selected = false)
-        {
-            auto* draw = ImGui::GetWindowDrawList();
-            draw->AddRectFilled(p, ImVec2(p.x + size, p.y + size), tint(accent(), selected ? .17f : .08f), size * .24f);
-            const ImVec2 a(p.x + size * .30f, p.y + size * .24f), b(p.x + size * .70f, p.y + size * .76f);
-            draw->AddRect(a, b, tint(accent(), .85f), 2.f, 0, 1.25f);
-            for (int i = 0; i < 3; ++i) draw->AddLine(ImVec2(a.x + 3, a.y + 5 + i * size * .11f), ImVec2(b.x - 3, a.y + 5 + i * size * .11f), tint(accent(), .65f));
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", text);
         }
         void wrapped(const char* text, ImU32 color = muted)
         {
@@ -159,215 +77,150 @@ namespace gui::config_page
             ImGui::PopTextWrapPos();
             ImGui::PopStyleColor();
         }
-        void section(const char* text)
+        enum class icon { load, save, remove, refresh, star };
+        void draw_icon(ImVec2 c, icon glyph, ImU32 color)
         {
-            const auto p = ImGui::GetCursorScreenPos();
-            label(p, text, 11, faint, true);
-            ImGui::Dummy(ImVec2(0, 16));
-        }
-        void render_library(const configs::snapshot& library, const std::vector<const configs::public_config*>& entries)
-        {
-            const float width = ImGui::GetContentRegionAvail().x;
-            const char* tabs[] = { "Community", "Mine", "Favourites" };
-            for (int i = 0; i < 3; ++i) {
-                if (i) ImGui::SameLine(0, 5);
-                if (button(tabs[i], tabs[i], ImVec2((width - 10) / 3, 31), static_cast<int>(state.tab) == i)) state.tab = static_cast<model::collection>(i);
+            auto* draw = ImGui::GetWindowDrawList();
+            const char* symbol = nullptr;
+            ImWchar codepoint = 0;
+            switch (glyph) {
+            case icon::load: symbol = "\xEF\x80\x99"; codepoint = 0xF019; break;
+            case icon::save: symbol = "\xEF\x83\x87"; codepoint = 0xF0C7; break;
+            case icon::remove: symbol = "\xEF\x87\xB8"; codepoint = 0xF1F8; break;
+            case icon::refresh: symbol = "\xEF\x80\xA1"; codepoint = 0xF021; break;
+            case icon::star: symbol = "\xEF\x80\x85"; codepoint = 0xF005; break;
             }
-            ImGui::Dummy(ImVec2(0, 3));
-            ImGui::SetNextItemWidth(width - 33);
-            ImGui::InputTextWithHint("##search", "Search setups, authors...", state.search, IM_ARRAYSIZE(state.search));
-            ImGui::SameLine(0, 5);
-            if (button("clear_search", "", ImVec2(28, ImGui::GetFrameHeight()), false, false, icon::close)) state.search[0] = '\0';
-            tooltip("Clear search");
-            const auto row = ImGui::GetCursorScreenPos();
-            label(ImVec2(row.x, row.y + 6), std::to_string(entries.size()) + " setups", 11.5f, faint);
-            ImGui::SetCursorScreenPos(ImVec2(row.x + std::max(0.f, width - 128), row.y));
-            ImGui::SetNextItemWidth(128);
-            const char* sorts[] = { "Recent", "Popular", "Name" };
-            ImGui::Combo("##sort", &state.sort, sorts, 3);
-            ImGui::SetCursorScreenPos(ImVec2(row.x, row.y + ImGui::GetFrameHeight() + 8));
-            ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
-            if (ImGui::BeginChild("##rows", ImVec2(0, 0), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar)) {
-                for (const auto* entry : entries) {
-                    ImGui::PushID(entry->id);
-                    const auto p = ImGui::GetCursorScreenPos();
-                    const float row_width = ImGui::GetContentRegionAvail().x;
-                    if (ImGui::InvisibleButton("row", ImVec2(row_width, 72))) {
-                        state.selected = entry->id;
-                        state.narrow_details = true;
-                    }
-                    const bool selected = state.selected == entry->id;
-                    gui::surface_style::module_card(ImGui::GetWindowDrawList(), p, ImVec2(p.x + row_width, p.y + 72), accent(), ImGui::IsItemHovered() ? 1.f : 0.f, selected ? .65f : 0.f);
-                    document(ImVec2(p.x + 10, p.y + 15), 36, selected);
-                    label(ImVec2(p.x + 57, p.y + 12), entry->name, 14, selected ? accent() : primary, true, row_width - 72);
-                    label(ImVec2(p.x + 57, p.y + 33), entry->author_name, 11.5f, muted, false, row_width - 94);
-                    label(ImVec2(p.x + 57, p.y + 51), std::to_string(entry->module_count) + " modules  /  " + std::to_string(entry->downloads) + " loads", 10.5f, faint, false, row_width - 72);
-                    if (state.favourites.contains(entry->id)) draw_icon(ImVec2(p.x + row_width - 16, p.y + 40), icon::star, tint(accent(), .8f));
-                    tooltip(entry->name.c_str());
-                    ImGui::Dummy(ImVec2(0, 3));
-                    ImGui::PopID();
-                }
-                if (entries.empty()) {
-                    ImGui::Dummy(ImVec2(0, 32));
-                    document(ImGui::GetCursorScreenPos(), 44);
-                    ImGui::Dummy(ImVec2(0, 58));
-                    wrapped(library.busy ? "Fetching configs..." : "No matching configs", primary);
-                    wrapped(state.search[0] ? "Try another name or clear your search."
-                        : state.tab == model::collection::favourites ? "Star a config to find it here. Favourites last for this session."
-                        : state.tab == model::collection::mine ? "Publish your first setup with New config."
-                        : "Refresh to check the community library.");
-                }
-            }
-            ImGui::EndChild();
-            ImGui::PopStyleColor();
-        }
-
-        void render_details(const configs::snapshot& library, const configs::public_config* selected)
-        {
-            const auto top = ImGui::GetCursorScreenPos();
-            const float width = ImGui::GetContentRegionAvail().x, height = ImGui::GetContentRegionAvail().y;
-            if (!selected) {
-                ImGui::Dummy(ImVec2(0, 34));
-                document(ImGui::GetCursorScreenPos(), 52);
-                ImGui::Dummy(ImVec2(0, 68));
-                wrapped("Your next setup starts here", primary);
-                ImGui::Dummy(ImVec2(0, 4));
-                wrapped("Choose a config to see its details, or share your own settings with the community.");
+            if (gui::icon_font && gui::icon_font->FindGlyphNoFallback(codepoint)) {
+                gui::control_draw::centered_label(draw, gui::icon_font, 14.f,
+                    ImVec2(c.x - 8, c.y - 8), ImVec2(c.x + 8, c.y + 8), color, symbol, ImVec2(0, 0));
                 return;
             }
-            const float footer = selected->mine ? 114.f : 74.f;
-            ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
-            if (ImGui::BeginChild("##detail_scroll", ImVec2(0, std::max(40.f, height - footer)), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar)) {
-                section(selected->mine ? "YOUR CONFIG" : "COMMUNITY CONFIG");
-                document(ImGui::GetCursorScreenPos(), 48, true);
-                ImGui::Dummy(ImVec2(0, 62));
-                ImGui::PushFont(font(true));
-                wrapped(selected->name.c_str(), primary);
-                ImGui::PopFont();
-                wrapped(("by " + selected->author_name).c_str());
-                ImGui::Dummy(ImVec2(0, 12));
-                const auto p = ImGui::GetCursorScreenPos();
-                const float tile_width = (width - 8) / 2;
-                for (int i = 0; i < 2; ++i) {
-                    const auto tile = ImVec2(p.x + i * (tile_width + 8), p.y);
-                    ImGui::GetWindowDrawList()->AddRectFilled(tile, ImVec2(tile.x + tile_width, tile.y + 59), IM_COL32(255, 255, 255, 5), 7);
-                    label(ImVec2(tile.x + 10, tile.y + 8), std::to_string(i ? selected->downloads : selected->module_count), 19, primary, true, tile_width - 20);
-                    label(ImVec2(tile.x + 10, tile.y + 35), i ? "Downloads" : "Active modules", 10.5f, muted, false, tile_width - 20);
+            // Keep actions recognizable while the shared icon font is unavailable.
+            if (glyph == icon::load) {
+                draw->AddLine(ImVec2(c.x, c.y - 6), ImVec2(c.x, c.y + 3), color, 1.4f);
+                draw->AddLine(ImVec2(c.x - 4, c.y), ImVec2(c.x, c.y + 4), color, 1.4f);
+                draw->AddLine(ImVec2(c.x + 4, c.y), ImVec2(c.x, c.y + 4), color, 1.4f);
+                draw->AddLine(ImVec2(c.x - 6, c.y + 5), ImVec2(c.x - 6, c.y + 7), color, 1.3f);
+                draw->AddLine(ImVec2(c.x - 6, c.y + 7), ImVec2(c.x + 6, c.y + 7), color, 1.3f);
+                draw->AddLine(ImVec2(c.x + 6, c.y + 7), ImVec2(c.x + 6, c.y + 5), color, 1.3f);
+            } else if (glyph == icon::save) {
+                draw->AddRect(ImVec2(c.x - 5, c.y - 6), ImVec2(c.x + 5, c.y + 6), color, 1.f, 0, 1.3f);
+                draw->AddRect(ImVec2(c.x - 2, c.y - 6), ImVec2(c.x + 2, c.y - 1), color, 0, 0, 1.1f);
+                draw->AddRect(ImVec2(c.x - 3, c.y + 2), ImVec2(c.x + 3, c.y + 6), color, 0, 0, 1.1f);
+            } else if (glyph == icon::remove) {
+                draw->AddLine(ImVec2(c.x - 6, c.y - 4), ImVec2(c.x + 6, c.y - 4), color, 1.3f);
+                draw->AddLine(ImVec2(c.x - 2, c.y - 7), ImVec2(c.x + 2, c.y - 7), color, 1.3f);
+                draw->AddRect(ImVec2(c.x - 4, c.y - 3), ImVec2(c.x + 4, c.y + 6), color, 1.f, 0, 1.3f);
+                for (int i : {-1, 1}) draw->AddLine(ImVec2(c.x + i * 1.5f, c.y), ImVec2(c.x + i * 1.5f, c.y + 3), color, 1.f);
+            } else if (glyph == icon::refresh) {
+                draw->PathArcTo(c, 5.5f, .65f, 5.8f);
+                draw->PathStroke(color, 0, 1.4f);
+                draw->AddTriangleFilled(ImVec2(c.x + 7, c.y - 5), ImVec2(c.x + 2, c.y - 5), ImVec2(c.x + 6, c.y), color);
+            } else {
+                for (int i = 0; i < 10; ++i) {
+                    const auto angle = -1.5707963f + i * .6283185f;
+                    const auto radius = i % 2 ? 3.f : 6.f;
+                    draw->PathLineTo(ImVec2(c.x + std::cos(angle) * radius, c.y + std::sin(angle) * radius));
                 }
-                ImGui::Dummy(ImVec2(0, 74));
-                section("ABOUT THIS SETUP");
-                wrapped(selected->description.empty() ? "No description provided." : selected->description.c_str());
-                ImGui::Dummy(ImVec2(0, 15));
-                wrapped(("Updated  " + model::date(selected->updated_at.empty() ? selected->created_at : selected->updated_at)).c_str(), faint);
+                draw->PathStroke(color, ImDrawFlags_Closed, 1.3f);
             }
-            ImGui::EndChild();
-            ImGui::PopStyleColor();
-            ImGui::SetCursorScreenPos(ImVec2(top.x, top.y + height - footer + 9));
-            ImGui::GetWindowDrawList()->AddLine(ImVec2(top.x, top.y + height - footer), ImVec2(top.x + width, top.y + height - footer), IM_COL32(255, 255, 255, 12));
-            ImGui::BeginDisabled(library.busy || state.pending != operation::none);
-            if (button("load", "Load config", ImVec2(width - 46, 35), true)) {
-                track(operation::load, library);
-                configs::load(selected->id);
-            }
-            ImGui::EndDisabled();
-            ImGui::SameLine(0, 8);
-            const bool favourite = state.favourites.contains(selected->id);
-            if (button("favourite", "", ImVec2(38, 35), favourite, false, icon::star)) {
-                if (favourite) state.favourites.erase(selected->id); else state.favourites.insert(selected->id);
-            }
-            tooltip(favourite ? "Remove favourite" : "Add to session favourites");
-            if (selected->mine) {
-                ImGui::BeginDisabled(library.busy || state.pending != operation::none);
-                if (button("edit", "Edit", ImVec2((width - 8) / 2, 30))) open_editor(selected);
-                ImGui::SameLine(0, 8);
-                if (button("delete", "Delete", ImVec2((width - 8) / 2, 30), false, true)) {
-                    state.deleting = selected->id;
-                    state.delete_name = selected->name;
-                }
-                ImGui::EndDisabled();
-            }
-            label(ImGui::GetCursorScreenPos(), "Loading replaces your current module settings.", 10.5f, faint, false, width);
         }
-
-        void render_editor(const configs::snapshot& library)
+        bool icon_button(const char* id, icon glyph, const char* hint, bool active = false)
         {
-            const auto top = ImGui::GetCursorScreenPos();
-            const float width = ImGui::GetContentRegionAvail().x, height = ImGui::GetContentRegionAvail().y;
-            const bool busy = library.busy || state.pending != operation::none;
-            const std::string author = friends::local_player_name();
-            ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
-            if (ImGui::BeginChild("##form_scroll", ImVec2(0, std::max(40.f, height - 87)), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar)) {
-                section(state.editing ? "EDIT CONFIG" : "NEW CONFIG");
-                ImGui::PushFont(font(true));
-                wrapped(state.editing ? "Refine your setup" : "Share your setup", primary);
-                ImGui::PopFont();
-                wrapped("Your current modules and their settings will be shared publicly.");
-                ImGui::Dummy(ImVec2(0, 2));
-                ImGui::BeginDisabled(busy);
-                section("CONFIG NAME");
-                ImGui::SetNextItemWidth(-1);
-                ImGui::InputTextWithHint("##name", "e.g. Clean survival", state.name, IM_ARRAYSIZE(state.name));
-                label(ImGui::GetCursorScreenPos(), std::to_string(std::strlen(state.name)) + " / 48", 10, faint);
-                ImGui::Dummy(ImVec2(0, 12));
-                section("DESCRIPTION / OPTIONAL");
-                ImGui::InputTextMultiline("##description", state.description, IM_ARRAYSIZE(state.description), ImVec2(-1, 72));
-                label(ImGui::GetCursorScreenPos(), std::to_string(std::strlen(state.description)) + " / 180", 10, faint);
-                ImGui::Dummy(ImVec2(0, 15));
-                ImGui::EndDisabled();
-                section("PUBLISHING AS");
-                wrapped(author.empty() ? "Join a world to publish a config." : author.c_str(), author.empty() ? danger : primary);
-                wrapped((std::to_string(modules::enabled_module_count()) + " active modules included").c_str(), faint);
-                if (state.editing) {
-                    ImGui::Dummy(ImVec2(0, 8));
-                    wrapped("Saving also replaces this config's shared settings with your current ones.", faint);
-                }
-            }
-            ImGui::EndChild();
-            ImGui::PopStyleColor();
-            ImGui::SetCursorScreenPos(ImVec2(top.x, top.y + height - 76));
-            ImGui::BeginDisabled(busy || author.empty() || model::trim(state.name).empty());
-            if (button("publish", state.editing ? "Save changes" : "Publish config", ImVec2(width, 36), true)) {
-                track(operation::publish, library);
-                configs::publish(state.editing, model::trim(state.name), model::trim(state.description), author,
-                    modules::export_public_config(), modules::enabled_module_count());
-            }
-            ImGui::EndDisabled();
-            ImGui::BeginDisabled(busy);
-            if (button("cancel_edit", "Cancel", ImVec2(width, 29))) state.editor = false;
-            ImGui::EndDisabled();
+            const auto p = ImGui::GetCursorScreenPos();
+            const bool pressed = ImGui::InvisibleButton(id, ImVec2(30, 30));
+            const bool hovered = ImGui::IsItemHovered();
+            const bool held = ImGui::IsItemActive();
+            const auto tone = glyph == icon::remove ? danger : accent();
+            const auto maximum = ImVec2(p.x + 30, p.y + 30);
+            auto* draw = ImGui::GetWindowDrawList();
+            draw->AddRectFilled(p, maximum, tint(hovered || active ? tone : IM_COL32_WHITE,
+                held ? .19f : hovered || active ? .11f : .022f), 6.f);
+            draw->AddRect(p, maximum, tint(hovered || active ? tone : IM_COL32_WHITE,
+                hovered || active ? .25f : .035f), 6.f);
+            draw_icon(ImVec2(p.x + 15, p.y + 15), glyph,
+                tint(hovered || active ? tone : IM_COL32(163, 159, 177, 255), 1.f));
+            tooltip(hint);
+            return pressed;
         }
-        void render_delete(const configs::snapshot& library)
+        bool button(const char* id, const char* text, ImVec2 size, bool strong = false, bool destructive = false)
         {
-            if (state.deleting && !ImGui::IsPopupOpen("##config_delete")) ImGui::OpenPopup("##config_delete");
+            const auto p = ImGui::GetCursorScreenPos();
+            const bool pressed = ImGui::InvisibleButton(id, size);
+            const bool hover = ImGui::IsItemHovered();
+            const auto tone = destructive ? danger : accent();
+            auto* draw = ImGui::GetWindowDrawList();
+            draw->AddRectFilled(p, ImVec2(p.x + size.x, p.y + size.y),
+                strong || destructive ? tint(tone, hover ? .22f : .13f) : tint(IM_COL32_WHITE, hover ? .06f : .025f), 6.f);
+            draw->AddRect(p, ImVec2(p.x + size.x, p.y + size.y), tint(strong || destructive ? tone : IM_COL32_WHITE, strong ? .35f : .08f), 6.f);
+            const auto text_size = font(true)->CalcTextSizeA(12.f, FLT_MAX, 0, text);
+            label(ImVec2(p.x + (size.x - text_size.x) * .5f, p.y + (size.y - 12.f) * .5f), text, 12.f,
+                strong || destructive ? tone : primary, true, size.x);
+            return pressed;
+        }
+        void track(operation op, const configs::snapshot& library, int id = 0)
+        {
+            state.pending = op;
+            state.pending_id = id;
+            state.started_revision = library.revision;
+        }
+        void clear_editor()
+        {
+            state.editing = 0;
+            state.name[0] = state.description[0] = '\0';
+        }
+        void open_editor(const configs::public_config& entry)
+        {
+            state.editing = entry.id;
+            state.focus_name = true;
+            model::copy_utf8(state.name, entry.name);
+            model::copy_utf8(state.description, entry.description);
+        }
+        void publish(const configs::snapshot& library, int id, const std::string& name, const std::string& description)
+        {
+            const auto author = friends::local_player_name();
+            if (author.empty() || model::trim(name).empty()) return;
+            track(operation::publish, library, id);
+            configs::publish(id, model::trim(name), model::trim(description), author,
+                modules::export_public_config(), modules::enabled_module_count());
+        }
+        void render_confirmation(const configs::snapshot& library)
+        {
+            if ((state.deleting || state.saving) && !ImGui::IsPopupOpen("##config_confirm")) ImGui::OpenPopup("##config_confirm");
             ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(.5f, .5f));
             ImGui::SetNextWindowSize(ImVec2(362, 0), ImGuiCond_Always);
             ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(22, 20));
             ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 12);
-            ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(.06f, .07f, .09f, .99f));
-            if (ImGui::BeginPopupModal("##config_delete", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoScrollbar)) {
+            ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(.055f, .052f, .067f, .99f));
+            if (ImGui::BeginPopupModal("##config_confirm", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoScrollbar)) {
+                const bool deleting = state.deleting != 0;
                 if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
-                    state.deleting = 0;
+                    state.deleting = state.saving = 0;
                     ImGui::CloseCurrentPopup();
                 }
-                section("DELETE CONFIG");
-                ImGui::PushFont(font(true));
-                wrapped(state.delete_name.c_str(), primary);
-                ImGui::PopFont();
-                ImGui::Dummy(ImVec2(0, 7));
-                wrapped("This removes the public config permanently. Your current module settings stay unchanged.");
-                ImGui::Dummy(ImVec2(0, 14));
-                const float half = (ImGui::GetContentRegionAvail().x - 8) / 2;
-                if (button("cancel_delete", "Keep config", ImVec2(half, 35))) {
-                    state.deleting = 0;
+                wrapped(deleting ? "Delete config?" : "Update config?", primary);
+                ImGui::Dummy(ImVec2(0, 4));
+                wrapped(state.confirm_name.c_str(), primary);
+                ImGui::Dummy(ImVec2(0, 5));
+                wrapped(deleting ? "This permanently removes the public config."
+                    : "Replace this config's shared settings with your current module settings?");
+                ImGui::Dummy(ImVec2(0, 12));
+                const auto half = (ImGui::GetContentRegionAvail().x - 8) / 2;
+                if (button("cancel_confirm", "Cancel", ImVec2(half, 33))) {
+                    state.deleting = state.saving = 0;
                     ImGui::CloseCurrentPopup();
                 }
                 ImGui::SameLine(0, 8);
-                const auto owned = std::find_if(library.entries.begin(), library.entries.end(), [](const auto& entry) { return entry.id == state.deleting && entry.mine; });
-                ImGui::BeginDisabled(library.busy || state.pending != operation::none || owned == library.entries.end());
-                if (button("confirm_delete", "Delete config", ImVec2(half, 35), false, true)) {
-                    track(operation::remove, library);
-                    configs::remove(state.deleting);
-                    state.deleting = 0;
+                const int id = deleting ? state.deleting : state.saving;
+                const auto owned = std::find_if(library.entries.begin(), library.entries.end(), [id](const auto& entry) { return entry.id == id && entry.mine; });
+                ImGui::BeginDisabled(library.busy || state.pending != operation::none || owned == library.entries.end()
+                    || (!deleting && friends::local_player_name().empty()));
+                if (button("confirm_action", deleting ? "Delete config" : "Save changes", ImVec2(half, 33), !deleting, deleting)) {
+                    if (deleting) {
+                        track(operation::remove, library, id);
+                        configs::remove(id);
+                    } else if (owned != library.entries.end()) publish(library, id, owned->name, owned->description);
+                    state.deleting = state.saving = 0;
                     ImGui::CloseCurrentPopup();
                 }
                 ImGui::EndDisabled();
@@ -375,6 +228,156 @@ namespace gui::config_page
             }
             ImGui::PopStyleColor();
             ImGui::PopStyleVar(2);
+        }
+        void render_creator(const configs::snapshot& library)
+        {
+            const bool busy = library.busy || state.pending != operation::none;
+            const auto width = ImGui::GetContentRegionAvail().x;
+            const auto p = ImGui::GetCursorScreenPos();
+            label(p, state.editing ? "Edit config" : "New config", 11.f);
+            ImGui::Dummy(ImVec2(0, 19));
+            ImGui::BeginDisabled(busy);
+            if (state.focus_name) { ImGui::SetKeyboardFocusHere(); state.focus_name = false; }
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::InputTextWithHint("##name", "Enter config name...", state.name, IM_ARRAYSIZE(state.name))
+                && model::trim(state.name).empty()) clear_editor();
+            ImGui::EndDisabled();
+
+            const bool named = !model::trim(state.name).empty();
+            const float target = named ? 1.f : 0.f;
+            state.expansion = gui::aegis::get_preferences().reduce_motion ? target
+                : state.expansion + (target - state.expansion) * (1.f - std::exp(-14.f * ImGui::GetIO().DeltaTime));
+            if (std::abs(state.expansion - target) < .002f) state.expansion = target;
+            const float eased = state.expansion * state.expansion * (3.f - 2.f * state.expansion);
+            if (eased <= 0.f) return;
+            ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+            if (ImGui::BeginChild("##create_expansion", ImVec2(width, 150.f * eased), ImGuiChildFlags_None,
+                ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+                ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * eased);
+                ImGui::BeginDisabled(busy || !named || eased < .99f);
+                label(ImGui::GetCursorScreenPos(), "Description (optional)", 11.f);
+                ImGui::Dummy(ImVec2(0, 18));
+                ImGui::InputTextMultiline("##description", state.description, IM_ARRAYSIZE(state.description), ImVec2(-1, 54));
+                label(ImGui::GetCursorScreenPos(), "Shared publicly with your current settings.", 10.f, faint, false, width);
+                ImGui::Dummy(ImVec2(0, 20));
+                ImGui::BeginDisabled(friends::local_player_name().empty());
+                if (button("publish", state.editing ? "Save changes" : "Create config", ImVec2(130, 31)))
+                    publish(library, state.editing, state.name, state.description);
+                tooltip(friends::local_player_name().empty() ? "Join a world to create a config." : "Share your current module settings.");
+                ImGui::EndDisabled();
+                ImGui::SameLine(0, 8);
+                if (button("cancel_edit", "Cancel", ImVec2(76, 31))) clear_editor();
+                ImGui::EndDisabled();
+                ImGui::PopStyleVar();
+            }
+            ImGui::EndChild();
+            ImGui::PopStyleVar();
+            ImGui::PopStyleColor();
+        }
+        void render_list(const configs::snapshot& library)
+        {
+            const auto width = ImGui::GetContentRegionAvail().x;
+            const auto heading = ImGui::GetCursorScreenPos();
+            const char* collections[] = { "Public Configs", "My Configs", "Favourites" };
+            constexpr float selector_width = 154.f;
+            const float selector_height = ImGui::GetFrameHeight();
+            auto* draw = ImGui::GetWindowDrawList();
+            ImGui::SetNextItemWidth(selector_width);
+            ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(.09f, .085f, .11f, .9f));
+            ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(.13f, .12f, .17f, .95f));
+            ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(.14f, .12f, .19f, .95f));
+            ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.f);
+            const bool open = ImGui::BeginCombo("##collection", "", ImGuiComboFlags_NoArrowButton);
+            if (open) {
+                for (int i = 0; i < 3; ++i) {
+                    const bool selected = static_cast<int>(state.tab) == i;
+                    if (ImGui::Selectable(collections[i], selected)) state.tab = static_cast<model::collection>(i);
+                    if (selected) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::PopStyleVar();
+            ImGui::PopStyleColor(3);
+            label(ImVec2(heading.x + 10, heading.y + (selector_height - 13.f) * .5f),
+                collections[static_cast<int>(state.tab)], 13.f, open ? accent() : primary, true, selector_width - 37.f);
+            const ImVec2 chevron(heading.x + selector_width - 15.f, heading.y + selector_height * .5f);
+            const float direction = open ? -1.f : 1.f;
+            const ImVec2 points[] = { { chevron.x - 3.5f, chevron.y - direction * 1.75f },
+                { chevron.x, chevron.y + direction * 1.75f }, { chevron.x + 3.5f, chevron.y - direction * 1.75f } };
+            draw->AddPolyline(points, 3, tint(open ? accent() : muted, 1.f), 0, 1.5f);
+            ImGui::SetCursorScreenPos(ImVec2(heading.x + width - 30, heading.y));
+            ImGui::BeginDisabled(library.busy || state.pending != operation::none);
+            if (icon_button("refresh", icon::refresh, "Refresh configs")) {
+                track(operation::refresh, library);
+                configs::refresh();
+            }
+            ImGui::EndDisabled();
+            ImGui::SetCursorScreenPos(ImVec2(heading.x, heading.y + 37));
+            const auto entries = model::filter(library, state.tab, "", state.favourites, model::order::newest);
+            ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
+            if (ImGui::BeginChild("##rows", ImVec2(0, 0), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar)) {
+                for (const auto* entry : entries) {
+                    ImGui::PushID(entry->id);
+                    const auto row = ImGui::GetCursorScreenPos();
+                    const auto row_width = ImGui::GetContentRegionAvail().x;
+                    const auto actions_width = entry->mine ? 102.f : 72.f;
+                    const bool busy = library.busy || state.pending != operation::none;
+                    auto* draw = ImGui::GetWindowDrawList();
+                    draw->AddRectFilled(row, ImVec2(row.x + row_width, row.y + 41), tint(IM_COL32(26, 25, 32, 230), 1.f), 6.f);
+                    ImGui::BeginDisabled(busy);
+                    if (ImGui::InvisibleButton("name", ImVec2(std::max(1.f, row_width - actions_width), 41)) && entry->mine) open_editor(*entry);
+                    const bool hovered = ImGui::IsItemHovered();
+                    if (hovered) draw->AddRectFilled(row, ImVec2(row.x + row_width, row.y + 41), tint(IM_COL32_WHITE, .025f), 6.f);
+                    label(ImVec2(row.x + 12, row.y + 13), entry->name, 13.f,
+                        state.selected == entry->id || state.editing == entry->id ? accent() : primary, true, row_width - actions_width - 20);
+                    const auto hint = entry->name + "\nby " + entry->author_name + (entry->description.empty() ? "" : "\n" + entry->description)
+                        + (entry->mine ? "\nClick to edit. Right-click for favourites." : "");
+                    tooltip(hint.c_str());
+                    if (ImGui::BeginPopupContextItem("##config_actions")) {
+                        const bool starred = state.favourites.contains(entry->id);
+                        if (ImGui::MenuItem(starred ? "Remove favourite" : "Add to session favourites")) {
+                            if (starred) state.favourites.erase(entry->id); else state.favourites.insert(entry->id);
+                        }
+                        ImGui::EndPopup();
+                    }
+                    ImGui::SetCursorScreenPos(ImVec2(row.x + row_width - actions_width, row.y + 5));
+                    if (icon_button("load", icon::load, "Load this config (replaces current settings)")) {
+                        track(operation::load, library, entry->id);
+                        configs::load(entry->id);
+                    }
+                    ImGui::SameLine(0, 4);
+                    if (entry->mine) {
+                        ImGui::BeginDisabled(friends::local_player_name().empty());
+                        if (icon_button("save", icon::save, "Update with current settings")) {
+                            state.saving = entry->id;
+                            state.confirm_name = entry->name;
+                        }
+                        ImGui::EndDisabled();
+                        ImGui::SameLine(0, 4);
+                        if (icon_button("delete", icon::remove, "Delete config")) {
+                            state.deleting = entry->id;
+                            state.confirm_name = entry->name;
+                        }
+                    } else {
+                        const bool starred = state.favourites.contains(entry->id);
+                        if (icon_button("favourite", icon::star, starred ? "Remove favourite" : "Add to session favourites", starred)) {
+                            if (starred) state.favourites.erase(entry->id); else state.favourites.insert(entry->id);
+                        }
+                    }
+                    ImGui::EndDisabled();
+                    ImGui::SetCursorScreenPos(ImVec2(row.x, row.y + 47));
+                    ImGui::PopID();
+                }
+                if (entries.empty()) {
+                    ImGui::Dummy(ImVec2(0, 12));
+                    wrapped(library.busy ? "Fetching configs..." : state.tab == model::collection::favourites
+                        ? "No favourites yet." : state.tab == model::collection::community
+                        ? "No public configs yet." : "You haven't created any configs yet.");
+                }
+            }
+            ImGui::EndChild();
+            ImGui::PopStyleColor();
         }
     }
 
@@ -385,6 +388,7 @@ namespace gui::config_page
         if (configs::consume_pending_payload(payload, downloaded_name)) {
             std::string result;
             const bool applied = modules::apply_public_config(payload, result);
+            if (applied) state.selected = state.pending_id;
             gui::push_workspace_toast(downloaded_name + ": " + result, applied);
         }
         auto library = configs::get_snapshot();
@@ -395,96 +399,52 @@ namespace gui::config_page
             library = configs::get_snapshot();
         }
         if (state.pending != operation::none && library.revision > state.started_revision && !library.busy) {
-            if (state.pending == operation::publish && library.success) {
-                state.editor = false;
-                state.tab = model::collection::mine;
-                state.search[0] = '\0';
-                if (state.editing) state.selected = state.editing;
+            if (library.success) {
+                if (state.pending == operation::publish) {
+                    clear_editor();
+                    state.tab = model::collection::mine;
+                } else if (state.pending == operation::remove) {
+                    if (state.editing == state.pending_id) clear_editor();
+                    if (state.selected == state.pending_id) state.selected = 0;
+                    state.favourites.erase(state.pending_id);
+                }
             }
             if (state.pending != operation::load || !library.success) gui::push_workspace_toast(library.status, library.success);
             state.pending = operation::none;
         }
-        if (!embedded) gui::page_header("Configs", "Your community library");
+        if (!embedded) gui::page_header("Configs", "Save and share your setups");
         ImGui::PushFont(font());
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(9, 7));
-        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 7);
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10, 7));
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 5.f);
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8, 6));
-        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(1, 1, 1, .035f));
-        const auto theme_fill = [](float amount) {
-            return gui::surface_style::mix(IM_COL32(24, 28, 36, 245), accent(), amount);
-        };
-        ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, theme_fill(.09f));
-        ImGui::PushStyleColor(ImGuiCol_FrameBgActive, theme_fill(.14f));
-        ImGui::PushStyleColor(ImGuiCol_Button, theme_fill(.12f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, theme_fill(.22f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, theme_fill(.30f));
-        ImGui::PushStyleColor(ImGuiCol_Header, theme_fill(.12f));
-        ImGui::PushStyleColor(ImGuiCol_HeaderHovered, theme_fill(.22f));
-        ImGui::PushStyleColor(ImGuiCol_HeaderActive, theme_fill(.30f));
-        ImGui::PushStyleColor(ImGuiCol_TextSelectedBg, tint(accent(), .30f));
-        const auto top = ImGui::GetCursorScreenPos();
-        const auto available = ImGui::GetContentRegionAvail();
-        const bool narrow = available.x < 620;
-        const bool detail_only = narrow && (state.editor || state.narrow_details);
-        if (detail_only) {
-            ImGui::BeginDisabled(state.pending == operation::publish);
-            if (button("back_to_library", "", ImVec2(30, 32), false, false, icon::back)) {
-                state.narrow_details = false;
-                if (state.pending != operation::publish) state.editor = false;
+        ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 10.f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(18, 18));
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(.10f, .095f, .12f, .85f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(.13f, .12f, .15f, .9f));
+        ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(.14f, .13f, .17f, .95f));
+        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(1, 1, 1, .055f));
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(.045f, .043f, .055f, .91f));
+        if (ImGui::BeginChild("##config_surface", ImVec2(0, 0), ImGuiChildFlags_Border, ImGuiWindowFlags_NoScrollbar)) {
+            render_creator(library);
+            ImGui::Dummy(ImVec2(0, 6));
+            const auto list_top = ImGui::GetCursorScreenPos();
+            const float remaining = ImGui::GetContentRegionAvail().y;
+            const bool show_status = library.busy || state.pending != operation::none || !library.success;
+            ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
+            if (ImGui::BeginChild("##config_list", ImVec2(0, std::max(80.f, remaining - (show_status ? 24.f : 0.f))), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar)) render_list(library);
+            ImGui::EndChild();
+            ImGui::PopStyleColor();
+            if (show_status) {
+                ImGui::SetCursorScreenPos(ImVec2(list_top.x, list_top.y + std::max(80.f, remaining - 24.f) + 5));
+                label(ImGui::GetCursorScreenPos(), library.busy || state.pending != operation::none ? "Working..." : library.status,
+                    11.f, library.success ? muted : danger, false, ImGui::GetContentRegionAvail().x);
+                ImGui::Dummy(ImVec2(0, 15));
             }
-            tooltip("Back to library");
-            ImGui::EndDisabled();
-        } else {
-            label(ImVec2(top.x, top.y + 1), "Config library", 15, primary, true, available.x - 180);
-            label(ImVec2(top.x, top.y + 21), "Discover. Save. Make it yours.", 10.5f, faint, false, available.x - 180);
         }
-        ImGui::SetCursorScreenPos(ImVec2(top.x + available.x - 164, top.y));
-        ImGui::BeginDisabled(library.busy || state.pending != operation::none || state.editor);
-        if (button("new_config", "New config", ImVec2(124, 32), true, false, icon::plus)) open_editor();
-        ImGui::EndDisabled();
-        ImGui::SameLine(0, 8);
-        ImGui::BeginDisabled(library.busy || state.pending != operation::none);
-        if (button("refresh_library", "", ImVec2(32, 32), false, false, icon::refresh)) {
-            track(operation::refresh, library);
-            configs::refresh();
-        }
-        tooltip("Refresh library");
-        ImGui::EndDisabled();
-        const auto entries = model::filter(library, state.tab, state.search, state.favourites, static_cast<model::order>(state.sort));
-        const configs::public_config* selected = nullptr;
-        for (const auto* entry : entries) if (entry->id == state.selected) selected = entry;
-        if (!selected && !entries.empty()) {
-            selected = entries.front();
-            state.selected = selected->id;
-        }
-        const float body_height = std::max(110.f, available.y - 77);
-        const float left_width = narrow ? available.x : std::clamp(available.x * .46f, 260.f, 360.f);
-        ImGui::SetCursorScreenPos(ImVec2(top.x, top.y + 46));
-        if (!detail_only) {
-            if (begin_panel("##library", ImVec2(left_width, body_height))) render_library(library, entries);
-            end_panel();
-        }
-        if (!narrow || detail_only) {
-            // Selection can change in the list above; resolve against the stable frame snapshot.
-            selected = nullptr;
-            for (const auto* entry : entries) if (entry->id == state.selected) selected = entry;
-            ImGui::SetCursorScreenPos(ImVec2(top.x + (narrow ? 0 : left_width + 12), top.y + 46));
-            if (begin_panel("##inspector", ImVec2(narrow ? available.x : available.x - left_width - 12, body_height))) {
-                if (state.editor) render_editor(library); else render_details(library, selected);
-            }
-            end_panel();
-        }
-        const auto footer = ImVec2(top.x, top.y + 46 + body_height + 10);
-        ImGui::SetCursorScreenPos(footer);
-        const bool working = library.busy || state.pending != operation::none;
-        const auto status_color = working ? accent() : library.success ? muted : danger;
-        ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(footer.x + 4, footer.y + 7), 2.5f, status_color);
-        label(ImVec2(footer.x + 14, footer.y), working ? "Working on your request..." : library.status.empty() ? "Ready to explore" : library.status.c_str(), 11, status_color, false, available.x - 20);
-        ImGui::Dummy(ImVec2(available.x, 17));
-        tooltip(library.status.c_str());
-        render_delete(library);
-        ImGui::PopStyleColor(10);
-        ImGui::PopStyleVar(3);
+        ImGui::EndChild();
+        render_confirmation(library);
+        ImGui::PopStyleColor(5);
+        ImGui::PopStyleVar(5);
         ImGui::PopFont();
         ImGui::PopID();
     }

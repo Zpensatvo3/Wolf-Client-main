@@ -11,6 +11,7 @@
 #include "../ui/grim_ui.hpp"
 #include "../ui/hud_editor.hpp"
 #include "../ui/config_page.hpp"
+#include "../ui/themes_page.hpp"
 #include "../ui/menu_background.hpp"
 #include <Windows.h>
 #include <gl/GL.h>
@@ -290,13 +291,6 @@ namespace
 	static float virt_mouse_x = 0.0f;
 	static float virt_mouse_y = 0.0f;
 
-	ImU32 color_with_alpha(const ImColor& color, float alpha = 1.0f)
-	{
-		ImVec4 value = color.Value;
-		value.w *= std::clamp(alpha, 0.0f, 1.0f);
-		return ImGui::ColorConvertFloat4ToU32(value);
-	}
-
 	void focus_minecraft_window(HWND minecraft_window)
 	{
 		if (!minecraft_window || !IsWindow(minecraft_window))
@@ -323,112 +317,6 @@ namespace
 	}
 
 
-	struct theme_preview
-	{
-		const char* name;
-		ImU32 color;
-	};
-
-	bool theme_card(const theme_preview& theme, int index, const ImVec2& position, const ImVec2& size)
-	{
-		ImGui::PushID(index);
-		ImGui::SetCursorScreenPos(position);
-		ImGui::InvisibleButton("##theme_card", size);
-		const bool hovered = ImGui::IsItemHovered();
-		const bool selected = gui::active_theme == index;
-		const bool clicked = ImGui::IsItemClicked();
-		if (clicked && !selected)
-		{
-			gui::active_theme = index;
-			gui::aegis::mark_preferences_dirty();
-		}
-
-		ImDrawList* draw_list = ImGui::GetWindowDrawList();
-		const ImU32 border = selected
-			? color_with_alpha(theme.color, 0.88f)
-			: IM_COL32(255, 255, 255, hovered ? 22 : 9);
-		const ImU32 background = hovered ? IM_COL32(25, 28, 35, 255) : IM_COL32(18, 21, 27, 255);
-
-		draw_list->AddRectFilled(position, ImVec2(position.x + size.x, position.y + size.y), background, 10.0f);
-		draw_list->AddRect(position, ImVec2(position.x + size.x, position.y + size.y), border, 10.0f, 0, selected ? 1.6f : 1.0f);
-		ImFont* bold = gui::ui_bold_font ? gui::ui_bold_font : ImGui::GetFont();
-		draw_list->AddText(bold, 14.0f,
-			ImVec2(position.x + 14.0f, position.y + size.y - 28.0f),
-			IM_COL32(232, 234, 241, 255), theme.name);
-		if (selected)
-		{
-			const ImVec2 check(position.x + size.x - 22.0f, position.y + size.y - 21.0f);
-			draw_list->AddCircleFilled(check, 8.0f, color_with_alpha(theme.color, 0.96f), 0);
-			draw_list->AddLine(ImVec2(check.x - 3.0f, check.y), ImVec2(check.x - 0.5f, check.y + 2.5f),
-				IM_COL32(250, 250, 252, 255), 1.5f);
-			draw_list->AddLine(ImVec2(check.x - 0.5f, check.y + 2.5f), ImVec2(check.x + 4.0f, check.y - 3.0f),
-				IM_COL32(250, 250, 252, 255), 1.5f);
-		}
-
-		const auto preview_color = [index](int stop, float alpha)
-		{
-			const auto c = gui::theme::palettes[index].stops[stop];
-			return ImGui::ColorConvertFloat4ToU32(ImVec4(c.r, c.g, c.b, alpha));
-		};
-
-		// A miniature workspace previews all three palette stops without
-		// changing the live theme on hover or adding explanatory paragraphs.
-		const ImVec2 mini(position.x + 12.0f, position.y + 12.0f);
-		const ImVec2 mini_max(position.x + size.x - 12.0f, position.y + size.y - 43.0f);
-		const float side_width = (mini_max.x - mini.x) * 0.25f;
-		draw_list->AddRectFilled(mini, mini_max, IM_COL32(9, 10, 15, 255), 7.0f);
-		draw_list->AddRectFilled(mini, ImVec2(mini.x + side_width, mini_max.y),
-			preview_color(0, 0.09f), 7.0f, ImDrawFlags_RoundCornersLeft);
-		draw_list->AddLine(ImVec2(mini.x + side_width, mini.y + 7.0f),
-			ImVec2(mini.x + side_width, mini_max.y - 7.0f), IM_COL32(255, 255, 255, 12));
-		for (int row = 0; row < 4; ++row)
-		{
-			const ImVec2 nav(mini.x + 6.0f, mini.y + 12.0f + row * 17.0f);
-			draw_list->AddRectFilled(nav, ImVec2(mini.x + side_width - 6.0f, nav.y + 7.0f),
-				row == 1 ? preview_color(0, 0.9f) : IM_COL32(255, 255, 255, 23), 2.0f);
-		}
-		const float content_x = mini.x + side_width + 9.0f;
-		draw_list->AddRectFilled(ImVec2(content_x, mini.y + 10.0f),
-			ImVec2(content_x + (mini_max.x - content_x) * 0.46f, mini.y + 14.0f), IM_COL32(225, 225, 235, 155), 2.0f);
-		for (int row = 0; row < 3; ++row)
-		{
-			const ImVec2 tile(content_x, mini.y + 23.0f + row * 22.0f);
-			draw_list->AddRectFilled(tile, ImVec2(mini_max.x - 8.0f, tile.y + 17.0f),
-				preview_color(row, 0.09f), 4.0f);
-			draw_list->AddRectFilled(ImVec2(tile.x + 5.0f, tile.y + 6.0f),
-				ImVec2(tile.x + (mini_max.x - tile.x) * 0.5f, tile.y + 10.0f), preview_color(row, 0.95f), 2.0f);
-			draw_list->AddRectFilled(ImVec2(mini_max.x - 28.0f, tile.y + 5.0f),
-				ImVec2(mini_max.x - 13.0f, tile.y + 12.0f), preview_color(row, 0.82f), 3.5f);
-		}
-		draw_list->AddRect(mini, mini_max, IM_COL32(255, 255, 255, 12), 7.0f);
-
-		ImGui::PopID();
-		return clicked;
-	}
-
-	void settings_theme_grid()
-	{
-		std::array<theme_preview, gui::theme::palettes.size()> themes{};
-		for (std::size_t index = 0; index < themes.size(); ++index)
-		{
-			const auto c = gui::theme::sample(static_cast<int>(index), 0.0);
-			themes[index] = { gui::theme::palettes[index].name, ImColor(c.r, c.g, c.b) };
-		}
-
-		const ImVec2 start = ImGui::GetCursorScreenPos();
-		const float available_width = ImGui::GetContentRegionAvail().x;
-		const float gap = 12.0f;
-		const int columns = std::clamp(static_cast<int>((available_width + gap) / 212.0f), 1, 4);
-		const ImVec2 card_size(std::max(1.0f, (available_width - gap * (columns - 1)) / columns), 150.0f);
-		for (int index = 0; index < static_cast<int>(themes.size()); ++index)
-		{
-			const int column = index % columns;
-			const int row = index / columns;
-			theme_card(themes[index], index, ImVec2(start.x + column * (card_size.x + gap), start.y + row * (card_size.y + gap)), card_size);
-		}
-		const int rows = (static_cast<int>(themes.size()) + columns - 1) / columns;
-		ImGui::SetCursorScreenPos(ImVec2(start.x, start.y + card_size.y * rows + gap * (rows - 1)));
-	}
 
 	void render_configs_page(bool embedded = false)
 	{
@@ -448,14 +336,7 @@ void gui::render_click_gui_options()
 
 void gui::render_theme_selection()
 {
-	ImGui::PushID("theme_selection");
-	gui::background::render_settings(gui::get_dynamic_color());
-	ImGui::Spacing();
-	ImGui::Separator();
-	ImGui::Spacing();
-	ImGui::TextUnformatted("Accent themes");
-	settings_theme_grid();
-	ImGui::PopID();
+	gui::themes_page::render();
 }
 
 void gui::request_panic()

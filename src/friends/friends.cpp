@@ -9,11 +9,9 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include <imgui/imgui.h>
-
 #include "../gui/gui.hpp"
+#include "../ui/friends_page.hpp"
 #include "../modules/friends/friend_manager.hpp"
-#include "../modules/ui_redirect.hpp"
 namespace
 {
 	struct friend_state
@@ -62,10 +60,6 @@ std::string player_name(const maps::Entity& entity)
 		return name.to_string();
 	}
 
-	bool contains_case_insensitive(std::string_view text, std::string_view query)
-	{
-		return normalize(text).find(normalize(query)) != std::string::npos;
-	}
 }
 
 bool friends::is_friend(std::string_view name)
@@ -297,159 +291,9 @@ void friends::handle_middle_click(::cache& cache, bool active)
 	}
 }
 
-namespace
-{
-	void render_manager_v3(bool embedded)
-	{
-		static int active_tab = 0;
-		static char search[64]{};
-		static char add_name[64]{};
-		const std::vector<friends::server_player> players = friends::server_players_snapshot();
-		const std::vector<std::string> saved = friends::friend_names_snapshot();
-
-		if (!embedded)
-			gui::page_header("Friends",
-				"Session trust list");
-		const float full_width = ImGui::GetContentRegionAvail().x;
-		const float tab_width = std::min(176.0f, (full_width - 8.0f) * 0.5f);
-		const std::string server_tab = "Server Players" + std::string("  ") + std::to_string(players.size());
-		const std::string friends_tab = "Friends" + std::string("  ") + std::to_string(saved.size());
-		if (gui::action_button(server_tab.c_str(), ImVec2(tab_width, 32.0f), active_tab == 0 ? gui::action_tone::accent : gui::action_tone::neutral))
-			active_tab = 0;
-		ImGui::SameLine(0.0f, 8.0f);
-		if (gui::action_button(friends_tab.c_str(), ImVec2(tab_width, 32.0f), active_tab == 1 ? gui::action_tone::accent : gui::action_tone::neutral))
-			active_tab = 1;
-		ImGui::Dummy(ImVec2(0.0f, 8.0f));
-
-		if (gui::begin_surface("##friends_compact_v3", ImVec2(0.0f, ImGui::GetContentRegionAvail().y), ImVec2(14.0f, 12.0f), embedded))
-		{
-			if (active_tab == 0)
-			{
-				ImGui::SetNextItemWidth(-1.0f);
-				ImGui::InputTextWithHint("##friend_server_search_v3", "Search server players",
-					search, IM_ARRAYSIZE(search));
-			}
-			else
-			{
-				const float available = ImGui::GetContentRegionAvail().x;
-				ImGui::SetNextItemWidth(std::max(120.0f, available - 43.0f));
-				ImGui::InputTextWithHint("##friend_manual_v3", "Add a player by name",
-					add_name, IM_ARRAYSIZE(add_name));
-				ImGui::SameLine(0.0f, 7.0f);
-				if (gui::icon_action("friend_manual_add_v3", "\xEF\x88\xB4", "+", "Add friend", false, true) && add_name[0])
-				{
-					const std::string added = add_name;
-					friends::add(added);
-					add_name[0] = '\0';
-					gui::push_workspace_toast(added + " added");
-				}
-			}
-			ImGui::Dummy(ImVec2(0.0f, 7.0f));
-			ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 0.0f);
-			ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-			if (ImGui::BeginChild("##friends_rows_v3", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar))
-			{
-				ImFont* bold = gui::ui_bold_font ? gui::ui_bold_font : ImGui::GetFont();
-				ImFont* regular = gui::ui_font ? gui::ui_font : ImGui::GetFont();
-				int visible = 0;
-				const float gap = 8.0f;
-				const int columns = ImGui::GetContentRegionAvail().x < 560.0f ? 1 : 2;
-				const float card_width = (ImGui::GetContentRegionAvail().x - gap * (columns - 1) - 2.0f) / columns;
-				int card_index = 0;
-				ImVec2 row = ImGui::GetCursorScreenPos();
-				auto begin_card = [&](const char* id, bool selected)
-				{
-					if ((card_index % columns) == 0) row = ImGui::GetCursorScreenPos();
-					const ImVec2 card_min(row.x + (card_index % columns) * (card_width + gap), row.y);
-					const ImVec2 card_max(card_min.x + card_width, card_min.y + 64.0f);
-					ImGui::PushID(id);
-					ImGui::SetCursorScreenPos(card_min);
-					ImGui::Dummy(ImVec2(card_width, 64.0f));
-					gui::list_row_background(card_min, card_max, ImGui::IsMouseHoveringRect(card_min, card_max, true), selected);
-					return std::pair<ImVec2, ImVec2>(card_min, card_max);
-				};
-				auto end_card = [&]()
-				{
-					ImGui::PopID();
-					++card_index;
-					if ((card_index % columns) == 0)
-						ImGui::SetCursorScreenPos(ImVec2(row.x, row.y + 72.0f));
-				};
-				if (active_tab == 0)
-				{
-					for (const friends::server_player& player : players)
-					{
-						if (search[0] && !contains_case_insensitive(player.name, search)) continue;
-						++visible;
-						auto [row_min, row_max] = begin_card(player.name.c_str(), player.friend_added);
-						ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(row_min.x + 25.0f, row_min.y + 32.0f), 15.0f,
-							player.friend_added ? ImGui::GetColorU32(ImGuiCol_CheckMark) : IM_COL32(63, 65, 76, 255));
-						const char initial[2] = { player.name.empty() ? '?' : static_cast<char>(std::toupper(static_cast<unsigned char>(player.name[0]))), 0 };
-						const ImVec2 initial_extent = bold->CalcTextSizeA(14.0f, FLT_MAX, 0.0f, initial);
-						ImGui::GetWindowDrawList()->AddText(bold, 14.0f,
-							ImVec2(row_min.x + 25.0f - initial_extent.x * 0.5f, row_min.y + 32.0f - initial_extent.y * 0.5f), IM_COL32_WHITE, initial);
-						const ImVec4 clip(row_min.x + 49.0f, row_min.y + 4.0f, row_max.x - 46.0f, row_max.y - 4.0f);
-						ImGui::GetWindowDrawList()->AddText(bold, 15.5f, ImVec2(row_min.x + 49.0f, row_min.y + 11.0f),
-							IM_COL32(232, 234, 241, 255), player.name.c_str(), nullptr, 0.0f, &clip);
-						const char* state_label = player.local ? "YOU"
-							: (player.friend_added ? "FRIEND" : "ONLINE");
-						ImGui::GetWindowDrawList()->AddText(regular, 11.5f, ImVec2(row_min.x + 49.0f, row_min.y + 37.0f),
-							player.friend_added ? ImGui::GetColorU32(ImGuiCol_CheckMark) : IM_COL32(139, 133, 151, 255), state_label, nullptr, 0.0f, &clip);
-						if (!player.local)
-						{
-							ImGui::SetCursorScreenPos(ImVec2(row_max.x - 37.0f, row_min.y + 17.0f));
-							if (gui::icon_action("friend_toggle_v3", player.friend_added ? "\xEF\x94\x83" : "\xEF\x88\xB4",
-								player.friend_added ? "-" : "+", player.friend_added ? "Remove friend"
-								: "Add friend", player.friend_added, !player.friend_added))
-								friends::toggle(player.name);
-						}
-						end_card();
-					}
-				}
-				else
-				{
-					for (const std::string& name : saved)
-					{
-						++visible;
-						auto [row_min, row_max] = begin_card(name.c_str(), true);
-						ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(row_min.x + 25.0f, row_min.y + 32.0f), 15.0f,
-							ImGui::GetColorU32(ImGuiCol_CheckMark));
-						const char initial[2] = { name.empty() ? '?' : static_cast<char>(std::toupper(static_cast<unsigned char>(name[0]))), 0 };
-						const ImVec2 initial_extent = bold->CalcTextSizeA(14.0f, FLT_MAX, 0.0f, initial);
-						ImGui::GetWindowDrawList()->AddText(bold, 14.0f,
-							ImVec2(row_min.x + 25.0f - initial_extent.x * 0.5f, row_min.y + 32.0f - initial_extent.y * 0.5f), IM_COL32_WHITE, initial);
-						const ImVec4 clip(row_min.x + 49.0f, row_min.y + 4.0f, row_max.x - 46.0f, row_max.y - 4.0f);
-						ImGui::GetWindowDrawList()->AddText(bold, 15.5f, ImVec2(row_min.x + 49.0f, row_min.y + 21.0f),
-							IM_COL32(232, 234, 241, 255), name.c_str(), nullptr, 0.0f, &clip);
-						ImGui::SetCursorScreenPos(ImVec2(row_max.x - 37.0f, row_min.y + 17.0f));
-						if (gui::icon_action("friend_remove_v3", "\xEF\x94\x83", "-", "Remove friend", true))
-							friends::remove(name);
-						end_card();
-					}
-				}
-				if ((card_index % columns) != 0)
-					ImGui::SetCursorScreenPos(ImVec2(row.x, row.y + 72.0f));
-				if (!visible)
-				{
-					ImGui::Dummy(ImVec2(0.0f, 28.0f));
-					const char* empty = active_tab == 0 ? "No server players available"
-						: "No friends in this session";
-					const ImVec2 extent = ImGui::CalcTextSize(empty);
-					ImGui::SetCursorPosX(std::max(0.0f, (ImGui::GetContentRegionAvail().x - extent.x) * 0.5f));
-					ImGui::TextDisabled("%s", empty);
-				}
-			}
-			ImGui::EndChild();
-			ImGui::PopStyleColor();
-			ImGui::PopStyleVar();
-		}
-		gui::end_surface();
-	}
-}
-
 void friends::render_manager(bool embedded)
 {
-	render_manager_v3(embedded);
+	gui::friends_page::render(embedded);
 }
 
 void modules::friend_manager::run(::cache& cache)
