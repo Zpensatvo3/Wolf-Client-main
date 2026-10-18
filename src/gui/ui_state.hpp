@@ -44,6 +44,4 @@ namespace gui::aegis
     void mark_preferences_dirty();
     void flush_preferences(bool force = false);
     void reset_preferences();
-    bool consume_geometry_reset();
-    bool geometry_reset_pending();
 }

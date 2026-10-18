@@ -102,22 +102,37 @@ istemcisi içerir.
   bilinmeyen süre lifetime kabul edilmez. Bu etiket yalnızca görseldir, yetkilendirme
   ve oturum süresi kontrollerini değiştirmez.
 - Features ve Other sayfaları aynı 960×620 menü boyutunu kullanır.
-  Features tek sütunlu modül listesi kullanır. Sol menü ve modül
+  Features iki sütunlu kompakt modül kartları kullanır. Sol menü ve modül
   alanı tek arka planda birleşir; panel yüksekliği sabittir ve liste çubuksuz kayar.
   Movement ve Player sekmeleri Misc altında birleşir (World modülleri dahil);
   bu yalnızca UI gruplamasıdır, modül kategorileri, kimlikler ve configler değişmez.
-  Features görünümü, açık oyuncu önizlemesi dahil ekrana ortalanır;
+  Features görünümü, açık oyuncu önizlemesi ve sağ ayar paneli dahil ekrana ortalanır;
   elle sürükleme konumu merkezden göreli fark olarak korunur.
-  Other sayfaları (Friends, Configs, Themes ve HUD) mevcut geniş görünümü korur.
-  Modüller 64 piksel yüksekliğinde kompakt satırlardır: solda isim ve
-  açıklama, sağda ayar dişlisi ve bağımsız aç/kapat anahtarı bulunur. Etkin modül
-  adı tema rengini kullanır. Dar modül kartları solda kalır; dişli ayarları ana
-  panelin sağdaki boş alanında açar. Ayarlar dışarı taşmaz; açılıp kapanırken
-  ana panelin boyutu/konumu ve kart genişliği değişmez.
+  Other sayfaları (Friends, Configs, Themes, HUD ve Keybinds) mevcut geniş görünümü korur.
+  Modüller 62 piksel yüksekliğinde sade isim/açıklama kartlarıdır; kart üzerinde
+  ayar dişlisi veya aç/kapat anahtarı yoktur. Etkin modül adı tema rengini kullanır.
+  Ayarı olan kartın tamamına tıklamak ayarları ana pencerenin sağında bağımsız bir
+  panelde açar; kapalı panel için listede boş alan ayrılmaz. Normal çözünürlükte
+  kart genişliği sabittir; tüm grup birlikte ortalanır. Ekran daralırsa pencere
+  genişliği uyarlanır ve gerektiğinde kartlar tek sütuna geçer.
   Tuş ataması ve mevcut modül ayarları korunur. Uzun ayarlar çubuksuz kayar.
-  Anahtar, ayarları açmadan modül durumunu değiştirir.
-  Arama sonuçları aynı düzeni kullanır. Ayarsız
-  modüllerin dişlisi pasiftir; Panic anahtar yerine anlık çıkış düğmesidir.
+  Enabled anahtarı ayar panelinde Keybind satırının üstündedir. Keybind dışında
+  ayarı olmayan Full Bright, No Jump Delay ve Fast Stop gibi modüller panel
+  açmadan doğrudan açılıp kapanır; tuşları Other > Keybinds'ten yönetilir.
+  Arama/Enter da aynı davranışı kullanır. Panic anlık çıkış eylemini korur.
+  Renderer tabanlı önizleme, etkileşim testleri ve güvenli temizlik notları:
+  [GrimUI düzeni](docs/GRIM_UI_LAYOUT.md).
+- Other > Keybinds, 104 tuşlu interaktif ANSI klavyesinden modül kısayollarını
+  yönetir. Atanmış tuşlar işaretlidir; tuş seçilince aranabilir ve kategoriye göre
+  filtrelenebilir modül listesi açılır. Aynı tuş birden fazla modüle atanabilir;
+  mevcut tetikleme davranışı korunur. Atama/taşıma/silme gerçek modül keybind'ini
+  değiştirir; ek ayarı olmayan modüller de desteklenir. Sabit Right Shift menü
+  kısayolu olan Click GUI listelenmez. Esc, Right Shift, End ve Windows tuşları
+  ayrılmıştır; eski atamalar silinebilir. Numpad Enter ve NumLock kapalı numpad
+  tuşları ana klavyeden ayrılır. Kısayollar `%LOCALAPPDATA%\onestep\keybinds.json`
+  dosyasına kaydedilir ve başlangıçta modülleri açmadan geri yüklenir.
+  Mimari, özel tuş politikası, config uyumluluğu ve testler:
+  [Keybinds](docs/KEYBINDS.md).
 - Config ekranı tek paneldir: üstte isim alanı, altında sade kayıt satırları vardır.
   İsim yazılınca açıklama ve oluşturma düğmesi aşağı açılır; isim silinince kapanır.
   Hareketi azalt tercihi bu geçişi doğrudan uygular. İndirme/modül sayaçları yoktur.

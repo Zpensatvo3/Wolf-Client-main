@@ -54,7 +54,4 @@ namespace gui
 	void render_click_gui_options();
 	void render_theme_selection();
 	void request_panic();
-	void settings_stepper(const char* label, float* value, float minimum, float maximum, float step = 0.05f, const char* format = "%.2f");
-	void settings_coordinate_row(float* x_value, float* y_value);
-	bool centered_text_button(const char* label, const ImVec2& size);
 }

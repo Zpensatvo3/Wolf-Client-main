@@ -3,6 +3,7 @@
 #include "config_json.hpp"
 #include "anchor_config_migration.hpp"
 #include "totem_config_migration.hpp"
+#include "../../platform/input/key_codes.hpp"
 #include <set>
 #include <vector>
 
@@ -60,9 +61,9 @@ bool modules::apply_public_config(const std::string& payload, std::string& messa
         }
         if (!seen.insert(id->text).second) { message = id->text + ": duplicate module ID."; return false; }
         const auto binding = keybind ? keybind->integer() : std::nullopt;
-        if (!enabled || enabled->type != kind::boolean || !binding || *binding < 0 || *binding > 255 ||
+        if (!enabled || enabled->type != kind::boolean || !binding || !platform::keys::valid(*binding) ||
             !settings || settings->type != kind::object) {
-            message = id->text + ": expected enabled (bool), keybind (0-255) and settings (object).";
+            message = id->text + ": expected enabled (bool), a valid keybind and settings (object).";
             return false;
         }
         const bool anchor_alias = id->text == "anchor_macro" || id->text == "blatant_anchor_macro";
@@ -132,5 +133,45 @@ bool modules::apply_public_config(const std::string& payload, std::string& messa
         item.target->set_keybind(item.keybind);
     }
     message = std::to_string(pending.size()) + " module settings loaded.";
+    return true;
+}
+
+std::string modules::export_keybind_config()
+{
+    std::string output = "{\"modules\":[";
+    bool first = true;
+    for (const auto* entry : get_modules()) {
+        if (!entry || !entry->supports_keybind()) continue;
+        if (!first) output += ',';
+        first = false;
+        output += "{\"id\":\"" + config_json::escape(entry->get_id()) + "\",\"keybind\":" +
+            std::to_string(entry->get_keybind()) + "}";
+    }
+    return output + "]}";
+}
+
+bool modules::apply_keybind_config(const std::string& payload, std::string& message)
+{
+    using config_json::kind;
+    const auto document = config_json::parse(payload);
+    const auto* list = document && document->type == kind::object ? document->find("modules") : nullptr;
+    if (!list || list->type != kind::array || list->items.size() > 128) {
+        message = "Invalid local keybind profile."; return false;
+    }
+    std::set<std::string> seen;
+    std::vector<std::pair<module*, int>> pending;
+    for (const auto& entry : list->items) {
+        const auto* id = entry.type == kind::object ? entry.find("id") : nullptr;
+        const auto* binding = entry.find("keybind");
+        const auto value = binding ? binding->integer() : std::nullopt;
+        if (!id || id->type != kind::string || id->text.empty() || id->text.size() > 128 ||
+            !seen.insert(id->text).second || !value || !platform::keys::valid(*value)) {
+            message = "Invalid or duplicate keybind entry; no changes applied."; return false;
+        }
+        if (auto* target = find_module_by_id(id->text); target && target->supports_keybind())
+            pending.emplace_back(target, *value);
+    }
+    for (const auto& [target, value] : pending) target->set_keybind(value);
+    message = "Local keybinds loaded.";
     return true;
 }

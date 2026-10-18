@@ -22,7 +22,6 @@ namespace
     gui::aegis::preferences state{};
     bool loaded = false;
     bool dirty = false;
-    bool geometry_reset = false;
     std::chrono::steady_clock::time_point dirty_since{};
 
     std::filesystem::path preferences_path()
@@ -250,19 +249,6 @@ void gui::aegis::reset_preferences()
     state = {};
     gui::active_theme = 0;
     loaded = true;
-    geometry_reset = true;
     mark_preferences_dirty();
     flush_preferences(true);
-}
-
-bool gui::aegis::consume_geometry_reset()
-{
-    const bool requested = geometry_reset;
-    geometry_reset = false;
-    return requested;
-}
-
-bool gui::aegis::geometry_reset_pending()
-{
-    return geometry_reset;
 }

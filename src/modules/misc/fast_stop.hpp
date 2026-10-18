@@ -15,6 +15,7 @@ namespace modules
         void on_disable(::cache&) override;
         bool render_when_disabled() const override { return true; }
         float get_options_height() override { return 120.0f; }
+        bool has_custom_options() override { return false; }
     private:
         struct runtime;
         std::unique_ptr<runtime> runtime_;

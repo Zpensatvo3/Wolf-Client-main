@@ -10,6 +10,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parent.parent
 TESTS = {
+    "key_codes": ["tests/key_codes_test.cpp"],
     "profile_model": ["tests/profile_model_test.cpp"],
     "menu_background": ["tests/menu_background_test.cpp"],
     "menu_background_renderer": ["tests/menu_background_renderer_test.cpp", "src/ui/menu_background.cpp",

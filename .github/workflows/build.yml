@@ -40,6 +40,8 @@ jobs:
           python scripts/Test-JumpResetSources.py
       - name: Compile and run offline tests
         run: python scripts/Test-Offline.py --jobs 2
+      - name: Exercise GrimUI layout and input without Minecraft
+        run: python scripts/Test-GrimUI.py
       - name: Test 26.x migration audit helpers without game downloads
         run: |
           python -m unittest discover -s tests -p 'test_minecraft*.py' -v

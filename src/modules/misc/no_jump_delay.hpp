@@ -15,5 +15,6 @@ namespace modules
         void render_overlay() override;
         void render_options() override;
         float get_options_height() override { return 90.0f; }
+        bool has_custom_options() override { return false; }
     };
 }

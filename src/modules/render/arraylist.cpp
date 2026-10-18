@@ -4,6 +4,7 @@
 #endif
 
 #include "arraylist.hpp"
+#include "../../platform/input/key_codes.hpp"
 #include "arraylist_layout.hpp"
 
 #include "../../cache/cache.hpp"
@@ -94,19 +95,7 @@ namespace
 	std::string keybind_label(int keycode)
 	{
 		if (!keycode) return {};
-		switch (keycode)
-		{
-		case VK_MENU: case VK_LMENU: return "LALT";
-		case VK_RMENU: return "RALT";
-		case VK_SPACE: return "SPACE";
-		case VK_LBUTTON: return "LBUTTON";
-		case VK_RBUTTON: return "RBUTTON";
-		case VK_MBUTTON: return "MBUTTON";
-		case VK_TAB: return "TAB";
-		}
-		const char character = static_cast<char>(MapVirtualKeyA(keycode, MAPVK_VK_TO_CHAR));
-		if (!character) return "NONE";
-		return std::string(1, character);
+		return platform::keys::label(keycode);
 	}
 
 	ImU32 with_alpha(const ImColor& color, float alpha)

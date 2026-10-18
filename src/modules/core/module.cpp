@@ -1,6 +1,7 @@
 #include "module.hpp"
 #include "../../gui/gui.hpp"
 #include "../../gui/control_draw.hpp"
+#include "../../platform/input/key_codes.hpp"
 #include <imgui/imgui.h>
 #include <algorithm>
 #include <cctype>
@@ -31,8 +32,12 @@ bool modules::module::validate_config_settings(const std::string& object) const
     return validate_config_fields(const_cast<module&>(*this), object);
 }
 
-int modules::module::get_keybind() const { return keybind; }
-void modules::module::set_keybind(int value) { keybind = value >= 0 && value <= 255 ? value : 0; }
+int modules::module::get_keybind() const { return keybind.load(std::memory_order_acquire); }
+void modules::module::set_keybind(int value) {
+    value = platform::keys::valid(value) ? value : 0;
+    if (keybind.exchange(value, std::memory_order_acq_rel) != value)
+        keybind_revision.fetch_add(1, std::memory_order_release);
+}
 const char* modules::module::get_id() const { return id_storage.c_str(); }
 const char* modules::module::get_name() const { return name; }
 const char* modules::module::get_category() const { return category; }
@@ -65,6 +70,7 @@ std::string modules::module::make_stable_id(const char* value)
 
 void modules::module::key_bind_selector()
 {
+    if (!supports_keybind()) { ImGui::TextDisabled("Right Shift"); return; }
     utils::null_string display = (scanning ? "LISTENING" : keycode_to_string(keybind));
     const ImVec2 button_size(72.0f, 26.0f);
     const ImVec2 button_min = ImGui::GetCursorScreenPos();
@@ -76,7 +82,7 @@ void modules::module::key_bind_selector()
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
     draw_list->AddRectFilled(button_min, ImVec2(button_min.x + button_size.x, button_min.y + button_size.y),
         ImGui::GetColorU32(held ? ImGuiCol_ButtonActive : (hovered ? ImGuiCol_ButtonHovered : ImGuiCol_Button)),
-        ImGui::GetStyle().FrameRounding);
+        8.0f); // Keep this small badge rounded regardless of the parent page's style.
     ImFont* label_font = gui::ui_font ? gui::ui_font : ImGui::GetFont();
     gui::control_draw::centered_label(draw_list, label_font, 14.5f, button_min,
         ImVec2(button_min.x + button_size.x, button_min.y + button_size.y),
@@ -87,27 +93,12 @@ void modules::module::key_bind_selector()
     {
         int last_pressed = gui::get_last_pressed_key();
         if (!last_pressed) return;
-        keybind = last_pressed == VK_ESCAPE ? 0 : last_pressed;
+        set_keybind(last_pressed == VK_ESCAPE ? 0 : last_pressed);
         scanning = false;
     }
 }
 
 utils::null_string modules::module::keycode_to_string(int keycode) const
 {
-    if (!keycode) return "none";
-    switch (keycode)
-    {
-    case VK_MENU: case VK_LMENU: return "LALT";
-    case VK_RMENU: return "RALT";
-    case VK_SPACE: return "SPACE";
-    case VK_LBUTTON: return "LBUTTON";
-    case VK_RBUTTON: return "RBUTTON";
-    case VK_MBUTTON: return "MBUTTON";
-    case VK_TAB: return "TAB";
-    }
-    const char character = static_cast<char>(MapVirtualKeyA(keycode, MAPVK_VK_TO_CHAR));
-    if (!character) return "NONE";
-    utils::null_string result{"a"};
-    result.data[0] = character;
-    return result;
+    return platform::keys::label(keycode).c_str();
 }

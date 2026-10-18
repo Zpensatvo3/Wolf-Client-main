@@ -2,6 +2,7 @@
 
 #include "../../utils/utils.hpp"
 #include <cstdint>
+#include <atomic>
 #include <random>
 #include <string>
 #include "config_fields.hpp"
@@ -10,6 +11,7 @@ class cache;
 
 namespace modules
 {
+    inline std::atomic_uint64_t keybind_revision{0};
     inline constexpr std::uintptr_t synthetic_mouse_tag = 0x574F4C46434C4943ULL;
 
     // Shared module contract. Gameplay modules only implement behaviour; the
@@ -36,6 +38,7 @@ namespace modules
 
         int get_keybind() const;
         void set_keybind(int value);
+        virtual bool supports_keybind() const { return true; }
         const char* get_id() const;
         const char* get_name() const;
         const char* get_category() const;
@@ -48,9 +51,12 @@ namespace modules
         bool enabled = false;
         bool prev_enabled = false;
         virtual float get_options_height() { return 45.0f; }
+        // Legacy height describes custom controls; informational-only panels
+        // explicitly opt out without changing their renderer or gameplay.
+        virtual bool has_custom_options() { return get_options_height() > 45.0f; }
 
     protected:
-        int keybind = 0;
+        std::atomic_int keybind{0};
         std::random_device rd{};
         std::mt19937_64 gen{ rd() };
 

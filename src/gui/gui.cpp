@@ -11,6 +11,7 @@
 #include "../ui/grim_ui.hpp"
 #include "../ui/hud_editor.hpp"
 #include "../ui/config_page.hpp"
+#include "../configs/keybind_profile.hpp"
 #include "../ui/themes_page.hpp"
 #include "../ui/menu_background.hpp"
 #include <Windows.h>
@@ -30,9 +31,9 @@
 #include "../friends/friends.hpp"
 #include "../loader/loader_ui.hpp"
 #include "../platform/jni/client_dispatcher.hpp"
+#include "../platform/input/key_codes.hpp"
 #include "../services/input/input_service.hpp"
 #include "../services/game/attack_service.hpp"
-#include "../utils/version_manager.hpp"
 #include "../../resource.h"
 #include <MinHook.h>
 #include <algorithm>
@@ -318,12 +319,6 @@ namespace
 
 
 
-	void render_configs_page(bool embedded = false)
-	{
-		gui::config_page::render(embedded);
-	}
-
-
 } // Closing anonymous namespace
 
 void gui::render_click_gui_options()
@@ -345,68 +340,6 @@ void gui::request_panic()
 		module->enabled = false;
 	gui::draw = false;
 	gui::should_unload = true;
-}
-
-void gui::settings_stepper(
-	const char* label,
-	float* value,
-	float minimum,
-	float maximum,
-	float step,
-	const char* format)
-{
-	ImGui::PushID(label);
-
-	const float row_x = ImGui::GetCursorPosX();
-	const float row_y = ImGui::GetCursorPosY();
-	const float available_width = ImGui::GetContentRegionAvail().x;
-	ImGui::SetCursorPosY(row_y + 5.0f);
-	ImGui::TextColored(ImVec4(0.72f, 0.72f, 0.76f, 1.0f), "%s", label);
-
-	const float controls_width = 142.0f;
-	const float right_edge = row_x + available_width;
-	ImGui::SetCursorPos(ImVec2(right_edge - controls_width, row_y));
-
-	if (ImGui::Button("-", ImVec2(28.0f, 28.0f)))
-		*value = std::clamp(*value - step, minimum, maximum);
-
-	ImGui::SameLine(0.0f, 4.0f);
-	ImGui::SetNextItemWidth(78.0f);
-	ImGui::DragFloat("##value", value, step * 0.10f, minimum, maximum, format, ImGuiSliderFlags_AlwaysClamp);
-
-	ImGui::SameLine(0.0f, 4.0f);
-	if (ImGui::Button("+", ImVec2(28.0f, 28.0f)))
-		*value = std::clamp(*value + step, minimum, maximum);
-
-	ImGui::SetCursorPosY(row_y + 32.0f);
-	ImGui::PopID();
-}
-
-void gui::settings_coordinate_row(float* x_value, float* y_value)
-{
-	const float row_x = ImGui::GetCursorPosX();
-	const float row_y = ImGui::GetCursorPosY();
-	const float available_width = ImGui::GetContentRegionAvail().x;
-
-	ImGui::SetCursorPosY(row_y + 5.0f);
-	ImGui::TextColored(ImVec4(0.72f, 0.72f, 0.76f, 1.0f), "Position");
-
-	const float controls_width = 184.0f;
-	const float right_edge = row_x + available_width;
-	ImGui::SetCursorPos(ImVec2(right_edge - controls_width, row_y + 1.0f));
-
-	ImGui::TextColored(ImVec4(0.48f, 0.48f, 0.53f, 1.0f), "X");
-	ImGui::SameLine(0.0f, 5.0f);
-	ImGui::SetNextItemWidth(66.0f);
-	ImGui::DragFloat("##position_x", x_value, 0.5f, 0.0f, 1000.0f, "%.0f", ImGuiSliderFlags_AlwaysClamp);
-
-	ImGui::SameLine(0.0f, 10.0f);
-	ImGui::TextColored(ImVec4(0.48f, 0.48f, 0.53f, 1.0f), "Y");
-	ImGui::SameLine(0.0f, 5.0f);
-	ImGui::SetNextItemWidth(66.0f);
-	ImGui::DragFloat("##position_y", y_value, 0.5f, 0.0f, 1000.0f, "%.0f", ImGuiSliderFlags_AlwaysClamp);
-
-	ImGui::SetCursorPosY(row_y + 32.0f);
 }
 
 extern LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -548,7 +481,7 @@ static LRESULT CALLBACK detour_WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		!services::input::observe_tracked_event(mouse_tag, msg == WM_LBUTTONDOWN, services::input::event_path::window)) return 0;
 
 	if ((msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) && !services::input::is_synthetic_tag(mouse_tag))
-		last_pressed_key = (int)wParam;
+		last_pressed_key = platform::keys::from_message(static_cast<int>(wParam), static_cast<unsigned>((lParam >> 16) & 0x1ff));
 	else if (msg == WM_MBUTTONDOWN)
 		last_pressed_key = VK_MBUTTON;
 	else if (msg == WM_XBUTTONDOWN)
@@ -631,6 +564,9 @@ static void uninit(HWND hWnd, HDC device)
 		}
 		icon_texture_attempted.fill(false);
 	}
+	gui::grim::reset_runtime_state();
+	configs::keybind_profile::flush(true);
+	gui::reset_widget_runtime_state();
 	gui::clear_auth_screen();
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplWin32_Shutdown();
@@ -772,6 +708,7 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 		icon_range_builder.AddChar(0xF013);
 		icon_range_builder.AddChar(0xF07B);
 		icon_range_builder.AddChar(0xF108);
+		icon_range_builder.AddChar(0xF11C); // keyboard: Keybinds
 		icon_range_builder.AddChar(0xF005);
 		icon_range_builder.AddChar(0x002B);
 		icon_range_builder.BuildRanges(&icon_glyph_ranges);
@@ -886,6 +823,8 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 				gui::suppress_menu_key_until_release = false;
 		}
 		else if (current_menu_key && !previous_menu_key && !gui::menu_key_scanning &&
+			!std::any_of(modules::get_modules().begin(), modules::get_modules().end(),
+				[](const modules::module* entry) { return entry->is_keybind_capture_active(); }) &&
 			!gui::should_unload && !gui::loader_visible && !auth_open)
 		{
 			gui::draw = !gui::draw;
@@ -1004,7 +943,7 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 
 		gui::grim::page_callbacks callbacks{};
 		callbacks.friends = []() { friends::render_manager(true); };
-		callbacks.configs = []() { render_configs_page(true); };
+		callbacks.configs = []() { gui::config_page::render(true); };
 		gui::grim::render(reference_viewport, callbacks);
 
 
@@ -1012,6 +951,7 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 	if (auth::client::access_allowed()) gui::render_notifications();
 	if (!gui::loader_visible) gui::render_auth_screen();
 	gui::aegis::flush_preferences();
+	configs::keybind_profile::flush();
 	ImGui::EndFrame();
 	ImGui::Render();
 	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

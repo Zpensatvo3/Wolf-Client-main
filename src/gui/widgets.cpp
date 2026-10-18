@@ -377,22 +377,11 @@ void gui::render_notifications()
     notification_renderer.render(services::notifications::collect(), *ImGui::GetMainViewport(), style);
 }
 
-void gui::status_badge(const char* label, bool accent)
+void gui::reset_widget_runtime_state()
 {
-    const ImVec2 start = ImGui::GetCursorScreenPos();
-    const ImVec2 text_size = ImGui::CalcTextSize(label);
-    const ImVec2 size(text_size.x + 15.0f, 21.0f);
-    const ImVec4 accent_color = ImGui::GetStyleColorVec4(ImGuiCol_CheckMark);
-    ImDrawList* draw = ImGui::GetWindowDrawList();
-    draw->AddRectFilled(start, ImVec2(start.x + size.x, start.y + size.y),
-        accent ? with_alpha(accent_color, 0.16f) : IM_COL32(34, 35, 42, 235), 10.5f);
-    draw->AddRect(start, ImVec2(start.x + size.x, start.y + size.y),
-        accent ? with_alpha(accent_color, 0.38f) : IM_COL32(255, 255, 255, 12), 10.5f);
-    draw->AddText(ImVec2(start.x + 7.5f, start.y + 3.0f),
-        accent ? with_alpha(accent_color, 0.96f) : IM_COL32(150, 151, 162, 255), label);
-    ImGui::Dummy(size);
+    animations.clear();
+    notification_renderer.clear();
 }
-
 void gui::list_row_background(const ImVec2& minimum, const ImVec2& maximum, bool hovered, bool selected)
 {
     const ImVec4 accent_color = ImGui::GetStyleColorVec4(ImGuiCol_CheckMark);
@@ -405,6 +394,11 @@ void gui::list_row_background(const ImVec2& minimum, const ImVec2& maximum, bool
 }
 
 bool gui::option_toggle(const char* label, bool* value)
+{
+    return option_toggle(label, value, true);
+}
+
+bool gui::option_toggle(const char* label, bool* value, bool highlight_row)
 {
     ImGui::PushID(label);
     const ImGuiID id = ImGui::GetID("##option_toggle");
@@ -423,7 +417,7 @@ bool gui::option_toggle(const char* label, bool* value)
     const float eased = anim.toggle * anim.toggle * (3.0f - 2.0f * anim.toggle);
     ImDrawList* draw = ImGui::GetWindowDrawList();
     ImFont* font = ImGui::GetFont();
-    draw_option_row(draw, start, width, toggle_height, anim.hover);
+    draw_option_row(draw, start, width, toggle_height, highlight_row ? anim.hover : 0.f);
     draw_label_clipped(draw, font, 13.5f, ImVec2(start.x + 10.0f, start.y + 9.0f), start.x + width - 52.0f,
         ImGui::GetColorU32(ImGuiCol_Text), label);
     const ImVec2 toggle_min(start.x + width - 42.0f, start.y + 8.0f);

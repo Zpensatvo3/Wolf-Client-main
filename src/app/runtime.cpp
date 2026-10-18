@@ -5,11 +5,14 @@
 #include "../auth/config.hpp"
 #include "../cache/cache.hpp"
 #include "../configs/configs.hpp"
+#include "../configs/keybind_profile.hpp"
 #include "../gui/gui.hpp"
 #include "../loader/loader_ui.hpp"
 #include "../modules/module_lifecycle.hpp"
 #include "../platform/adapter/game_adapter.hpp"
 #include "../platform/jni/jvm_session.hpp"
+#include "../platform/input/key_codes.hpp"
+#include "../services/input/input_service.hpp"
 #include "../utils/version_manager.hpp"
 #include <Windows.h>
 #include <chrono>
@@ -20,6 +23,13 @@
 namespace
 {
     constexpr auto worker_interval = std::chrono::milliseconds(5);
+    bool emergency_exit_pressed()
+    {
+        // Once input is hooked, End must mean E0 4F, not NumPad 1 with
+        // NumLock off (Windows reports both as VK_END).
+        return gui::get_window() ? services::input::physical_scan_down(platform::keys::scan_for(VK_END))
+            : (GetAsyncKeyState(VK_END) & 0x8000) != 0;
+    }
 
     // Declared after the game cache, so renderer/modules stop before its JNI refs die.
     struct runtime_services
@@ -50,7 +60,7 @@ void app::run()
         loader_ui::stage(0, "Locating Minecraft JVM runtime");
         while (!GetModuleHandleW(L"jvm.dll"))
         {
-            if (gui::should_unload || (GetAsyncKeyState(VK_END) & 0x8000)) return;
+            if (gui::should_unload || emergency_exit_pressed()) return;
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
 
@@ -79,6 +89,7 @@ void app::run()
         loader_ui::stage(3, "Registering client modules");
         services.modules_started = true;
         modules::init();
+        configs::keybind_profile::initialize();
 
         loader_ui::stage(4, "Installing OpenGL render hook");
         if (!gui::init()) { loader_ui::fail("OpenGL renderer hook could not be installed"); return; }
@@ -89,7 +100,7 @@ void app::run()
         // public config work start after successful signed authentication.
         while (!auth::client::access_allowed())
         {
-            if (gui::should_unload || (GetAsyncKeyState(VK_END) & 0x8000)) return;
+            if (gui::should_unload || emergency_exit_pressed()) return;
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
         if (gui::should_unload) return;
@@ -97,7 +108,7 @@ void app::run()
         configs::initialize();
 
         module_loop loop;
-        while (!(GetAsyncKeyState(VK_END) & 0x8000) && !gui::should_unload && auth::client::access_allowed())
+        while (!emergency_exit_pressed() && !gui::should_unload && auth::client::access_allowed())
         {
             loop.tick(game);
             std::this_thread::sleep_for(worker_interval);

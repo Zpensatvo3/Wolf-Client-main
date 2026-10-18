@@ -28,6 +28,9 @@
     <Filter Include="Header Files\src\cache">
       <UniqueIdentifier>{DAC786F2-6C21-54D5-9A0E-462D23FC6DAF}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\src\configs">
+      <UniqueIdentifier>{BF9257AA-6C47-5596-8A40-7585F4055856}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Header Files\src\friends">
       <UniqueIdentifier>{59AD4582-C200-504B-8148-1D8DAEFCBBA1}</UniqueIdentifier>
     </Filter>
@@ -138,6 +141,9 @@
     </Filter>
     <Filter Include="Header Files\src\platform\adapter">
       <UniqueIdentifier>{FAD14CDF-1C53-5684-B78F-3780FB4BBA75}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\src\platform\input">
+      <UniqueIdentifier>{B8577BC8-911D-5D55-9BC5-B3ACAE3C9A8F}</UniqueIdentifier>
     </Filter>
     <Filter Include="Header Files\src\platform\jni">
       <UniqueIdentifier>{4597DA94-A432-5BA5-88A6-6484C5506AB3}</UniqueIdentifier>
@@ -473,6 +479,12 @@
     </ClCompile>
     <ClCompile Include="src\ui\themes_page.cpp">
       <Filter>Source Files\src\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ui\keybinds_page.cpp">
+      <Filter>Source Files\src\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\configs\keybind_profile.cpp">
+      <Filter>Source Files\src\configs</Filter>
     </ClCompile>
     <ClCompile Include="src\ui\notification_renderer.cpp">
       <Filter>Source Files\src\ui</Filter>
@@ -1627,6 +1639,18 @@
     </ClInclude>
     <ClInclude Include="src\ui\themes_page.hpp">
       <Filter>Header Files\src\ui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ui\keybinds_page.hpp">
+      <Filter>Header Files\src\ui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ui\keybinds_model.hpp">
+      <Filter>Header Files\src\ui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\platform\input\key_codes.hpp">
+      <Filter>Header Files\src\platform\input</Filter>
+    </ClInclude>
+    <ClInclude Include="src\configs\keybind_profile.hpp">
+      <Filter>Header Files\src\configs</Filter>
     </ClInclude>
     <ClInclude Include="src\ui\config_page_model.hpp">
       <Filter>Header Files\src\ui</Filter>

@@ -21,12 +21,13 @@ namespace gui
     bool action_button(const char* label, const ImVec2& size, action_tone tone = action_tone::neutral);
     bool icon_action(const char* id, const char* glyph, const char* fallback, const char* tooltip,
         bool danger = false, bool accent = false);
-    void status_badge(const char* label, bool accent = false);
     void list_row_background(const ImVec2& minimum, const ImVec2& maximum, bool hovered, bool selected = false);
     void push_workspace_toast(const std::string& message, bool success = true);
     void render_notifications();
+    void reset_widget_runtime_state();
 
     bool option_toggle(const char* label, bool* value);
+    bool option_toggle(const char* label, bool* value, bool highlight_row);
     bool option_slider(const char* label, float* value, float minimum, float maximum,
         const char* format = "%.3f", ImGuiSliderFlags flags = 0);
     bool option_slider(const char* label, int* value, int minimum, int maximum,
