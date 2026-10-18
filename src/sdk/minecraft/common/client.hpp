@@ -43,13 +43,13 @@ namespace maps
 
         BEGIN_KLASS_DEF(TextRenderer, ONESTEP_MC_NAME("net/minecraft/class_327"))
         jni::method<jint, ONESTEP_MC_NAME("method_30880"), jni::NOT_STATIC, String> getWidth{ *this };
-#if ONESTEP_MINECRAFT_VERSION != 26100
+#if !ONESTEP_MINECRAFT_26_1
     jni::method<jint, "method_30881", jni::NOT_STATIC, MatrixStack, String, jfloat, jfloat, jint> drawWithShadow{ *this };
 #endif
     END_KLASS_DEF()
 
         BEGIN_KLASS_DEF(Camera, ONESTEP_MC_NAME("net/minecraft/class_4184"))
-#if ONESTEP_MINECRAFT_VERSION == 26100
+#if ONESTEP_MINECRAFT_26_1
     // Camera now owns the world-render FOV; no legacy GameRenderer signature.
     jni::method<jfloat, "getFov"> getFov{ *this };
 #endif
@@ -69,10 +69,10 @@ namespace maps
         jni::method<HitResult, ONESTEP_MC_NAME("method_56153"), jni::NOT_STATIC, Entity, jdouble, jdouble, jfloat> findCrosshairTarget{ *this };
 #endif
 		// The value used by the world renderer after zoom/FOV multipliers.
-#if ONESTEP_MINECRAFT_VERSION != 26100
+#if !ONESTEP_MINECRAFT_26_1
 		jni::method<bindings_profile::fov, ONESTEP_MC_NAME("method_3196"), jni::NOT_STATIC, Camera, jfloat, jboolean> getFov{ *this };
 #endif
-#if ONESTEP_MINECRAFT_VERSION == 26100
+#if ONESTEP_MINECRAFT_26_1
         jni::method<Camera, ONESTEP_MC_NAME("method_19418")> getCamera{ *this };
 #else
 		jni::multi_method<Camera, ONESTEP_MC_NAME("method_19418"), "method_19349"> getCamera{ *this };
@@ -87,9 +87,15 @@ namespace maps
     jni::method<UUID, ONESTEP_MC_NAME("method_44717"), jni::NOT_STATIC> getUuidOrNull{ *this };
     jni::method<String, ONESTEP_MC_NAME("method_1675"), jni::NOT_STATIC> getSessionId{ *this };
     jni::method<String, ONESTEP_MC_NAME("method_1674"), jni::NOT_STATIC> getAccessToken{ *this };
+#if ONESTEP_MINECRAFT_26_1
+    jni::method<Optional, ONESTEP_MC_NAME("method_38740")> getClientId{*this};
+    jni::method<Optional, ONESTEP_MC_NAME("method_38741")> getXuid{*this};
+#else
     jni::method<String, ONESTEP_MC_NAME("method_38740"), jni::NOT_STATIC> getClientId{ *this };
     jni::method<String, ONESTEP_MC_NAME("method_38741"), jni::NOT_STATIC> getXuid{ *this };
+    // No callers; User no longer exposes the historical account-type helper.
     jni::method<String, ONESTEP_MC_NAME("method_35718"), jni::NOT_STATIC> getAccountType{ *this };
+#endif
     END_KLASS_DEF()
 
         BEGIN_KLASS_DEF(MinecraftClient, ONESTEP_MC_NAME("net/minecraft/class_310"))
@@ -105,7 +111,9 @@ namespace maps
     jni::method<ClientPlayNetworkHandler, ONESTEP_MC_NAME("method_1562")> getNetworkHandler{ *this };
     jni::method<Window, ONESTEP_MC_NAME("method_22683")> getWindow{ *this };
     jni::method<TextureManager, ONESTEP_MC_NAME("method_1531")> getTextureManager{ *this };
+#if !ONESTEP_MINECRAFT_26_1
     jni::method<ItemRenderer, ONESTEP_MC_NAME("method_1480")> getItemRenderer{ *this };
+#endif
     jni::field<TextRenderer, ONESTEP_MC_NAME("field_1772")> textRenderer{ *this };
     jni::field<EntityRenderDispatcher, ONESTEP_MC_NAME("field_1731")> entityRenderDispatcher{ *this };
     jni::field<GameRenderer, ONESTEP_MC_NAME("field_1773")> gameRenderer{ *this };

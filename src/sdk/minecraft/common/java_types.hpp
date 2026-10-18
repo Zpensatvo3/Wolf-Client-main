@@ -53,6 +53,9 @@ namespace maps
         jni::method<String, "toString"> toString{ *this };
     END_KLASS_DEF()
 
+    BEGIN_KLASS_DEF(Optional, "java/util/Optional")
+    END_KLASS_DEF()
+
         BEGIN_KLASS_DEF(Collection, "java/util/Collection")
         jni::method<jni::array<Object>, "toArray"> toArray{ *this };
     END_KLASS_DEF()

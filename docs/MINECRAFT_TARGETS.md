@@ -1,7 +1,7 @@
 # Minecraft targets
 
 OneStep uses **one source tree and a separate Windows x64 DLL per exact Fabric version**.
-The current targets are 1.21.1, 1.21.4, 1.21.8 and 1.21.11. These are development
+The current targets are 1.21.1, 1.21.4, 1.21.8, 1.21.11, 26.1, 26.1.1 and 26.1.2. These are development
 targets until their Windows build and in-game checklist have passed; a successful
 offline signature check does not establish gameplay compatibility.
 
@@ -37,7 +37,10 @@ In a Windows Developer PowerShell with the existing auth build properties config
 .\scripts\Build-Release.ps1 -MinecraftVersion 1.21.4 -SkipSign
 .\scripts\Build-Release.ps1 -MinecraftVersion 1.21.8 -SkipSign
 .\scripts\Build-Release.ps1 -MinecraftVersion 1.21.11 -SkipSign
-# Or build all four sequentially:
+.\scripts\Build-Release.ps1 -MinecraftVersion 26.1 -SkipSign
+.\scripts\Build-Release.ps1 -MinecraftVersion 26.1.1 -SkipSign
+.\scripts\Build-Release.ps1 -MinecraftVersion 26.1.2 -SkipSign
+# Or build all seven sequentially:
 .\scripts\Build-Release.ps1 -AllMinecraftVersions -SkipSign
 ```
 
@@ -50,6 +53,14 @@ their intermediate objects/PCHs by target version. Invalid target values fail th
 | 1.21.4 | `build/minecraft/1.21.4/Onestep.dll` | `1.21.4+build.8` |
 | 1.21.8 | `build/minecraft/1.21.8/Onestep.dll` | `1.21.8+build.1` |
 | 1.21.11 | `build/minecraft/1.21.11/Onestep.dll` | `1.21.11+build.6` |
+| 26.1 | `build/minecraft/26.1/Onestep.dll` | Mojang names; Java 25 required |
+| 26.1.1 | `build/minecraft/26.1.1/Onestep.dll` | Shared 26.1 profile; Java 25 required |
+| 26.1.2 | `build/minecraft/26.1.2/Onestep.dll` | Shared 26.1 profile; Java 25 required |
+
+The three exact 26.1 targets share an audited SDK/bridge layout, not separate
+module implementations. Both patch jars passed all 740 SDK/JNI checks; 274
+referenced client classes (including parents/interfaces) were byte-identical to
+26.1. Each binary still accepts only its own exact game version, not the family.
 
 Each file keeps the `Onestep.dll` filename, preserving the launcher's loaded-module
 identity. The default 1.21.1 path, release artifact name and signed release protocol
@@ -83,7 +94,8 @@ or frontend framework is introduced.
   renderer's shared state or replacing the game's renderer.
 - Item icons read GUI render layers, tint arrays, changed transformations and
   packed UVs, then retain the HUD's existing native projection/drawing.
-- NameProtect verifies seven/six/eight/eight font entry points for the four targets.
+- NameProtect verifies seven/six/eight/eight/eight/eight/eight font entry points
+  for the seven targets in the order listed above.
 - Sky reads legacy fog uniforms, the 1.21.4 Fog record, or newer GPU uniform slices.
   1.21.11 uses the new Fabric rendering package and per-frame sky state; fog color
   is filtered at a verified return site. The fog helper lives in the game's loader,
@@ -106,18 +118,22 @@ named `yarn-1.21.1.jar`, `yarn-1.21.4.jar`, etc. Obtain them from Fabric Maven u
 the pinned Yarn references above and the `v2` classifier. This verifies symbol and
 descriptor availability, not Java inheritance or runtime behavior.
 
-`tests/BridgeCompatibilityTest.java` inspects local official client jars and Fabric
-intermediary v2 jars without starting Minecraft. Compile it alongside bridge sources
-with ASM core/tree/commons 9.9 and JOML 1.10.8 on the test classpath, then run:
+`scripts/Test-MinecraftBridges.py` compiles the bridge tests and checks both source
+and embedded resources against local official clients, Fabric intermediary v2
+mappings and Fabric rendering jars. It needs ASM 9.9 core/tree/commons/analysis,
+JOML 1.10.8 and a JDK (21 for the old targets, 25 for the three 26.1 targets):
 
 ```sh
-java -ea -cp '<compiled-classes>:<test-libraries>' BridgeCompatibilityTest client-1.21.11.jar intermediary-1.21.11.jar 12111
+python scripts/Test-MinecraftBridges.py --fixture-dir /path/to/client-cache --library-dir /path/to/test-libraries --java-home /path/to/jdk25
 ```
 
-Repeat with target IDs `12101`, `12104`, `12108`, `12111`. Windows classpaths use `;`.
-The test remaps only the inspected fixtures in memory, checks real font/fog/render
-contracts, exercises the transformations, and checks fog passthrough and immutability.
-Client jars/mappings and test libraries are not committed or bundled into the DLL.
+Repeat `--target 1.21.11` (or another exact version) to limit the run. The default
+checks all seven versions in both source and embedded modes (14 runs). Tests inspect
+real font/fog/render contracts, analyze the transformations and exercise inert
+JVM fixtures for text filtering, fog outputs and Sky event/stop behavior. They
+never run Minecraft or native rendering. Pinned rendering jar versions and the
+required fixture filenames are listed in [MINECRAFT_26_PORT.md](MINECRAFT_26_PORT.md).
+Client jars, mappings and test libraries are not committed or bundled into the DLL.
 
 `tests/jni_owner_jvm_test.cpp` is a separate, optional integration test. Link it
 against the JDK's `jvm` library and run it with that library available. It starts a
@@ -137,9 +153,10 @@ a DLL built for another target stops before hooks or modules start.
 
 The existing config keys, module IDs and auth protocol are shared across targets.
 This does not assert that game behavior or every resource-pack model is identical
-between Minecraft versions. Unsupported versions (including 26.x) require an
-explicit additional profile and validation; they never use an approximate fallback.
+between Minecraft versions. Unsupported versions (including 26.1.3 and later) require
+explicit additional validation and an exact target; they never use an approximate fallback.
 
-The staged 26.1 native adapter, classfile checks and remaining integration
-boundaries are documented in [MINECRAFT_26_PORT.md](MINECRAFT_26_PORT.md). It is
-offline-only and does not enable 26.x DLLs.
+The 26.1 SDK/JNI audit, NameProtect/Sky bridges and exact offline test results are
+documented in [MINECRAFT_26_PORT.md](MINECRAFT_26_PORT.md). The three exact 26.1 build
+targets are enabled for manual Windows validation; their Windows builds and game
+checklists have not been run in this Linux environment.

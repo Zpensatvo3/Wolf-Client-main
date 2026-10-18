@@ -144,14 +144,18 @@ namespace maps
 	jni::method<ItemStack, ONESTEP_MC_NAME("method_6030")> getActiveItem{ *this };
 		jni::method<jboolean, ONESTEP_MC_NAME("method_6039")> isBlocking{ *this };
 		jni::method<jboolean, ONESTEP_MC_NAME("method_6101")> isClimbing{ *this };
+#if ONESTEP_MINECRAFT_26_1
+    jni::method<LivingEntity, ONESTEP_MC_NAME("method_6065")> getAttacker{*this};
+#else
     jni::method<Entity, ONESTEP_MC_NAME("method_6065")> getAttacker{ *this };
+#endif
     jni::method<DamageSource, ONESTEP_MC_NAME("method_6081")> getRecentDamageSource{ *this };
     jni::method<void, ONESTEP_MC_NAME("method_6043")> jump{ *this };
     jni::method<jboolean, ONESTEP_MC_NAME("method_24518"), jni::NOT_STATIC, Item> isHolding{ *this };
     jni::method<ItemStack, ONESTEP_MC_NAME("method_6047")> getMainHandStack{ *this };
     jni::method<jboolean, ONESTEP_MC_NAME("method_6092"), jni::NOT_STATIC, StatusEffectInstance> addStatusEffect{ *this };
-    jni::method<jboolean, ONESTEP_MC_NAME("method_6016"), jni::NOT_STATIC, StatusEffect> removeStatusEffect{ *this };
-		jni::method<jboolean, ONESTEP_MC_NAME("method_6059"), jni::NOT_STATIC, StatusEffect> hasStatusEffect{ *this };
+    jni::method<jboolean, ONESTEP_MC_NAME("method_6016"), jni::NOT_STATIC, EffectBinding> removeStatusEffect{ *this };
+		jni::method<jboolean, ONESTEP_MC_NAME("method_6059"), jni::NOT_STATIC, EffectBinding> hasStatusEffect{ *this };
 		jni::method<jboolean, ONESTEP_MC_NAME("method_6059"), jni::NOT_STATIC, RegistryEntry> hasStatusEffectEntry{ *this };
     jni::method<void, ONESTEP_MC_NAME("method_6122"), jni::NOT_STATIC, Hand, ItemStack> setStackInHand{ *this };
     jni::method<void, ONESTEP_MC_NAME("method_6104"), jni::NOT_STATIC, Hand> swingHand{ *this };

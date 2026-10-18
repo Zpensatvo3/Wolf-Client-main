@@ -15,10 +15,18 @@ int main()
         assert(mc::matches_target(entry.id) == (entry.build_id == ONESTEP_MINECRAFT_VERSION));
     }
     for (const auto name : {"", "1.21", "1.21.10", "1.21.12", "1.21.1-pre1", "Minecraft 1.21.1",
-                           "26.1", "26.1.1", "26.1.2", "26.2", "26.3", "26.4-snapshot-4"})
+                           "26.1.3", "26.1.1-pre1", "26.1.2-rc1", "26.2", "26.3", "26.4-snapshot-4"})
         assert(mc::parse_version(name) == mc::version::unknown);
+    assert(mc::parse_version("26.1") == mc::version::v26_1);
+    assert(mc::parse_version("26.1.1") == mc::version::v26_1_1);
+    assert(mc::parse_version("26.1.2") == mc::version::v26_1_2);
     assert(!mc::matches_target(mc::version::unknown));
     using fall = decltype(maps::Entity_members::fallDistance);
+#if ONESTEP_MINECRAFT_26_1
+    static_assert(std::string_view(fall::get_signature()) == "D"sv);
+    static_assert(std::string_view(decltype(maps::Camera_members::getFov)::get_signature()) == "()F"sv);
+    static_assert(std::string_view(decltype(maps::Mouse_members::onMouseInput)::get_signature()) == "(JLnet/minecraft/client/input/MouseButtonInfo;I)V"sv);
+#else
     using fov = decltype(maps::GameRenderer_members::getFov);
 #if ONESTEP_MINECRAFT_VERSION >= 12108
     static_assert(std::string_view(fall::get_signature()) == "D"sv);
@@ -43,6 +51,7 @@ int main()
     static_assert(std::string_view(decltype(maps::SkinTextures_members::body)::get_signature()) == "()Lnet/minecraft/class_12079$class_12081;"sv);
 #else
     static_assert(std::string_view(decltype(maps::GameProfile_members::getName)::get_name()) == "getName"sv);
+#endif
 #endif
     std::cout << "Minecraft target " << mc::target.name << ": exact version matching and JNI profile signatures passed\n";
 }

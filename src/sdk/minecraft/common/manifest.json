@@ -177,6 +177,7 @@
     "Class": "java/lang/Class",
     "String": "java/lang/String",
     "UUID": "java/util/UUID",
+    "Optional": "java/util/Optional",
     "Collection": "java/util/Collection",
     "List": "java/util/List",
     "DefaultedList": "net/minecraft/class_2371",
@@ -202,6 +203,9 @@
     "1.21.1",
     "1.21.4",
     "1.21.8",
-    "1.21.11"
+    "1.21.11",
+    "26.1",
+    "26.1.1",
+    "26.1.2"
   ]
 }

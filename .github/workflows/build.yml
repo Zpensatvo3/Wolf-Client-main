@@ -42,8 +42,10 @@ jobs:
         run: python scripts/Test-Offline.py --jobs 2
       - name: Test 26.x migration audit helpers without game downloads
         run: |
-          python -m unittest discover -s tests -p test_minecraft26_readiness.py -v
-          python scripts/Test-Minecraft261Offline.py
+          python -m unittest discover -s tests -p 'test_minecraft*.py' -v
+          for target in 26.1 26.1.1 26.1.2; do
+            python scripts/Test-Minecraft261Offline.py --target "$target"
+          done
       - name: Check JNI owner isolation in a disposable JVM
         run: |
           g++ -std=c++20 -pthread -UNDEBUG -Iinclude/jni -Iinclude/jni/linux tests/jni_owner_jvm_test.cpp \
@@ -51,9 +53,15 @@ jobs:
           "$RUNNER_TEMP/onestep-jni-owner-test"
       - name: Check additional Minecraft target SDKs
         run: |
-          for target in 1.21.4 1.21.8 1.21.11; do
+          for target in 1.21.4 1.21.8 1.21.11 26.1 26.1.1 26.1.2; do
             python scripts/Test-Offline.py --test minecraft_version --test sdk_mappings --minecraft-version "$target" --jobs 2
           done
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Check Java 25 attach and JVMTI lifecycle without Minecraft
+        run: python scripts/Test-JvmLifecycle.py --java-home "$JAVA_HOME"
 
   windows-dll:
     needs: offline-tests
@@ -75,6 +83,15 @@ jobs:
           - minecraft: '1.21.11'
             artifact: Onestep-1.21.11-Windows-x64
             dll: build/minecraft/1.21.11/Onestep.dll
+          - minecraft: '26.1'
+            artifact: Onestep-26.1-Windows-x64
+            dll: build/minecraft/26.1/Onestep.dll
+          - minecraft: '26.1.1'
+            artifact: Onestep-26.1.1-Windows-x64
+            dll: build/minecraft/26.1.1/Onestep.dll
+          - minecraft: '26.1.2'
+            artifact: Onestep-26.1.2-Windows-x64
+            dll: build/minecraft/26.1.2/Onestep.dll
     steps:
       - uses: actions/checkout@v4
       - name: Build Release x64

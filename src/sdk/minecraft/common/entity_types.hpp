@@ -23,17 +23,23 @@ namespace maps
         BEGIN_KLASS_DEF(StatusEffect, ONESTEP_MC_NAME("net/minecraft/class_1291"))
         END_KLASS_DEF()
 
+#if ONESTEP_MINECRAFT_26_1
+    using EffectBinding = RegistryEntry;
+#else
+    using EffectBinding = StatusEffect;
+#endif
+
 	BEGIN_KLASS_DEF(StatusEffects, ONESTEP_MC_NAME("net/minecraft/class_1294"))
 		jni::field<RegistryEntry, ONESTEP_MC_NAME("field_5919"), jni::STATIC> BLINDNESS{ *this };
-		jni::field<StatusEffect, ONESTEP_MC_NAME("field_5912"), jni::STATIC> GLOWING{ *this };
-    jni::field<StatusEffect, ONESTEP_MC_NAME("field_5925"), jni::STATIC> NIGHT_VISION{ *this };
-    jni::field<StatusEffect, ONESTEP_MC_NAME("field_5918"), jni::STATIC> FIRE_RESISTANCE{ *this };
-    jni::field<StatusEffect, ONESTEP_MC_NAME("field_5924"), jni::STATIC> REGENERATION{ *this };
-    jni::field<StatusEffect, ONESTEP_MC_NAME("field_5917"), jni::STATIC> HASTE{ *this };
+		jni::field<EffectBinding, ONESTEP_MC_NAME("field_5912"), jni::STATIC> GLOWING{ *this };
+    jni::field<EffectBinding, ONESTEP_MC_NAME("field_5925"), jni::STATIC> NIGHT_VISION{ *this };
+    jni::field<EffectBinding, ONESTEP_MC_NAME("field_5918"), jni::STATIC> FIRE_RESISTANCE{ *this };
+    jni::field<EffectBinding, ONESTEP_MC_NAME("field_5924"), jni::STATIC> REGENERATION{ *this };
+    jni::field<EffectBinding, ONESTEP_MC_NAME("field_5917"), jni::STATIC> HASTE{ *this };
     END_KLASS_DEF()
 
         BEGIN_KLASS_DEF(StatusEffectInstance, ONESTEP_MC_NAME("net/minecraft/class_1293"))
-        jni::constructor<StatusEffect, jint, jint> constructor{ *this };
+        jni::constructor<EffectBinding, jint, jint> constructor{ *this };
     END_KLASS_DEF()
 
         BEGIN_KLASS_DEF(PlayerAbilities, ONESTEP_MC_NAME("net/minecraft/class_1656"))
@@ -60,7 +66,11 @@ namespace maps
     END_KLASS_DEF()
 
         BEGIN_KLASS_DEF(PlayerInteractItemC2SPacket, ONESTEP_MC_NAME("net/minecraft/class_2886"))
+#if ONESTEP_MINECRAFT_26_1
+        jni::constructor<maps::Hand, jint, jfloat, jfloat> constructor{*this};
+#else
         jni::constructor<maps::Hand, jint> constructor{ *this };
+#endif
     END_KLASS_DEF()
 
         BEGIN_KLASS_DEF(HitResult$Type, ONESTEP_MC_NAME("net/minecraft/class_239$class_240"))

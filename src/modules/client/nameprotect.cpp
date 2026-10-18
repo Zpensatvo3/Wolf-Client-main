@@ -119,8 +119,8 @@ struct modules::nameprotect::runtime
             transformer=load("net.onestep.privacy.NameProtectTransformer","net/onestep/privacy/NameProtectTransformer",IDR_NAMEPROTECT_TRANSFORMER);
             font=load(ONESTEP_MC_NAME("net.minecraft.class_327"),nullptr,0);
             configure=checked(env,env->GetStaticMethodID(bridge,"configure","(Ljava/lang/String;Ljava/lang/String;)V"));
-            auto prepare=checked(env,env->GetStaticMethodID(bridge,"prepare","(Ljava/lang/ClassLoader;)V"));
-            env->CallStaticVoidMethod(bridge,prepare,loader);
+            auto prepare=checked(env,env->GetStaticMethodID(bridge,"prepare","(Ljava/lang/ClassLoader;I)V"));
+            env->CallStaticVoidMethod(bridge,prepare,loader,static_cast<jint>(mc::target.build_id));
             if (env->ExceptionCheck()) throw std::runtime_error("Text interfaces");
             transform=checked(env,env->GetStaticMethodID(transformer,"transform","([BI)[B"));
             if (jvm->GetEnv(reinterpret_cast<void**>(&tooling),JVMTI_VERSION_1_2)!=JNI_OK || !tooling)

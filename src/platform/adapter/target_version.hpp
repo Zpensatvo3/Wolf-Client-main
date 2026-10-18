@@ -8,25 +8,28 @@
 #endif
 #if ONESTEP_MINECRAFT_VERSION != 12101 && ONESTEP_MINECRAFT_VERSION != 12104 && \
     ONESTEP_MINECRAFT_VERSION != 12108 && ONESTEP_MINECRAFT_VERSION != 12111 && \
-    ONESTEP_MINECRAFT_VERSION != 26100
+    ONESTEP_MINECRAFT_VERSION != 26100 && ONESTEP_MINECRAFT_VERSION != 26101 && \
+    ONESTEP_MINECRAFT_VERSION != 26102
 #error Unsupported OneStep Minecraft target
 #endif
-#if ONESTEP_MINECRAFT_VERSION == 26100 && !defined(ONESTEP_MINECRAFT_PORTING)
-#error Minecraft 26.1 is an incomplete port; only explicit offline porting builds are allowed
-#endif
+
+// Shared SDK layout verified against all three exact release jars. This is not
+// a wildcard: later patches/releases still require their own audit and target.
+#define ONESTEP_MINECRAFT_26_1 (ONESTEP_MINECRAFT_VERSION == 26100 || \
+    ONESTEP_MINECRAFT_VERSION == 26101 || ONESTEP_MINECRAFT_VERSION == 26102)
 
 namespace mc
 {
-    enum class version { unknown, v1_21_1, v1_21_4, v1_21_8, v1_21_11, v26_1 };
+    enum class version { unknown, v1_21_1, v1_21_4, v1_21_8, v1_21_11, v26_1, v26_1_1, v26_1_2 };
     struct version_info { version id; int build_id; std::string_view name; std::string_view yarn; };
     inline constexpr std::array versions{
         version_info{version::v1_21_1, 12101, "1.21.1", "1.21.1+build.3"},
         version_info{version::v1_21_4, 12104, "1.21.4", "1.21.4+build.8"},
         version_info{version::v1_21_8, 12108, "1.21.8", "1.21.8+build.1"},
-        version_info{version::v1_21_11, 12111, "1.21.11", "1.21.11+build.6"}
-#ifdef ONESTEP_MINECRAFT_PORTING
-        , version_info{version::v26_1, 26100, "26.1", ""}
-#endif
+        version_info{version::v1_21_11, 12111, "1.21.11", "1.21.11+build.6"},
+        version_info{version::v26_1, 26100, "26.1", ""},
+        version_info{version::v26_1_1, 26101, "26.1.1", ""},
+        version_info{version::v26_1_2, 26102, "26.1.2", ""}
     };
     constexpr version parse_version(std::string_view text)
     {

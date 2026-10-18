@@ -54,7 +54,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--compiler", default=os.environ.get("CXX", "cl" if os.name == "nt" else "g++"))
     parser.add_argument("--jobs", type=int, default=2)
-    parser.add_argument("--minecraft-version", choices=("1.21.1", "1.21.4", "1.21.8", "1.21.11"), default="1.21.1")
+    parser.add_argument("--minecraft-version", choices=("1.21.1", "1.21.4", "1.21.8", "1.21.11", "26.1", "26.1.1", "26.1.2"), default="1.21.1")
     parser.add_argument("--test", action="append", choices=TESTS, help="Run only these tests (repeatable).")
     args = parser.parse_args()
     compiler = shutil.which(args.compiler)
@@ -74,7 +74,8 @@ def main():
                 command += ["/nologo", "/std:c++20", "/EHsc", "/UNDEBUG", "/W4", f"/Fe:{output}"]
             else:
                 command += ["-std=c++20", "-UNDEBUG", "-Wall", "-Wextra", "-pedantic", "-pthread", "-o", str(output)]
-            target_id = {"1.21.1": 12101, "1.21.4": 12104, "1.21.8": 12108, "1.21.11": 12111}[args.minecraft_version]
+            target_id = {"1.21.1": 12101, "1.21.4": 12104, "1.21.8": 12108, "1.21.11": 12111,
+                         "26.1": 26100, "26.1.1": 26101, "26.1.2": 26102}[args.minecraft_version]
             target_define = f"ONESTEP_MINECRAFT_VERSION={target_id}"
             command += [f"/D{target_define}"] if msvc else [f"-D{target_define}"]
             if name in ("settings_renderer", "notification_renderer", "menu_background", "menu_background_renderer"):
@@ -111,6 +112,8 @@ def main():
                     checked = subprocess.run(syntax + [str(probe)], cwd=work, capture_output=True, text=True)
                     if checked.returncode:
                         return name, False, f"Standalone SDK header failed: {header}\n" + checked.stdout + checked.stderr
+            if name == "sdk_mappings" and target_id >= 26100:
+                sources = ["tests/minecraft261_sdk_test.cpp"]
             command += [str(ROOT / source) for source in sources]
             built = subprocess.run(command, cwd=work, capture_output=True, text=True)
             if built.returncode:

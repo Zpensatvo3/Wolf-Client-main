@@ -39,7 +39,7 @@ namespace platform::adapter
                     if (local_transform && !apply_item_local_transform(quad.position[vertex], *local_transform)) return false;
                     for (int axis = 0; axis < 2; ++axis) quad.uv[vertex][axis] = std::bit_cast<float>(packed[vertex * stride + 4 + axis]);
                 }
-#if ONESTEP_MINECRAFT_VERSION == 26100
+#if ONESTEP_MINECRAFT_26_1
                 auto material = baked.getMaterial.call();
                 if (!material || clear_exception()) return false;
                 auto sprite = material.getSprite.call();
@@ -52,7 +52,7 @@ namespace platform::adapter
                 const int gl_id = texture.getGlId.call();
                 if (gl_id <= 0 || clear_exception()) return false;
                 quad.texture = static_cast<std::uintptr_t>(gl_id);
-#if ONESTEP_MINECRAFT_VERSION == 26100
+#if ONESTEP_MINECRAFT_26_1
                 const int tint = material.getColorIndex.call();
 #else
                 const int tint = baked.getColorIndex.call();
@@ -139,7 +139,7 @@ namespace platform::adapter
             maps::ItemRenderLayer layer(jni::get_env()->GetObjectArrayElement(static_cast<jobjectArray>(layers.object_instance), index), false);
             auto tint_array = layer.tints.get();
             if (clear_exception()) return {};
-#if ONESTEP_MINECRAFT_VERSION == 26100
+#if ONESTEP_MINECRAFT_26_1
             std::vector<jint> tints;
             if (tint_array)
             {
@@ -165,7 +165,7 @@ namespace platform::adapter
             auto quads = layer.getQuads.call();
             auto transform = layer.transform.get();
             const bool side_lit = layer.useLight.get() == JNI_TRUE;
-#if ONESTEP_MINECRAFT_VERSION == 26100
+#if ONESTEP_MINECRAFT_26_1
             auto local_transform = layer.localTransform.get();
             auto floats = jni::array<jfloat>(jni::get_env()->NewFloatArray(16));
             if (!local_transform || !floats || clear_exception()) return {};

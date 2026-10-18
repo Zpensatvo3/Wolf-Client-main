@@ -14,7 +14,7 @@ def validate_sdk():
     manifest = json.loads((sdk / "manifest.json").read_text(encoding="utf-8"))
     if manifest.get("baseline_version") != "1.21.1" or manifest.get("loader") != "Fabric" or manifest.get("namespace") != "maps":
         errors.append("Unexpected SDK target in mapping manifest")
-    if manifest.get("targets") != ["1.21.1", "1.21.4", "1.21.8", "1.21.11"]:
+    if manifest.get("targets") != ["1.21.1", "1.21.4", "1.21.8", "1.21.11", "26.1", "26.1.1", "26.1.2"]:
         errors.append("SDK manifest must list each explicit Minecraft build target")
     if set(manifest["headers"]) != {p.name for p in sdk.glob("*.hpp")}:
         errors.append("SDK header list and manifest differ")

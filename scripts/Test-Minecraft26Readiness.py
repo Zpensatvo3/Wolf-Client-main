@@ -81,7 +81,6 @@ def compile_bindings(compiler, native_261=False):
         target = "26100" if native_261 else "12111"
         command += (["/nologo", "/std:c++20", "/EHsc", f"/DONESTEP_MINECRAFT_VERSION={target}", f"/Fe:{output}"] if msvc
                     else ["-std=c++20", "-pthread", f"-DONESTEP_MINECRAFT_VERSION={target}", "-o", str(output)])
-        if native_261: command += ["/DONESTEP_MINECRAFT_PORTING=1"] if msvc else ["-DONESTEP_MINECRAFT_PORTING=1"]
         for include in (ROOT / "include/jni", ROOT / "include/jni" / ("win32" if os.name == "nt" else "linux")):
             command += [f"/I{include}"] if msvc else ["-I", str(include)]
         subprocess.run(command + [str(ROOT / "tests/minecraft_bindings_dump.cpp")], cwd=directory, check=True)
@@ -143,7 +142,7 @@ def main():
     parser.add_argument("--cache-dir", required=True, type=Path)
     parser.add_argument("--download", action="store_true", help="Fetch public development fixtures; otherwise entirely offline")
     parser.add_argument("--target", choices=TARGETS, action="append")
-    parser.add_argument("--native-261", action="store_true", help="Validate staged native 26.1 contracts, failing on any missing signature/static mismatch; does not enable application builds")
+    parser.add_argument("--native-261", action="store_true", help="Validate the critical native 26.1 contracts, failing on any missing signature/static mismatch; does not build a DLL")
     parser.add_argument("--output", required=True, type=Path, help="Write machine-readable audit JSON, never generated runtime bindings")
     parser.add_argument("--compiler", default=os.environ.get("CXX", "cl" if os.name == "nt" else "g++"))
     args = parser.parse_args()

@@ -34,6 +34,9 @@ namespace maps
         jni::constructor<PlayerActionC2SPacket$Action, BlockPos, Direction> constructor{ *this };
     END_KLASS_DEF()
 
+#if !ONESTEP_MINECRAFT_26_1
+    // No callers: active inventory modules use vanilla interaction-manager actions.
+    // The old pick packet is absent and the old click constructor is invalid on 26.1.
         BEGIN_KLASS_DEF(PickFromInventoryC2SPacket, ONESTEP_MC_NAME("net/minecraft/class_2838"))
         jni::constructor<jint> constructor{ *this };
     END_KLASS_DEF()
@@ -41,6 +44,7 @@ namespace maps
         BEGIN_KLASS_DEF(ClickSlotC2SPacket, ONESTEP_MC_NAME("net/minecraft/class_2813"))
         jni::constructor<jint> constructor{ *this };
     END_KLASS_DEF()
+#endif
 
 	BEGIN_KLASS_DEF(ComponentType, ONESTEP_MC_NAME("net/minecraft/class_9331"))
 	END_KLASS_DEF()
@@ -54,10 +58,33 @@ namespace maps
 	END_KLASS_DEF()
 
         BEGIN_KLASS_DEF(ItemStack, ONESTEP_MC_NAME("net/minecraft/class_1799"))
+#if ONESTEP_MINECRAFT_26_1
+        // The backing field is now Holder<Item>. Keep native callers' item.get()
+        // contract, using vanilla's public getter instead of guessing a holder.
+        jni::method<Item, "getItem"> getItem{*this};
+        struct item_access
+        {
+            const ItemStack_members& owner;
+            bool is_valid() const { return owner.getItem.is_valid(); }
+            Item get() const { return owner.getItem.call(); }
+        } item{*this};
+#else
         jni::field<Item, ONESTEP_MC_NAME("field_8038")> item{ *this };
+#endif
         jni::method<jboolean, ONESTEP_MC_NAME("method_7960")> isEmpty{ *this };
         jni::method<ItemStack, ONESTEP_MC_NAME("method_7971"), jni::NOT_STATIC, jint> split{ *this };
+#if ONESTEP_MINECRAFT_26_1
+        // TypedInstance<T>.is(T) erases T to Object in the JVM descriptor.
+        jni::method<jboolean, ONESTEP_MC_NAME("method_31574"), jni::NOT_STATIC, Object> matchesItem{*this};
+        struct item_comparison
+        {
+            const ItemStack_members& owner;
+            bool is_valid() const { return owner.matchesItem.is_valid(); }
+            jboolean call(const Item& value) const { return owner.matchesItem.call(Object(value.object_instance, false)); }
+        } isOf{*this};
+#else
         jni::method<jboolean, ONESTEP_MC_NAME("method_31574"), jni::NOT_STATIC, Item> isOf{ *this };
+#endif
         jni::method<ItemStack, ONESTEP_MC_NAME("method_7972"), jni::NOT_STATIC> copy{ *this };
         jni::method<jint, ONESTEP_MC_NAME("method_7947")> getCount{ *this };
         jni::method<Text, ONESTEP_MC_NAME("method_7964")> getName{ *this };
@@ -177,8 +204,25 @@ namespace maps
     END_KLASS_DEF()
 
         BEGIN_KLASS_DEF(Potions, ONESTEP_MC_NAME("net/minecraft/class_1847"))
+#if ONESTEP_MINECRAFT_26_1
+        // Holder.Reference<Potion> uses the same erased JNI class as this wrapper.
+        jni::field<ItemRegistryEntry, ONESTEP_MC_NAME("field_8963"), jni::STATIC> healingReference{*this};
+        jni::field<ItemRegistryEntry, ONESTEP_MC_NAME("field_8980"), jni::STATIC> strongHealingReference{*this};
+        struct potion_reference
+        {
+            const Potions_members& owner;
+            bool strong;
+            bool is_valid() const { return strong ? owner.strongHealingReference.is_valid() : owner.healingReference.is_valid(); }
+            RegistryEntry get() const
+            {
+                auto reference = strong ? owner.strongHealingReference.get() : owner.healingReference.get();
+                return RegistryEntry(reference.object_instance, false);
+            }
+        } HEALING{*this, false}, STRONG_HEALING{*this, true};
+#else
 		jni::field<RegistryEntry, ONESTEP_MC_NAME("field_8963"), jni::STATIC> HEALING{ *this };
 		jni::field<RegistryEntry, ONESTEP_MC_NAME("field_8980"), jni::STATIC> STRONG_HEALING{ *this };
+#endif
     END_KLASS_DEF()
 
         BEGIN_KLASS_DEF(SlotActionType, ONESTEP_MC_NAME("net/minecraft/class_1713"))

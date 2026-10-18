@@ -57,11 +57,13 @@ namespace maps
 #endif
     }
 
+#if !ONESTEP_MINECRAFT_26_1
     BEGIN_KLASS_DEF(ItemModelTransformation, ONESTEP_MC_NAME("net/minecraft/class_809"))
 #if ONESTEP_MINECRAFT_VERSION == 12101
         jni::field<ItemTransformation, ONESTEP_MC_NAME("field_4300")> gui{*this};
 #endif
     END_KLASS_DEF()
+#endif
 
     BEGIN_KLASS_DEF(ModelRandom, ONESTEP_MC_NAME("net/minecraft/class_5819"))
         jni::method<ModelRandom, ONESTEP_MC_NAME("method_43049"), jni::STATIC, jlong> createSeeded{*this};
@@ -72,7 +74,7 @@ namespace maps
         jni::method<Identifier, ONESTEP_MC_NAME("method_45852")> getAtlasId{*this};
     END_KLASS_DEF()
 
-#if ONESTEP_MINECRAFT_VERSION == 26100
+#if ONESTEP_MINECRAFT_26_1
     BEGIN_KLASS_DEF(QuadMaterialInfo, "net/minecraft/client/resources/model/geometry/BakedQuad$MaterialInfo")
         jni::method<jint, "tintIndex"> getColorIndex{*this};
         jni::method<ItemSprite, "sprite"> getSprite{*this};
@@ -87,7 +89,7 @@ namespace maps
 #else
         jni::method<jni::array<jint>, ONESTEP_MC_NAME("method_3357")> getVertexData{*this};
 #endif
-#if ONESTEP_MINECRAFT_VERSION == 26100
+#if ONESTEP_MINECRAFT_26_1
         jni::method<QuadMaterialInfo, "materialInfo"> getMaterial{*this};
 #elif ONESTEP_MINECRAFT_VERSION >= 12108
         jni::method<jint, ONESTEP_MC_NAME("comp_3722")> getColorIndex{*this};
@@ -129,6 +131,9 @@ namespace maps
 #endif
     }
 
+#if !ONESTEP_MINECRAFT_26_1
+    // Only the older baked-model icon readers use these aliases. 26.1 reads
+    // ItemStackRenderState through ItemModelResolver instead.
     BEGIN_KLASS_DEF(ItemBakedModel, ONESTEP_MC_NAME("net/minecraft/class_1087"))
 #if ONESTEP_MINECRAFT_VERSION <= 12104
         jni::method<List, ONESTEP_MC_NAME("method_4707"), jni::NOT_STATIC, BlockState, Direction, ModelRandom> getQuads{*this};
@@ -156,12 +161,13 @@ namespace maps
         jni::field<ItemColors, ONESTEP_MC_NAME("field_4733")> colors{*this};
 #endif
     END_KLASS_DEF()
+#endif
 
 #if ONESTEP_MINECRAFT_VERSION >= 12104
     BEGIN_KLASS_DEF(ItemDisplayContext, ONESTEP_MC_NAME("net/minecraft/class_811"))
         jni::field<ItemDisplayContext, ONESTEP_MC_NAME("field_4317"), jni::STATIC> GUI{*this};
     END_KLASS_DEF()
-#if ONESTEP_MINECRAFT_VERSION == 26100
+#if ONESTEP_MINECRAFT_26_1
     BEGIN_KLASS_DEF(ItemLocalTransform, "org/joml/Matrix4f")
         jni::method<jni::array<jfloat>, "get", jni::NOT_STATIC, jni::array<jfloat>> get{*this};
     END_KLASS_DEF()
@@ -171,7 +177,7 @@ namespace maps
     END_KLASS_DEF()
 #endif
     BEGIN_KLASS_DEF(ItemRenderLayer, ONESTEP_MC_NAME("net/minecraft/class_10444$class_10446"))
-#if ONESTEP_MINECRAFT_VERSION == 26100
+#if ONESTEP_MINECRAFT_26_1
         jni::field<ItemTintList, ONESTEP_MC_NAME("field_55349")> tints{*this};
         jni::field<ItemLocalTransform, "localTransform"> localTransform{*this};
 #else

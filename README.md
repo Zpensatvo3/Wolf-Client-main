@@ -6,12 +6,13 @@ istemcisi içerir.
 
 ## Güncel durum
 
-- Ortak kaynak koddan 1.21.1, 1.21.4, 1.21.8 ve 1.21.11 için ayrı DLL hedefleri
+- Ortak kaynak koddan 1.21.1, 1.21.4, 1.21.8, 1.21.11, 26.1, 26.1.1 ve 26.1.2 için ayrı DLL hedefleri
   oluşturuldu. Yeni hedefler Windows derlemesi ve oyun içi doğrulama tamamlanana
   kadar geliştirme hedefidir. Adaptör yapısı, çıktı yolları ve kontrol listesi:
   [Minecraft hedefleri](docs/MINECRAFT_TARGETS.md).
-  26.1 native adaptörünün ilk etabı ve çevrimdışı kontrolleri eklendi; Java köprüleri
-  ve uygulama doğrulaması bitmediğinden henüz DLL hedefi değil:
+  26.1 native adaptörü, NameProtect/Sky köprüleri ve tam SDK/JNI taraması eklendi;
+  26.1.1/26.1.2 aynı adaptörü kullanır; her biri 740 SDK/JNI kontrolünden geçti.
+  Bu üç hedef için geriye Windows derlemesi ve oyun içi doğrulama kaldı:
   [26.x geçiş durumu](docs/MINECRAFT_26_PORT.md).
 - Auth kaynakları modüllere ayrıldı; koyu temalı yeni yönetim paneli, sayfalı lisans
   listesi, ayrıntı çekmecesi, işlem geçmişi ve sistem durumu hazırlandı. Bu kaynak

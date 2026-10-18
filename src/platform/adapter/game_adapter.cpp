@@ -195,7 +195,7 @@ namespace platform::adapter
 
                     if (cam)
                     {
-#if ONESTEP_MINECRAFT_VERSION == 26100
+#if ONESTEP_MINECRAFT_26_1
                         if (cam.getFov.is_valid())
                         {
                             const float render_fov = cam.getFov.call();

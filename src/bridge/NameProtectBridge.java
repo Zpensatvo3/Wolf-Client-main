@@ -13,19 +13,24 @@ public final class NameProtectBridge {
     private static Method accept, acceptCharacter, visitStyled, styledAccept, plainAccept;
     private static Object emptyStyle;
 
-    public static void prepare(ClassLoader loader) throws ReflectiveOperationException {
-        ordered = Class.forName("net.minecraft.class_5481", true, loader);
-        characterVisitor = Class.forName("net.minecraft.class_5224", true, loader);
-        Class<?> style = Class.forName("net.minecraft.class_2583", true, loader);
-        visitable = Class.forName("net.minecraft.class_5348", true, loader);
-        styledVisitor = Class.forName("net.minecraft.class_5348$class_5246", true, loader);
-        plainVisitor = Class.forName("net.minecraft.class_5348$class_5245", true, loader);
+    public static void prepare(ClassLoader loader, int target) throws ReflectiveOperationException {
+        boolean named = switch (target) {
+            case 12101, 12104, 12108, 12111 -> false;
+            case 26100, 26101, 26102 -> true;
+            default -> throw new IllegalArgumentException("Unsupported text target");
+        };
+        ordered = Class.forName(named ? "net.minecraft.util.FormattedCharSequence" : "net.minecraft.class_5481", true, loader);
+        characterVisitor = Class.forName(named ? "net.minecraft.util.FormattedCharSink" : "net.minecraft.class_5224", true, loader);
+        Class<?> style = Class.forName(named ? "net.minecraft.network.chat.Style" : "net.minecraft.class_2583", true, loader);
+        visitable = Class.forName(named ? "net.minecraft.network.chat.FormattedText" : "net.minecraft.class_5348", true, loader);
+        styledVisitor = Class.forName(named ? "net.minecraft.network.chat.FormattedText$StyledContentConsumer" : "net.minecraft.class_5348$class_5246", true, loader);
+        plainVisitor = Class.forName(named ? "net.minecraft.network.chat.FormattedText$ContentConsumer" : "net.minecraft.class_5348$class_5245", true, loader);
         accept = ordered.getMethod("accept", characterVisitor);
         acceptCharacter = characterVisitor.getMethod("accept", int.class, style, int.class);
-        visitStyled = visitable.getMethod("method_27658", styledVisitor, style);
+        visitStyled = visitable.getMethod(named ? "visit" : "method_27658", styledVisitor, style);
         styledAccept = styledVisitor.getMethod("accept", style, String.class);
         plainAccept = plainVisitor.getMethod("accept", String.class);
-        emptyStyle = style.getField("field_24360").get(null);
+        emptyStyle = style.getField(named ? "EMPTY" : "field_24360").get(null);
     }
 
     public static void configure(String name, String alias) {

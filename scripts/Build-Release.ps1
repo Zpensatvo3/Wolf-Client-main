@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('1.21.1', '1.21.4', '1.21.8', '1.21.11')]
+    [ValidateSet('1.21.1', '1.21.4', '1.21.8', '1.21.11', '26.1', '26.1.1', '26.1.2')]
     [string]$MinecraftVersion = '1.21.1',
     [switch]$AllMinecraftVersions,
     [switch]$Clean,
@@ -15,7 +15,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 if ($AllMinecraftVersions) {
-    foreach ($minecraftTarget in @('1.21.1', '1.21.4', '1.21.8', '1.21.11')) {
+    foreach ($minecraftTarget in @('1.21.1', '1.21.4', '1.21.8', '1.21.11', '26.1', '26.1.1', '26.1.2')) {
         $minecraftBuildOptions = @{} + $PSBoundParameters
         $minecraftBuildOptions.Remove('AllMinecraftVersions')
         $minecraftBuildOptions['MinecraftVersion'] = $minecraftTarget

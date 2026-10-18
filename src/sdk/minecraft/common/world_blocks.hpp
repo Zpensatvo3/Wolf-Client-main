@@ -20,8 +20,10 @@ namespace maps
         bool is_sword() const;
         END_KLASS_DEF()
 
+#if !ONESTEP_MINECRAFT_26_1
         BEGIN_KLASS_DEF_EX(SwordItem, ONESTEP_MC_NAME("net/minecraft/class_1829"), Item)
         END_KLASS_DEF()
+#endif
 
     inline bool Item_members::is_sword() const
     {
@@ -87,7 +89,11 @@ namespace maps
     jni::method<jint, ONESTEP_MC_NAME("method_10260"), jni::NOT_STATIC> getZ{ *this };
     jni::method<BlockPos, ONESTEP_MC_NAME("method_10087"), jni::NOT_STATIC> down{ *this };
     jni::method<BlockPos, ONESTEP_MC_NAME("method_10084"), jni::NOT_STATIC> up{ *this };
+#if ONESTEP_MINECRAFT_26_1
+    jni::method<BlockPos, "offset", jni::NOT_STATIC, jint, jint, jint> add{*this};
+#else
     jni::method<BlockPos, ONESTEP_MC_NAME("method_10088"), jni::NOT_STATIC, jint, jint, jint> add{ *this };
+#endif
     END_KLASS_DEF()
 
         BEGIN_KLASS_DEF(Property, ONESTEP_MC_NAME("net/minecraft/class_2769"))
@@ -112,7 +118,17 @@ namespace maps
     END_KLASS_DEF()
 
         BEGIN_KLASS_DEF(BlockState, ONESTEP_MC_NAME("net/minecraft/class_2680"))
+#if ONESTEP_MINECRAFT_26_1
+        jni::method<jboolean, ONESTEP_MC_NAME("method_27852"), jni::NOT_STATIC, Object> matchesBlock{*this};
+        struct block_comparison
+        {
+            const BlockState_members& owner;
+            bool is_valid() const { return owner.matchesBlock.is_valid(); }
+            jboolean call(const Block& value) const { return owner.matchesBlock.call(Object(value.object_instance, false)); }
+        } isOf{*this};
+#else
         jni::method<jboolean, ONESTEP_MC_NAME("method_27852"), jni::NOT_STATIC, Block> isOf{ *this };
+#endif
     jni::method<jboolean, ONESTEP_MC_NAME("method_26215"), jni::NOT_STATIC> isAir{ *this };
     jni::method<jboolean, ONESTEP_MC_NAME("method_26225")> isOpaque{ *this };
 		jni::method<Block, ONESTEP_MC_NAME("method_26204")> getBlock{ *this };
@@ -199,6 +215,9 @@ namespace maps
 
         BEGIN_KLASS_DEF(WorldProperties, ONESTEP_MC_NAME("net/minecraft/class_638$class_5271"))
         jni::method<jlong, ONESTEP_MC_NAME("method_188")> getTime{ *this };
+#if !ONESTEP_MINECRAFT_26_1
+    // Unused historical time/weather helpers. 26.1 moved these responsibilities
+    // out of ClientLevelData; no active OneStep feature calls these declarations.
     jni::method<jlong, ONESTEP_MC_NAME("method_217")> getTimeOfDay{ *this };
     jni::method<jboolean, ONESTEP_MC_NAME("method_203")> isThundering{ *this };
     jni::method<jboolean, ONESTEP_MC_NAME("method_156")> isRaining{ *this };
@@ -206,6 +225,7 @@ namespace maps
     jni::method<void, ONESTEP_MC_NAME("method_157"), jni::NOT_STATIC, jboolean> setRaining{ *this };
     jni::method<BlockPos, ONESTEP_MC_NAME("method_56126")> getSpawnPos{ *this };
     jni::method<void, ONESTEP_MC_NAME("method_29035"), jni::NOT_STATIC, jlong> setTimeOfDay{ *this };
+#endif
     END_KLASS_DEF()
 
         BEGIN_KLASS_DEF(Direction, ONESTEP_MC_NAME("net/minecraft/class_2350"))

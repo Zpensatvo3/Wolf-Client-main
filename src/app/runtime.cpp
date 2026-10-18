@@ -17,10 +17,6 @@
 #include <string>
 #include <thread>
 
-#if ONESTEP_MINECRAFT_VERSION == 26100
-#error The 26.1 SDK port is offline-only until its Java bridges and application integration pass validation
-#endif
-
 namespace
 {
     constexpr auto worker_interval = std::chrono::milliseconds(5);

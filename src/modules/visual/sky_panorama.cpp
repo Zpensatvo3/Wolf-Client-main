@@ -273,7 +273,7 @@ struct sky_panorama::renderer::runtime
         auto original=env->NewByteArray(length);
         if (original) env->SetByteArrayRegion(original,0,length,reinterpret_cast<const jbyte*>(bytes));
         auto result=original && !env->ExceptionCheck()
-            ? static_cast<jbyteArray>(env->CallStaticObjectMethod(self->transformer,self->transform,original)) : nullptr;
+            ? static_cast<jbyteArray>(env->CallStaticObjectMethod(self->transformer,self->transform,original,static_cast<jint>(mc::target.build_id))) : nullptr;
         if (result && !env->ExceptionCheck())
         {
             const auto count=env->GetArrayLength(result);
@@ -318,7 +318,7 @@ struct sky_panorama::renderer::runtime
             reinterpret_cast<const jbyte*>(bytes.data()),static_cast<jsize>(bytes.size()));
         if (!type || env->ExceptionCheck()) throw std::runtime_error("Fog transformer");
         transformer=static_cast<jclass>(env->NewGlobalRef(type));
-        transform=env->GetStaticMethodID(transformer,"transform","([B)[B");
+        transform=env->GetStaticMethodID(transformer,"transform","([BI)[B");
         auto klass=jni::_custom_find_class ? jni::_custom_find_class(ONESTEP_MC_NAME("net/minecraft/class_758")) : nullptr;
         if (!klass || !transform || env->ExceptionCheck()) throw std::runtime_error("Fog class");
         fog_class=static_cast<jclass>(env->NewGlobalRef(klass));

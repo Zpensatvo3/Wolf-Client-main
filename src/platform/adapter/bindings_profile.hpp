@@ -50,7 +50,7 @@ namespace platform::adapter::bindings
     using selected = v1_21_8;
 #elif ONESTEP_MINECRAFT_VERSION == 12111
     using selected = v1_21_11;
-#elif ONESTEP_MINECRAFT_VERSION == 26100
+#elif ONESTEP_MINECRAFT_26_1
     using selected = v26_1;
 #endif
 }

@@ -6,14 +6,17 @@
     <MinecraftTargetId Condition="'$(MinecraftVersion)' == '1.21.4'">12104</MinecraftTargetId>
     <MinecraftTargetId Condition="'$(MinecraftVersion)' == '1.21.8'">12108</MinecraftTargetId>
     <MinecraftTargetId Condition="'$(MinecraftVersion)' == '1.21.11'">12111</MinecraftTargetId>
+    <MinecraftTargetId Condition="'$(MinecraftVersion)' == '26.1'">26100</MinecraftTargetId>
+    <MinecraftTargetId Condition="'$(MinecraftVersion)' == '26.1.1'">26101</MinecraftTargetId>
+    <MinecraftTargetId Condition="'$(MinecraftVersion)' == '26.1.2'">26102</MinecraftTargetId>
     <MinecraftDefines>ONESTEP_MINECRAFT_VERSION=$(MinecraftTargetId);</MinecraftDefines>
     <!-- Preserve the existing launcher/release path for the default target. -->
     <MinecraftOutputDir Condition="'$(MinecraftVersion)' == '1.21.1'">$(MSBuildProjectDirectory)\build\</MinecraftOutputDir>
     <MinecraftOutputDir Condition="'$(MinecraftVersion)' != '1.21.1'">$(MSBuildProjectDirectory)\build\minecraft\$(MinecraftVersion)\</MinecraftOutputDir>
   </PropertyGroup>
   <Target Name="ValidateMinecraftTarget" BeforeTargets="PrepareForBuild">
-    <Error Condition="'$(MinecraftVersion)' != '1.21.1' and '$(MinecraftVersion)' != '1.21.4' and '$(MinecraftVersion)' != '1.21.8' and '$(MinecraftVersion)' != '1.21.11'" Text="Unsupported MinecraftVersion. Choose 1.21.1, 1.21.4, 1.21.8 or 1.21.11." />
-    <Error Condition="'$(MinecraftTargetId)' == ''" Text="Unsupported MinecraftVersion. Choose 1.21.1, 1.21.4, 1.21.8 or 1.21.11." />
+    <Error Condition="'$(MinecraftVersion)' != '1.21.1' and '$(MinecraftVersion)' != '1.21.4' and '$(MinecraftVersion)' != '1.21.8' and '$(MinecraftVersion)' != '1.21.11' and '$(MinecraftVersion)' != '26.1' and '$(MinecraftVersion)' != '26.1.1' and '$(MinecraftVersion)' != '26.1.2'" Text="Unsupported MinecraftVersion. Choose 1.21.1, 1.21.4, 1.21.8, 1.21.11, 26.1, 26.1.1 or 26.1.2." />
+    <Error Condition="'$(MinecraftTargetId)' == ''" Text="Unsupported MinecraftVersion. Choose 1.21.1, 1.21.4, 1.21.8, 1.21.11, 26.1, 26.1.1 or 26.1.2." />
     <Error Condition="'$(Platform)' != 'x64'" Text="Minecraft targets require Windows x64." />
   </Target>
 </Project>

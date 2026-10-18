@@ -21,9 +21,12 @@ public final class SkyBridge implements InvocationHandler {
     private static native boolean readUniform(int buffer, long offset, long available, float[] values);
 
     public static void install(ClassLoader loader, int target) throws ReflectiveOperationException {
-        if (target != 12101 && target != 12104 && target != 12108 && target != 12111)
+        if (target != 12101 && target != 12104 && target != 12108 && target != 12111
+                && target != 26100 && target != 26101 && target != 26102)
             throw new IllegalArgumentException("Unsupported Sky target");
-        String api = "net.fabricmc.fabric.api.client.rendering.v1." + (target >= 12111 ? "world." : "");
+        boolean named = target == 26100 || target == 26101 || target == 26102;
+        String api = "net.fabricmc.fabric.api.client.rendering.v1." + (named ? "level." : target >= 12111 ? "world." : "");
+        String events = named ? "LevelRenderEvents" : "WorldRenderEvents";
         Class<?> renderSystem = Class.forName("com.mojang.blaze3d.systems.RenderSystem", true, loader);
         Class<?> matrix = Class.forName("org.joml.Matrix4f", true, loader);
         matrixGet = matrix.getMethod("get", float[].class);
@@ -34,10 +37,12 @@ public final class SkyBridge implements InvocationHandler {
         } else {
             projectionBuffer = renderSystem.getMethod("getProjectionMatrixBuffer");
             modelView = renderSystem.getMethod("getModelViewMatrix");
-            Class<?> context = Class.forName(api + "AbstractWorldRenderContext", true, loader);
-            worldState = context.getMethod("worldState");
-            skyState = Class.forName("net.minecraft.class_11658", true, loader).getField("field_63087");
-            skyColor = Class.forName("net.minecraft.class_12076", true, loader).getField("field_63097");
+            Class<?> context = Class.forName(api + (named ? "AbstractLevelRenderContext" : "AbstractWorldRenderContext"), true, loader);
+            worldState = context.getMethod(named ? "levelState" : "worldState");
+            skyState = Class.forName(named ? "net.minecraft.client.renderer.state.level.LevelRenderState" : "net.minecraft.class_11658", true, loader)
+                .getField(named ? "skyRenderState" : "field_63087");
+            skyColor = Class.forName(named ? "net.minecraft.client.renderer.state.level.SkyRenderState" : "net.minecraft.class_12076", true, loader)
+                .getField(named ? "skyColor" : "field_63097");
         }
         if (target == 12101) {
             fogColor = renderSystem.getMethod("getShaderFogColor");
@@ -53,7 +58,8 @@ public final class SkyBridge implements InvocationHandler {
             Class<?> slice = Class.forName("com.mojang.blaze3d.buffers.GpuBufferSlice", true, loader);
             sliceBuffer = slice.getMethod("buffer");
             sliceOffset = slice.getMethod("offset"); sliceLength = slice.getMethod("length");
-            bufferId = Class.forName("net.minecraft.class_10859", true, loader).getDeclaredField("field_57842");
+            bufferId = Class.forName(named ? "com.mojang.blaze3d.opengl.GlBuffer" : "net.minecraft.class_10859", true, loader)
+                .getDeclaredField(named ? "handle" : "field_57842");
             bufferId.setAccessible(true);
         }
         try {
@@ -62,15 +68,17 @@ public final class SkyBridge implements InvocationHandler {
             shaderCheck = irisApi.getMethod("isShaderPackInUse");
         } catch (ClassNotFoundException ignored) { }
         SkyBridge handler = new SkyBridge();
-        register(loader, api, "BEFORE_ENTITIES", "BeforeEntities", handler);
-        if (target >= 12111) register(loader, api, "END_EXTRACTION", "EndExtraction", handler);
+        // 26.1 removed BEFORE_ENTITIES. START_MAIN runs after sky, before opaque
+        // terrain, with the world projection/fog buffers bound and OpenGL allowed.
+        register(loader, api, events, named ? "START_MAIN" : "BEFORE_ENTITIES", named ? "StartMain" : "BeforeEntities", handler);
+        if (target >= 12111) register(loader, api, events, "END_EXTRACTION", "EndExtraction", handler);
         active = true;
     }
 
-    private static void register(ClassLoader loader, String api, String field, String listener, SkyBridge handler)
+    private static void register(ClassLoader loader, String api, String eventsName, String field, String listener, SkyBridge handler)
             throws ReflectiveOperationException {
-        Class<?> events = Class.forName(api + "WorldRenderEvents", true, loader);
-        Class<?> type = Class.forName(api + "WorldRenderEvents$" + listener, true, loader);
+        Class<?> events = Class.forName(api + eventsName, true, loader);
+        Class<?> type = Class.forName(api + eventsName + "$" + listener, true, loader);
         Object proxy = Proxy.newProxyInstance(SkyBridge.class.getClassLoader(), new Class<?>[]{type}, handler);
         Object event = events.getField(field).get(null);
         Class.forName("net.fabricmc.fabric.api.event.Event", true, loader).getMethod("register", Object.class).invoke(event, proxy);

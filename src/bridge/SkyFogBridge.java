@@ -22,6 +22,16 @@ public final class SkyFogBridge {
         config = new float[]{apply, fog, strength};
     }
     public static void stop() { config = new float[]{0, 0, 0}; }
+    /** 26.1's computeFogColor owns and fills this output, rather than returning it. */
+    public static void filterInto(Object output) {
+        Object filtered = filter(output);
+        if (filtered == output) return;
+        try {
+            red.setFloat(output, red.getFloat(filtered));
+            green.setFloat(output, green.getFloat(filtered));
+            blue.setFloat(output, blue.getFloat(filtered));
+        } catch (ReflectiveOperationException ignored) { }
+    }
     public static Object filter(Object original) {
         float[] values = config;
         if (values[0] == 0 || vector == null || original == null) return original;

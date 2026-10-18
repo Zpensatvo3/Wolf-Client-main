@@ -38,7 +38,7 @@ int main(int argc, char** argv)
     B(maps::ItemStack, getComponent); B(maps::ItemStack, getMiningSpeedMultiplier);
     B(maps::Item, getRegistryEntry); B(maps::ItemTags, SWORDS); B(maps::ItemRegistryEntry, isIn);
     B(maps::Camera, getPos);
-#if ONESTEP_MINECRAFT_VERSION == 26100
+#if ONESTEP_MINECRAFT_26_1
     B(maps::Camera, getFov);
 #else
     B(maps::GameRenderer, getFov);
@@ -52,7 +52,7 @@ int main(int argc, char** argv)
     B(sky_bindings::Dimension, hasSkyLight); B(sky_bindings::Camera, getSubmersionType);
     B(chams_model::Model, constructor); B(chams_model::Model, setAngles); B(chams_model::Skin, model);
     B(chams_model::Loader, getModelPart); B(chams_model::Client, getEntityModelLoader);
-#if ONESTEP_MINECRAFT_VERSION == 26100
+#if ONESTEP_MINECRAFT_26_1
     B(maps::ItemBakedQuad, getMaterial); B(maps::QuadMaterialInfo, getColorIndex); B(maps::QuadMaterialInfo, getSprite);
 #else
     B(maps::ItemBakedQuad, getColorIndex); B(maps::ItemBakedQuad, getSprite);
@@ -84,7 +84,8 @@ int main(int argc, char** argv)
     B(maps::GameRenderer, findCrosshairTarget); B(maps::Mouse, onMouseButton);
     B(maps::SkinTextures, texture); B(maps::ItemBakedQuad, getVertexData);
 #endif
-#if ONESTEP_MINECRAFT_VERSION == 26100
+#if ONESTEP_MINECRAFT_26_1
+    B(maps::MinecraftClient, session); B(maps::Session, getUsername);
     B(maps::GameRenderer, getCamera); B(maps::ClientPlayNetworkHandler, sendPacket);
     B(maps::ClientPlayNetworkHandler, getPlayerList); B(maps::ItemSprite, getAtlasId);
     B(maps::ItemModelClient, getItemModelManager); B(maps::ItemRenderState, constructor);
