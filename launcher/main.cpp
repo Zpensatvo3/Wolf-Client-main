@@ -15,21 +15,20 @@
 
 using namespace Gdiplus;
 namespace {
-    constexpr int width = 820, height = 520;
+    constexpr int width = 760, height = 430;
     constexpr UINT changed = WM_APP + 1;
     HWND window{}, edit{}; HFONT inputFont{}; HBRUSH editBrush{};
     float dpi = 1.0f;
     std::atomic_bool cancel{false}, busy{false};
     std::thread worker;
     enum class phase { login, working, ready, launching, done };
-    struct view { phase screen = phase::login; std::wstring message = L"Keyini gir, kaldığın yerden devam et.";
+    struct view { phase screen = phase::login; std::wstring message = L"Ready to sign in.";
         bool error = false; uint64_t received = 0, total = 0; launcher::release release;
         std::vector<launcher::game> games; DWORD selected = 0; };
     view state; std::mutex stateMutex;
     int hover = 0; bool reveal = false; bool preview = false;
-    RectF keyRect(456, 240, 300, 49), actionRect(456, 305, 300, 47);
-    Color bg(255, 12, 14, 20), fg(255, 241, 242, 247), muted(255, 116, 122, 140);
-    Color red(255, 186, 69, 91), green(255, 116, 197, 152);
+    RectF keyRect(431, 155, 273, 46), actionRect(431, 235, 273, 49);
+    Color bg(255, 10, 11, 18), fg(255, 247, 247, 250), muted(255, 133, 137, 154);
     void update(const std::function<void(view&)>& fn) {
         { std::lock_guard lock(stateMutex); fn(state); }
         if (window) PostMessageW(window, changed, 0, 0);
@@ -62,164 +61,144 @@ namespace {
         g.FillPath(&background, &path);
         g.DrawPath(&outline, &path);
     }
+
+    void gradient_button(Graphics& g, RectF r, float radius, Color left, Color right, Color line) {
+        GraphicsPath path; const float d = radius * 2.0f;
+        path.AddArc(r.X, r.Y, d, d, 180, 90);
+        path.AddArc(r.GetRight() - d, r.Y, d, d, 270, 90);
+        path.AddArc(r.GetRight() - d, r.GetBottom() - d, d, d, 0, 90);
+        path.AddArc(r.X, r.GetBottom() - d, d, d, 90, 90);
+        path.CloseFigure();
+        LinearGradientBrush gradient(PointF(r.X, r.Y), PointF(r.GetRight(), r.Y), left, right);
+        Pen outline(line, 1.0f);
+        g.FillPath(&gradient, &path);
+        g.DrawPath(&outline, &path);
+    }
+    std::wstring status_text(const view& v) {
+        if (v.screen == phase::login && !v.error) return L"Ready to sign in.";
+        if (v.screen == phase::done && !v.error) return L"Client is running.";
+        if (v.screen == phase::ready && !v.error && v.games.empty()) return L"Open Minecraft, then refresh.";
+        if (v.screen == phase::ready && !v.error && v.selected == 0) return L"Select a Minecraft window.";
+        if (v.screen == phase::ready && !v.error) return L"Ready to launch.";
+        if (v.message.empty()) return v.error ? L"Please try again." : L"Preparing...";
+        // Backend / game loader can return old localized messages.
+        // Use English UI fallback rather than presenting mixed languages.
+        if (std::any_of(v.message.begin(), v.message.end(),
+            [](wchar_t c) { return static_cast<unsigned int>(c) > 127U; }))
+            return v.error ? L"Unable to continue. Please retry." : L"Preparing your session...";
+        return v.message;
+    }
     void draw(Graphics& g, const view& v, float animation) {
         g.SetSmoothingMode(SmoothingModeAntiAlias);
         g.SetTextRenderingHint(TextRenderingHintAntiAliasGridFit);
         g.Clear(bg);
-
-        const Color surface(255, 20, 22, 30);
-        const Color inputFill(255, 24, 27, 36);
-        const Color border(255, 43, 47, 60);
-        const Color tertiary(255, 147, 151, 166);
-        const Color accent(255, 215, 105, 133);
-        const Color success(255, 113, 206, 166);
-        const bool isLogin = v.screen == phase::login || v.screen == phase::working;
-        const bool isBusy = busy.load();
-        const bool isDone = v.screen == phase::done;
-        const bool canSubmit = !isBusy && !isDone;
-        const auto chosen = std::find_if(v.games.begin(), v.games.end(),
+        const Color pink(255, 236, 79, 132), palePink(255, 252, 119, 163);
+        const Color secondary(255, 165, 170, 186), border(255, 46, 49, 65);
+        const Color panel(255, 18, 20, 30), field(255, 23, 26, 38);
+        const Color success(255, 58, 233, 152);
+        const bool loginScreen = v.screen == phase::login || v.screen == phase::working;
+        const bool working = busy.load(), finished = v.screen == phase::done;
+        const auto selected = std::find_if(v.games.begin(), v.games.end(),
             [&](const auto& item) { return item.pid == v.selected; });
-        const bool hasSelection = chosen != v.games.end();
 
-        // Quiet architectural detail: a restrained halo and vertical guides.
-        for (int i = 8; i >= 1; --i) {
-            SolidBrush halo(Color(BYTE(2 + (8 - i)), 191, 69, 108));
-            g.FillEllipse(&halo, 10.0f - i * 20.0f, 92.0f - i * 16.0f,
-                332.0f + i * 39.0f, 246.0f + i * 29.0f);
+        // Muted pink halo limited to the hero area; the rest of the window remains quiet.
+        GraphicsState saved = g.Save();
+        g.SetClip(RectF(0, 55, 396, 350));
+        for (int i = 15; i > 0; --i) {
+            const float spread = i * 12.0f;
+            SolidBrush glow(Color(BYTE(2 + (15 - i) / 2), 231, 40, 104));
+            g.FillEllipse(&glow, -75.0f - spread, 136.0f - spread,
+                330.0f + 2 * spread, 330.0f + 2 * spread);
         }
-        Pen guide(Color(255, 28, 30, 40));
-        g.DrawLine(&guide, 404.0f, 84.0f, 404.0f, 456.0f);
-        g.DrawLine(&guide, 26.0f, 64.0f, 794.0f, 64.0f);
-        g.DrawLine(&guide, 26.0f, 469.0f, 794.0f, 469.0f);
+        Pen rim(Color(67, 230, 47, 115), 1.3f);
+        g.DrawArc(&rim, -110, 112, 486, 464, 220, 108);
+        g.Restore(saved);
 
-        // Native titlebar remains draggable and the existing window actions remain intact.
-        SolidBrush brand(accent);
-        g.FillEllipse(&brand, 28.0f, 26.0f, 8.0f, 8.0f);
-        text(g, L"ONESTEP", RectF(45, 16, 115, 30), 14, fg, false, false, true);
-        text(g, L" /  LAUNCHER", RectF(148, 18, 132, 28), 10.5f, muted, false, true);
-        if (v.screen == phase::ready || v.screen == phase::done) {
-            rounded_box(g, RectF(636, 17, 68, 28), 7,
-                hover == 5 ? Color(255, 36, 38, 49) : Color(255, 19, 21, 29),
-                hover == 5 ? border : Color(255, 29, 32, 42));
-            text(g, L"Çıkış", RectF(636, 17, 68, 27), 11,
-                hover == 5 ? fg : tertiary, true);
-        }
-        if (hover == 3) rounded_box(g, RectF(728, 12, 30, 30), 7, Color(255, 34, 37, 48), border);
-        if (hover == 4) rounded_box(g, RectF(770, 12, 30, 30), 7, Color(255, 68, 30, 43), border);
-        Pen chrome(Color(255, 157, 161, 176), 1.4f);
-        g.DrawLine(&chrome, 739, 28, 748, 28);
-        g.DrawLine(&chrome, 780, 22, 788, 30);
-        g.DrawLine(&chrome, 788, 22, 780, 30);
+        SolidBrush brand(pink);
+        g.FillEllipse(&brand, 27, 24, 10, 10);
+        text(g, L"OneStep", RectF(48, 14, 160, 32), 14.2f, fg, false, false, true);
 
-        // Editorial left panel: clear hierarchy, without repeating a giant logo.
-        text(g, L"YOUR NEXT STEP", RectF(40, 107, 320, 25), 10, accent, false, true, true);
-        text(g, L"ONE STEP", RectF(37, 155, 360, 65), 45, fg, false, false, true);
-        text(g, L"AHEAD.", RectF(37, 213, 360, 65), 45, fg, false, false, true);
-        SolidBrush stripe(accent);
-        g.FillRectangle(&stripe, 40.0f, 298.0f, 32.0f, 3.0f);
-        const wchar_t* helper = isLogin
-            ? L"Lisansını doğrula.\nGerisini OneStep halleder."
-            : isDone ? L"Oturum başlatıldı.\nArtık Minecraft'a dönebilirsin."
-            : L"Client hazır olduğunda\nMinecraft oturumunu seç.";
-        text(g, helper, RectF(40, 312, 330, 53), 12.2f, tertiary);
+        if (v.screen == phase::ready || finished)
+            text(g, L"Sign out", RectF(592, 15, 71, 29), 10.2f,
+                hover == 5 ? fg : muted, true);
+        if (hover == 3) rounded_box(g, RectF(673, 13, 30, 30), 7, Color(255, 33, 36, 47), border);
+        if (hover == 4) rounded_box(g, RectF(716, 13, 30, 30), 7, Color(255, 66, 27, 45), border);
+        Pen chrome(Color(255, 173, 177, 189), 1.4f);
+        g.DrawLine(&chrome, 684, 28, 694, 28);
+        g.DrawLine(&chrome, 726, 23, 735, 32);
+        g.DrawLine(&chrome, 735, 23, 726, 32);
 
-        const int stage = v.screen == phase::login ? 0 :
-            v.screen == phase::working ? 1 :
-            v.screen == phase::done ? 3 : 2;
-        const wchar_t* stages[] = {L"ACCESS", L"VERIFY", L"LAUNCH"};
-        for (int i = 0; i < 3; ++i) {
-            const float x = 40.0f + float(i) * 119.0f;
-            const bool reached = stage >= i + 1;
-            SolidBrush track(reached ? accent : Color(255, 54, 58, 69));
-            g.FillRectangle(&track, x, 405.0f, 103.0f, 3.0f);
-            text(g, std::wstring(L"0") + std::to_wstring(i + 1),
-                RectF(x, 417.0f, 25.0f, 27.0f), 11.0f,
-                reached ? accent : muted, false, true, true);
-            text(g, stages[i], RectF(x + 29.0f, 418.0f, 77.0f, 26.0f),
-                9.0f, reached ? fg : muted, false, true);
-        }
-
-        // Action surface: all real controls live in one compact, readable panel.
-        rounded_box(g, RectF(423, 86, 368, 369), 16, surface, border);
-        text(g, isLogin ? L"SECURE ACCESS" : isDone ? L"SESSION ACTIVE" : L"GAME SESSION",
-            RectF(456, 113, 222, 23), 10.5f, accent, false, true, true);
-        rounded_box(g, RectF(691, 110, 68, 24), 11,
-            Color(255, 34, 40, 46), Color(255, 48, 63, 65));
-        text(g, L"WIN x64", RectF(691, 109, 68, 25), 9.5f, success, true, true, true);
-
-        const wchar_t* headline =
-            v.screen == phase::login ? L"Tekrar hoş geldin." :
-            v.screen == phase::working ? L"Kontrol ediliyor." :
-            v.screen == phase::ready ? L"Oturumunu seç." :
-            v.screen == phase::launching ? L"Başlatılıyor." : L"Her şey hazır.";
-        text(g, headline, RectF(456, 151, 302, 45), 24, fg, false, false, true);
-        text(g, isLogin ? L"Devam etmek için lisans anahtarını gir."
-                : isDone ? L"Client oturumu başarıyla hazırlandı."
-                : L"Açık Minecraft penceresini seç.",
-            RectF(456, 190, 302, 26), 10.5f, tertiary);
-
-        text(g, isLogin ? L"LİSANS ANAHTARI" : L"MINECRAFT OTURUMU",
-            RectF(456, 219, 300, 19), 9.5f, tertiary, false, true, true);
-        rounded_box(g, keyRect, 9, inputFill,
-            hover == 1 && !isBusy ? Color(255, 118, 75, 96) : border);
-        if (isLogin) {
-            text(g, L">", RectF(468, 247, 18, 30), 17, accent, true, true);
-            if (preview) text(g, L"••••  ••••  ••••  ••••",
-                RectF(488, 249, 196, 28), 12, tertiary, false, true);
-            text(g, reveal ? L"GİZLE" : L"GÖSTER",
-                RectF(692, 248, 60, 28), 9.5f,
-                hover == 1 && !isBusy ? fg : tertiary, true, true, true);
+        if (loginScreen) {
+            text(g, L"Welcome", RectF(50, 147, 193, 52), 32, fg, false, false, true);
+            text(g, L"back.", RectF(224, 147, 147, 52), 32, pink, false, false, true);
+            text(g, L"Enter your license key to continue.",
+                RectF(52, 199, 340, 37), 12.3f, secondary);
         } else {
-            const auto caption = hasSelection
-                ? chosen->title + L"  /  PID " + std::to_wstring(chosen->pid)
-                : L"Minecraft seç veya listeyi yenile";
-            text(g, caption, RectF(471, 246, 253, 34), 11.5f,
-                hasSelection ? fg : tertiary);
-            text(g, L"v", RectF(727, 247, 24, 32), 12, accent, true, true, true);
+            text(g, L"Choose", RectF(49, 129, 320, 53), 34, fg, false, false, true);
+            text(g, L"your", RectF(49, 177, 100, 52), 34, fg, false, false, true);
+            text(g, L"session.", RectF(141, 177, 235, 52), 34, pink, false, false, true);
+            text(g, L"Select a window and launch.",
+                RectF(52, 240, 333, 31), 12.3f, secondary);
         }
 
-        const Color button = !canSubmit ? Color(255, 58, 43, 54) :
-            hover == 2 ? Color(255, 232, 118, 149) : Color(255, 200, 85, 119);
-        rounded_box(g, actionRect, 10, button,
-            canSubmit ? Color(255, 234, 129, 157) : Color(255, 72, 57, 67));
-        std::wstring label =
-            v.screen == phase::login ? L"Giriş yap   →" :
-            v.screen == phase::done ? L"Client çalışıyor" :
-            v.screen == phase::ready && !hasSelection ? L"Minecraft seç   →" :
-            L"Client'i başlat   →";
-        if (isBusy) {
-            label = v.screen == phase::launching ? L"Başlatılıyor" : L"Doğrulanıyor";
+        rounded_box(g, RectF(405, 93, 325, 292), 15, panel, border);
+        text(g, loginScreen ? L"License Key" : L"Session",
+            RectF(431, 117, 273, 29), 13.4f, fg, false, false, true);
+        rounded_box(g, keyRect, 10, field,
+            hover == 1 && !working ? Color(255, 124, 62, 92) : border);
+        if (loginScreen) {
+            Pen key(pink, 1.7f);
+            g.DrawEllipse(&key, 448, 164, 10, 10);
+            g.DrawLine(&key, 453, 174, 444, 183);
+            g.DrawLine(&key, 445, 179, 448, 182);
+            g.DrawLine(&key, 448, 177, 451, 180);
+            if (preview) text(g, L"••••  ••••  ••••  ••••",
+                RectF(471, 164, 177, 27), 11.8f, secondary, false, true);
+            // Compact eye affordance that toggles the underlying Win32 password control.
+            g.DrawArc(&chrome, 668, 162, 23, 16, 200, 140);
+            g.DrawArc(&chrome, 668, 162, 23, 16, 20, 140);
+            SolidBrush iris(pink);
+            g.FillEllipse(&iris, 677, 167, 5, 5);
+            if (reveal) g.DrawLine(&chrome, 667, 181, 692, 159);
+        } else {
+            text(g, selected == v.games.end() ? L"Minecraft Window" : selected->title,
+                RectF(447, 159, 208, 31), 12.4f,
+                selected == v.games.end() ? secondary : fg, false, false, true);
+            Pen arrow(pink, 1.7f);
+            g.DrawLine(&arrow, 673, 169, 680, 176);
+            g.DrawLine(&arrow, 680, 176, 687, 169);
+        }
+
+        const bool canClick = !working && !finished;
+        const Color b1 = !canClick ? Color(255, 73, 49, 62)
+            : hover == 2 ? palePink : Color(255, 245, 92, 137);
+        const Color b2 = !canClick ? Color(255, 60, 41, 55)
+            : hover == 2 ? pink : Color(255, 216, 44, 105);
+        gradient_button(g, actionRect, 10, b1, b2,
+            canClick ? Color(255, 255, 125, 163) : Color(255, 89, 62, 74));
+        std::wstring label = loginScreen ? L"Sign In  →" :
+            finished ? L"Client Running" : L"Launch Client  →";
+        if (working) {
+            label = v.screen == phase::launching ? L"Launching" : L"Please wait";
             label += std::wstring(1 + int(animation * 2.0f) % 3, L'.');
         }
-        text(g, label, RectF(456, 307, 300, 45), 13,
-            canSubmit ? Color(255, 255, 248, 251) : Color(255, 190, 164, 175),
-            true, false, true);
+        text(g, label, actionRect, 13.4f,
+            canClick ? Color(255, 255, 249, 253) : secondary, true, false, true);
 
-        const Color statusColor = v.error ? Color(255, 248, 133, 149)
-            : isBusy ? Color(255, 199, 203, 214) : success;
-        rounded_box(g, RectF(456, 367, 300, 59), 8,
-            Color(255, 25, 29, 37), Color(255, 40, 45, 55));
+        rounded_box(g, RectF(431, 307, 273, 55), 9, field, border);
+        const Color statusColor = v.error ? Color(255, 255, 121, 143)
+            : working ? palePink : success;
         SolidBrush statusDot(statusColor);
-        g.FillEllipse(&statusDot, 469.0f, 382.0f, 6.0f, 6.0f);
-        text(g, v.error ? L"İŞLEM BAŞARISIZ" : isBusy ? L"İŞLEM DEVAM EDİYOR" :
-            isDone ? L"OTURUM AKTİF" : L"DURUM",
-            RectF(482, 371, 258, 23), 9, statusColor, false, true, true);
-        text(g, v.message, RectF(469, 389, 274, 31), 10.1f, tertiary);
-        if (v.total != 0 && isBusy) {
-            const float ratio = float(std::min(v.received, v.total)) / float(v.total);
-            SolidBrush track(Color(255, 47, 48, 60)), progress(accent);
-            g.FillRectangle(&track, 456.0f, 439.0f, 300.0f, 3.0f);
-            g.FillRectangle(&progress, 456.0f, 439.0f, 300.0f * ratio, 3.0f);
+        g.FillEllipse(&statusDot, 445, 319, 8, 8);
+        text(g, v.error ? L"Error" : L"Status", RectF(465, 309, 220, 26),
+            11.2f, fg, false, false, true);
+        text(g, status_text(v), RectF(465, 331, 223, 23), 10.3f, secondary);
+        if (working && v.total > 0) {
+            const float part = float(std::min(v.received, v.total)) / float(v.total);
+            SolidBrush track(Color(255, 49, 45, 58)), fill(pink);
+            g.FillRectangle(&track, 433.0f, 370.0f, 269.0f, 3.0f);
+            g.FillRectangle(&fill, 433.0f, 370.0f, 269.0f * part, 3.0f);
         }
-
-        text(g, L"FABRIC 1.21.1  /  WINDOWS x64", RectF(28, 476, 365, 26),
-            10, muted, false, true);
-        if (!v.release.version.empty() && !isLogin) {
-            text(g, L"v" + launcher::wide(v.release.version), RectF(410, 476, 190, 26),
-                9.5f, muted, true, true);
-        }
-        text(g, L"TLS  /  SIGNED RELEASE", RectF(598, 476, 194, 26),
-            9.5f, success, true, true);
     }
     void controls() {
         const auto v = snapshot();
@@ -238,7 +217,7 @@ namespace {
                 catch (const std::exception& error) {
                     update([&](auto& v) { v.error = true; v.message = launcher::wide(error.what());
                         v.screen = auth::is_authenticated() && !v.release.path.empty() ? phase::ready : phase::login; });
-                } catch (...) { update([](auto& v) { v.error = true; v.message = L"İşlem tamamlanamadı. Tekrar dene."; v.screen = phase::login; }); }
+                } catch (...) { update([](auto& v) { v.error = true; v.message = L"Something went wrong. Please retry."; v.screen = phase::login; }); }
                 busy.store(false); if (window) PostMessageW(window, changed, 0, 0);
             });
         } catch (...) { busy.store(false); }
@@ -249,7 +228,7 @@ namespace {
         wchar_t input[130]{}; GetWindowTextW(edit, input, 130);
         auto key = std::make_shared<std::string>(launcher::narrow(input)); SecureZeroMemory(input, sizeof(input));
         SetWindowTextW(edit, L"");
-        update([](auto& v) { v.screen = phase::working; v.error = false; v.message = L"Lisans doğrulanıyor..."; v.received = v.total = 0; });
+        update([](auto& v) { v.screen = phase::working; v.error = false; v.message = L"Checking license..."; v.received = v.total = 0; });
         begin([key] {
             struct key_guard { std::string& value; ~key_guard() { auth::launch::wipe(value); } } secret{*key};
             auth::controlled_shutdown();
@@ -257,17 +236,17 @@ namespace {
             auth::launch::wipe(*key); auth::launch::wipe(result.session_token);
             if (!result.success) throw std::runtime_error(result.message);
             auth::start_heartbeat_monitor(auth::config::server_domain);
-            update([](auto& v) { v.message = L"Güncelleme kontrol ediliyor..."; });
+            update([](auto& v) { v.message = L"Checking for updates..."; });
             auto release = launcher::manifest();
-            update([](auto& v) { v.message = L"Client indiriliyor..."; });
+            update([](auto& v) { v.message = L"Downloading client..."; });
             launcher::download(release, cancel, [](auto read, auto total) {
                 update([&](auto& v) { v.received = read; v.total = total;
-                    v.message = L"İndiriliyor · %" + std::to_wstring(read * 100 / total); });
+                    v.message = L"Downloading... " + std::to_wstring(total ? read * 100 / total : 0) + L"%"; });
             });
             auto list = launcher::games();
             update([&](auto& v) { v.screen = phase::ready; v.release = release; v.games = list;
                 v.selected = list.size() == 1 ? list.front().pid : 0;
-                v.message = list.empty() ? L"Minecraft’ı aç, ardından oturum listesini yenile." : L"Dosya doğrulandı. Başlatmaya hazırsın."; });
+                v.message = list.empty() ? L"Open Minecraft, then refresh." : L"Ready to launch."; });
         });
     }
     void select_game() {
@@ -278,8 +257,8 @@ namespace {
             const auto label = list[i].title + L"  [" + std::to_wstring(list[i].pid) + L"]";
             AppendMenuW(menu, MF_STRING, UINT_PTR(i + 1), label.c_str());
         }
-        if (list.empty()) AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, L"Açık Minecraft bulunamadı");
-        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr); AppendMenuW(menu, MF_STRING, 10000, L"Listeyi yenile");
+        if (list.empty()) AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, L"No Minecraft window found");
+        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr); AppendMenuW(menu, MF_STRING, 10000, L"Refresh windows");
         POINT point{int(keyRect.X * dpi), int((keyRect.Y + keyRect.Height) * dpi)}; ClientToScreen(window, &point);
         int chosen = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_NONOTIFY, point.x, point.y, 0, window, nullptr);
         DestroyMenu(menu);
@@ -288,6 +267,8 @@ namespace {
             else if (list.size() == 1) v.selected = list.front().pid;
             else if (std::none_of(list.begin(), list.end(), [&](auto& g) { return g.pid == v.selected; })) v.selected = 0;
             if (v.screen == phase::done) v.screen = phase::ready;
+            v.error = false;
+            v.message = v.selected ? L"Ready to launch." : L"Select a Minecraft window.";
         });
     }
     void action() {
@@ -297,7 +278,8 @@ namespace {
         const auto selected = std::find_if(v.games.begin(), v.games.end(), [&](auto& item) { return item.pid == v.selected; });
         if (selected == v.games.end()) { select_game(); return; }
         const auto game = *selected;
-        update([](auto& value) { value.screen = phase::launching; value.error = false; value.total = 0; });
+        update([](auto& value) { value.screen = phase::launching; value.error = false; value.total = 0;
+            value.message = L"Preparing launch..."; });
         begin([game, release = v.release] {
             launcher::launch(game, release, cancel, [](auto& message) { update([&](auto& value) { value.message = message; }); });
             update([](auto& value) { value.screen = phase::done; });
@@ -308,9 +290,9 @@ namespace {
         return DefSubclassProc(control, message, w, l);
     }
     void resize_controls() {
-        MoveWindow(edit, int(488 * dpi), int(252 * dpi), int(196 * dpi), int(25 * dpi), TRUE);
+        MoveWindow(edit, int(471 * dpi), int(164 * dpi), int(184 * dpi), int(27 * dpi), TRUE);
         if (inputFont) DeleteObject(inputFont);
-        inputFont = CreateFontW(-int(14 * dpi), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+        inputFont = CreateFontW(-int(13 * dpi), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
             OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Consolas");
         SendMessageW(edit, WM_SETFONT, WPARAM(inputFont), TRUE);
     }
@@ -318,14 +300,14 @@ namespace {
         switch (message) {
         case WM_CREATE:
             window = handle; dpi = GetDpiForWindow(handle) / 96.0f;
-            editBrush = CreateSolidBrush(RGB(24, 27, 36));
+            editBrush = CreateSolidBrush(RGB(23, 26, 38));
             edit = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL | ES_PASSWORD,
                 0, 0, 0, 0, handle, reinterpret_cast<HMENU>(100), GetModuleHandleW(nullptr), nullptr);
             SendMessageW(edit, EM_SETLIMITTEXT, 128, 0); SendMessageW(edit, EM_SETPASSWORDCHAR, L'•', 0);
             SetWindowSubclass(edit, input_proc, 1, 0); resize_controls();
             SetTimer(handle, 1, 100, nullptr); SetFocus(edit); return 0;
         case WM_CTLCOLOREDIT:
-            SetTextColor(reinterpret_cast<HDC>(w), RGB(241, 242, 247)); SetBkColor(reinterpret_cast<HDC>(w), RGB(24, 27, 36));
+            SetTextColor(reinterpret_cast<HDC>(w), RGB(247, 247, 250)); SetBkColor(reinterpret_cast<HDC>(w), RGB(23, 26, 38));
             return reinterpret_cast<LRESULT>(editBrush);
         case WM_ERASEBKGND: return 1;
         case WM_PAINT: {
@@ -339,9 +321,13 @@ namespace {
         case changed: controls(); return 0;
         case WM_MOUSEMOVE: {
             float x = float(short(LOWORD(l))) / dpi, y = float(short(HIWORD(l))) / dpi;
-            int next = inside(keyRect, x, y) ? 1 : inside(actionRect, x, y) ? 2 :
-                inside(RectF(728, 12, 30, 30), x, y) ? 3 : inside(RectF(770, 12, 30, 30), x, y) ? 4 :
-                inside(RectF(628, 14, 70, 30), x, y) ? 5 : 0;
+            const auto current = snapshot();
+            const bool signedIn = current.screen == phase::ready || current.screen == phase::done;
+            int next = inside(RectF(673, 13, 30, 30), x, y) ? 3 :
+                inside(RectF(716, 13, 30, 30), x, y) ? 4 :
+                signedIn && !busy.load() && inside(RectF(592, 15, 71, 29), x, y) ? 5 :
+                !busy.load() && inside(keyRect, x, y) ? 1 :
+                !busy.load() && current.screen != phase::done && inside(actionRect, x, y) ? 2 : 0;
             if (hover != next) { hover = next; InvalidateRect(handle, nullptr, FALSE); }
             SetCursor(LoadCursorW(nullptr, hover ? IDC_HAND : IDC_ARROW));
             TRACKMOUSEEVENT tracking{sizeof(tracking), TME_LEAVE, handle, 0}; TrackMouseEvent(&tracking); return 0;
@@ -349,16 +335,16 @@ namespace {
         case WM_MOUSELEAVE: hover = 0; InvalidateRect(handle, nullptr, FALSE); return 0;
         case WM_LBUTTONUP: {
             float x = float(short(LOWORD(l))) / dpi, y = float(short(HIWORD(l))) / dpi;
-            if (inside(RectF(770, 12, 30, 30), x, y)) SendMessageW(handle, WM_CLOSE, 0, 0);
-            else if (inside(RectF(728, 12, 30, 30), x, y)) ShowWindow(handle, SW_MINIMIZE);
-            else if (inside(RectF(628, 14, 70, 30), x, y) &&
+            if (inside(RectF(716, 13, 30, 30), x, y)) SendMessageW(handle, WM_CLOSE, 0, 0);
+            else if (inside(RectF(673, 13, 30, 30), x, y)) ShowWindow(handle, SW_MINIMIZE);
+            else if (inside(RectF(592, 15, 71, 29), x, y) &&
                 (snapshot().screen == phase::ready || snapshot().screen == phase::done) && !busy.load()) {
                 begin([] { auth::controlled_shutdown(); update([](auto& value) { value = {}; }); });
             }
             else if (inside(actionRect, x, y)) action();
             else if (inside(keyRect, x, y)) {
                 if (snapshot().screen == phase::login) {
-                    if (x >= 688 && !busy.load()) { reveal = !reveal; SendMessageW(edit, EM_SETPASSWORDCHAR, reveal ? 0 : L'•', 0); InvalidateRect(edit, nullptr, TRUE); }
+                    if (x >= 661 && !busy.load()) { reveal = !reveal; SendMessageW(edit, EM_SETPASSWORDCHAR, reveal ? 0 : L'•', 0); InvalidateRect(edit, nullptr, TRUE); }
                     else SetFocus(edit);
                 } else if (!busy.load()) select_game();
             }
@@ -366,7 +352,7 @@ namespace {
         }
         case WM_NCHITTEST: {
             POINT point{short(LOWORD(l)), short(HIWORD(l))}; ScreenToClient(handle, &point);
-            if (point.y < int(56 * dpi) && point.x < int(620 * dpi)) return HTCAPTION;
+            if (point.y < int(56 * dpi) && point.x < int(580 * dpi)) return HTCAPTION;
             return HTCLIENT;
         }
         case WM_DPICHANGED: {
@@ -394,7 +380,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     ULONG_PTR token{}; GdiplusStartupInput input; if (GdiplusStartup(&token, &input, nullptr) != Ok) return 1;
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     int argc{}; auto argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-    if (argv && argc == 3 && !wcscmp(argv[1], L"--preview")) {
+    if (argv && argc == 3 && (!wcscmp(argv[1], L"--preview") ||
+        !wcscmp(argv[1], L"--preview-session"))) {
+        if (!wcscmp(argv[1], L"--preview-session")) {
+            state.screen = phase::ready;
+            state.games.push_back({12345, L"Minecraft Window"});
+            state.selected = 12345;
+            state.message = L"Ready to launch.";
+        }
         const int result = save_preview(argv[2]); LocalFree(argv); CoUninitialize(); GdiplusShutdown(token); return result;
     }
     if (argv) LocalFree(argv);
@@ -407,7 +400,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     cls.hCursor = LoadCursorW(nullptr, IDC_ARROW); RegisterClassW(&cls);
     const auto scale = GetDpiForSystem() / 96.0f;
     const int w = int(width * scale), h = int(height * scale);
-    HWND handle = CreateWindowExW(WS_EX_APPWINDOW, cls.lpszClassName, L"Onestep Launcher", WS_POPUP | WS_MINIMIZEBOX | WS_CLIPCHILDREN,
+    HWND handle = CreateWindowExW(WS_EX_APPWINDOW, cls.lpszClassName, L"OneStep", WS_POPUP | WS_MINIMIZEBOX | WS_CLIPCHILDREN,
         (GetSystemMetrics(SM_CXSCREEN) - w) / 2, (GetSystemMetrics(SM_CYSCREEN) - h) / 2,
         w, h, nullptr, nullptr, instance, nullptr);
     if (handle) {
