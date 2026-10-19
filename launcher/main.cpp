@@ -203,6 +203,12 @@ namespace {
     void controls() {
         const auto v = snapshot();
         const bool show = v.screen == phase::login || v.screen == phase::working;
+        // Never keep a revealed password after a screen transition or logout.
+        if (show && reveal && !busy.load()) {
+            reveal = false;
+            SendMessageW(edit, EM_SETPASSWORDCHAR, L'•', 0);
+            InvalidateRect(edit, nullptr, TRUE);
+        }
         ShowWindow(edit, show ? SW_SHOW : SW_HIDE);
         EnableWindow(edit, !busy.load());
         InvalidateRect(window, nullptr, FALSE);
@@ -227,6 +233,10 @@ namespace {
         if (busy.load()) return;
         wchar_t input[130]{}; GetWindowTextW(edit, input, 130);
         auto key = std::make_shared<std::string>(launcher::narrow(input)); SecureZeroMemory(input, sizeof(input));
+        if (key->empty()) {
+            update([](auto& v) { v.error = true; v.message = L"Enter a license key."; });
+            return;
+        }
         SetWindowTextW(edit, L"");
         update([](auto& v) { v.screen = phase::working; v.error = false; v.message = L"Checking license..."; v.received = v.total = 0; });
         begin([key] {
@@ -304,6 +314,7 @@ namespace {
             edit = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL | ES_PASSWORD,
                 0, 0, 0, 0, handle, reinterpret_cast<HMENU>(100), GetModuleHandleW(nullptr), nullptr);
             SendMessageW(edit, EM_SETLIMITTEXT, 128, 0); SendMessageW(edit, EM_SETPASSWORDCHAR, L'•', 0);
+            SendMessageW(edit, EM_SETCUEBANNER, TRUE, reinterpret_cast<LPARAM>(L"Enter license key"));
             SetWindowSubclass(edit, input_proc, 1, 0); resize_controls();
             SetTimer(handle, 1, 100, nullptr); SetFocus(edit); return 0;
         case WM_CTLCOLOREDIT:
