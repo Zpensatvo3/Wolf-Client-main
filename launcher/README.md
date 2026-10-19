@@ -80,3 +80,17 @@ license or network call. Neither probe loads anything into Minecraft.
 The GUI's `--preview <absolute.png>` option renders the real drawing code into
 a PNG without opening the UI or connecting to the service. Game loading and
 in-game module behavior are left for the owner's interactive test.
+
+## Interface refresh (October 2026)
+
+The native GDI+ launcher uses a two-column layout: a compact brand/step overview
+and a dedicated action panel for license entry, Minecraft selection, launch
+status, error messages and verified download progress. Existing keyboard entry,
+license masking/reveal, process picker, window dragging, exit and minimize stay
+in place. This is a presentation-only change; the authentication, download,
+verification, ticket and game-loading paths are unchanged.
+
+Use `Onestep-Launcher.exe --preview C:\\absolute\\preview.png` to render the
+login layout without a server call. Check the real window at 100%, 125% and
+150% DPI, including both login and ready/error states before publishing. The
+preview does not replace a Windows x64 build or an interactive UI test.
