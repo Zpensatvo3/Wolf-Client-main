@@ -27,8 +27,8 @@ namespace {
         std::vector<launcher::game> games; DWORD selected = 0; };
     view state; std::mutex stateMutex;
     int hover = 0; bool reveal = false; bool preview = false;
-    RectF keyRect(226, 262, 368, 44), actionRect(226, 324, 368, 46);
-    Color bg(255, 10, 10, 13), fg(255, 231, 230, 235), muted(255, 112, 111, 125);
+    RectF keyRect(456, 240, 300, 49), actionRect(456, 305, 300, 47);
+    Color bg(255, 12, 14, 20), fg(255, 241, 242, 247), muted(255, 116, 122, 140);
     Color red(255, 186, 69, 91), green(255, 116, 197, 152);
     void update(const std::function<void(view&)>& fn) {
         { std::lock_guard lock(stateMutex); fn(state); }
@@ -48,82 +48,178 @@ namespace {
         SolidBrush brush(fill); Pen pen(border, 1);
         g.FillRectangle(&brush, rect); g.DrawRectangle(&pen, rect);
     }
+    // Rounded surfaces keep the native GDI+ UI cohesive without a browser dependency.
+    void rounded_box(Graphics& g, RectF rect, float radius, Color fill, Color border) {
+        const float diameter = radius * 2.0f;
+        GraphicsPath path;
+        path.AddArc(rect.X, rect.Y, diameter, diameter, 180, 90);
+        path.AddArc(rect.GetRight() - diameter, rect.Y, diameter, diameter, 270, 90);
+        path.AddArc(rect.GetRight() - diameter, rect.GetBottom() - diameter, diameter, diameter, 0, 90);
+        path.AddArc(rect.X, rect.GetBottom() - diameter, diameter, diameter, 90, 90);
+        path.CloseFigure();
+        SolidBrush background(fill);
+        Pen outline(border, 1.0f);
+        g.FillPath(&background, &path);
+        g.DrawPath(&outline, &path);
+    }
     void draw(Graphics& g, const view& v, float animation) {
-        g.SetSmoothingMode(SmoothingModeAntiAlias); g.SetTextRenderingHint(TextRenderingHintAntiAliasGridFit);
+        g.SetSmoothingMode(SmoothingModeAntiAlias);
+        g.SetTextRenderingHint(TextRenderingHintAntiAliasGridFit);
         g.Clear(bg);
-        // Sparse terminal grid and a quiet, warm glow instead of noisy decoration.
-        Pen grid(Color(10, 140, 106, 125));
-        for (int x = 24; x < width; x += 32) g.DrawLine(&grid, float(x), 58.0f, float(x), 465.0f);
-        for (int y = 74; y < 464; y += 32) g.DrawLine(&grid, 24.0f, float(y), 796.0f, float(y));
-        for (int i = 12; i > 0; --i) {
-            SolidBrush glow(Color(2, 167, 51, 77));
-            g.FillEllipse(&glow, 292.0f - i * 10, 90.0f - i * 5, 236.0f + i * 20, 112.0f + i * 10);
+
+        const Color surface(255, 20, 22, 30);
+        const Color inputFill(255, 24, 27, 36);
+        const Color border(255, 43, 47, 60);
+        const Color tertiary(255, 147, 151, 166);
+        const Color accent(255, 215, 105, 133);
+        const Color success(255, 113, 206, 166);
+        const bool isLogin = v.screen == phase::login || v.screen == phase::working;
+        const bool isBusy = busy.load();
+        const bool isDone = v.screen == phase::done;
+        const bool canSubmit = !isBusy && !isDone;
+        const auto chosen = std::find_if(v.games.begin(), v.games.end(),
+            [&](const auto& item) { return item.pid == v.selected; });
+        const bool hasSelection = chosen != v.games.end();
+
+        // Quiet architectural detail: a restrained halo and vertical guides.
+        for (int i = 8; i >= 1; --i) {
+            SolidBrush halo(Color(BYTE(2 + (8 - i)), 191, 69, 108));
+            g.FillEllipse(&halo, 10.0f - i * 20.0f, 92.0f - i * 16.0f,
+                332.0f + i * 39.0f, 246.0f + i * 29.0f);
         }
-        SolidBrush dot(red); g.FillRectangle(&dot, 27, 25, 6, 6);
-        text(g, L"ONESTEP", RectF(43, 15, 94, 26), 12, fg, false, true, true);
-        text(g, L"/ launcher", RectF(123, 15, 100, 26), 11, muted, false, true);
-        if (v.screen == phase::ready || v.screen == phase::done)
-            text(g, L"Çıkış", RectF(628, 14, 70, 30), 10.5f, hover == 5 ? fg : muted, true, true);
-        Pen line(Color(255, 31, 29, 36)); g.DrawLine(&line, 24, 56, 796, 56);
-        if (hover == 3) { SolidBrush fill(Color(255, 30, 28, 35)); g.FillRectangle(&fill, 728, 12, 30, 30); }
-        if (hover == 4) { SolidBrush fill(Color(255, 65, 28, 37)); g.FillRectangle(&fill, 770, 12, 30, 30); }
-        Pen chrome(Color(255, 153, 147, 162), 1.3f);
+        Pen guide(Color(255, 28, 30, 40));
+        g.DrawLine(&guide, 404.0f, 84.0f, 404.0f, 456.0f);
+        g.DrawLine(&guide, 26.0f, 64.0f, 794.0f, 64.0f);
+        g.DrawLine(&guide, 26.0f, 469.0f, 794.0f, 469.0f);
+
+        // Native titlebar remains draggable and the existing window actions remain intact.
+        SolidBrush brand(accent);
+        g.FillEllipse(&brand, 28.0f, 26.0f, 8.0f, 8.0f);
+        text(g, L"ONESTEP", RectF(45, 16, 115, 30), 14, fg, false, false, true);
+        text(g, L" /  LAUNCHER", RectF(148, 18, 132, 28), 10.5f, muted, false, true);
+        if (v.screen == phase::ready || v.screen == phase::done) {
+            rounded_box(g, RectF(636, 17, 68, 28), 7,
+                hover == 5 ? Color(255, 36, 38, 49) : Color(255, 19, 21, 29),
+                hover == 5 ? border : Color(255, 29, 32, 42));
+            text(g, L"Çıkış", RectF(636, 17, 68, 27), 11,
+                hover == 5 ? fg : tertiary, true);
+        }
+        if (hover == 3) rounded_box(g, RectF(728, 12, 30, 30), 7, Color(255, 34, 37, 48), border);
+        if (hover == 4) rounded_box(g, RectF(770, 12, 30, 30), 7, Color(255, 68, 30, 43), border);
+        Pen chrome(Color(255, 157, 161, 176), 1.4f);
         g.DrawLine(&chrome, 739, 28, 748, 28);
-        g.DrawLine(&chrome, 780, 22, 788, 30); g.DrawLine(&chrome, 788, 22, 780, 30);
-        // Deliberately code-native terminal lettering, matching the supplied reference.
-        static const char* glyphs[] = {
-            "01110100011000110001100011000101110", // O
-            "10001110011010110011100011000110001", // N
-            "11111100001000011110100001000011111", // E
-            "01111100001000001110000010000111110", // S
-            "11111001000010000100001000010000100", // T
-            "11111100001000011110100001000011111", // E
-            "11110100011000111110100001000010000"  // P
-        };
-        for (int letter = 0; letter < 7; ++letter) for (int row = 0; row < 7; ++row) {
-            SolidBrush stroke(Color(255, BYTE(143 + row * 5), BYTE(49 + row * 2), BYTE(69 + row * 3)));
-            for (int col = 0; col < 5; ++col) if (glyphs[letter][row * 5 + col] == '1') {
-                float x = 268.5f + letter * 42.0f + col * 7.0f, y = 115.0f + row * 8.0f;
-                g.FillRectangle(&stroke, x, y, 5.5f, 2.2f);
-                g.FillRectangle(&stroke, x, y + 3.3f, 5.5f, 1.1f);
-            }
+        g.DrawLine(&chrome, 780, 22, 788, 30);
+        g.DrawLine(&chrome, 788, 22, 780, 30);
+
+        // Editorial left panel: clear hierarchy, without repeating a giant logo.
+        text(g, L"YOUR NEXT STEP", RectF(40, 107, 320, 25), 10, accent, false, true, true);
+        text(g, L"ONE STEP", RectF(37, 155, 360, 65), 45, fg, false, false, true);
+        text(g, L"AHEAD.", RectF(37, 213, 360, 65), 45, fg, false, false, true);
+        SolidBrush stripe(accent);
+        g.FillRectangle(&stripe, 40.0f, 298.0f, 32.0f, 3.0f);
+        const wchar_t* helper = isLogin
+            ? L"Lisansını doğrula.\nGerisini OneStep halleder."
+            : isDone ? L"Oturum başlatıldı.\nArtık Minecraft'a dönebilirsin."
+            : L"Client hazır olduğunda\nMinecraft oturumunu seç.";
+        text(g, helper, RectF(40, 312, 330, 53), 12.2f, tertiary);
+
+        const int stage = v.screen == phase::login ? 0 :
+            v.screen == phase::working ? 1 :
+            v.screen == phase::done ? 3 : 2;
+        const wchar_t* stages[] = {L"ACCESS", L"VERIFY", L"LAUNCH"};
+        for (int i = 0; i < 3; ++i) {
+            const float x = 40.0f + float(i) * 119.0f;
+            const bool reached = stage >= i + 1;
+            SolidBrush track(reached ? accent : Color(255, 54, 58, 69));
+            g.FillRectangle(&track, x, 405.0f, 103.0f, 3.0f);
+            text(g, std::wstring(L"0") + std::to_wstring(i + 1),
+                RectF(x, 417.0f, 25.0f, 27.0f), 11.0f,
+                reached ? accent : muted, false, true, true);
+            text(g, stages[i], RectF(x + 29.0f, 418.0f, 77.0f, 26.0f),
+                9.0f, reached ? fg : muted, false, true);
         }
-        text(g, L"Y O U R   N E X T   S T E P", RectF(160, 195, 500, 22), 9.5f, muted, true, true);
-        const bool login = v.screen == phase::login || v.screen == phase::working;
-        text(g, login ? L"LİSANS ANAHTARI" : L"MINECRAFT OTURUMU", RectF(226, 235, 368, 20), 10,
-            Color(255, 145, 137, 153), false, true);
-        box(g, keyRect, Color(255, 17, 16, 21), hover == 1 ? Color(255, 101, 51, 66) : Color(255, 48, 39, 49));
-        if (login) {
-            text(g, L"›", RectF(239, 266, 18, 34), 19, red, true, true);
-            if (preview) text(g, L"••••  ••••  ••••  ••••", RectF(263, 266, 277, 34), 14, Color(255, 138, 126, 145), false, true);
-            text(g, reveal ? L"GİZLE" : L"GÖSTER", RectF(532, 270, 52, 28), 9, muted, true, true);
+
+        // Action surface: all real controls live in one compact, readable panel.
+        rounded_box(g, RectF(423, 86, 368, 369), 16, surface, border);
+        text(g, isLogin ? L"SECURE ACCESS" : isDone ? L"SESSION ACTIVE" : L"GAME SESSION",
+            RectF(456, 113, 222, 23), 10.5f, accent, false, true, true);
+        rounded_box(g, RectF(691, 110, 68, 24), 11,
+            Color(255, 34, 40, 46), Color(255, 48, 63, 65));
+        text(g, L"WIN x64", RectF(691, 109, 68, 25), 9.5f, success, true, true, true);
+
+        const wchar_t* headline =
+            v.screen == phase::login ? L"Tekrar hoş geldin." :
+            v.screen == phase::working ? L"Kontrol ediliyor." :
+            v.screen == phase::ready ? L"Oturumunu seç." :
+            v.screen == phase::launching ? L"Başlatılıyor." : L"Her şey hazır.";
+        text(g, headline, RectF(456, 151, 302, 45), 24, fg, false, false, true);
+        text(g, isLogin ? L"Devam etmek için lisans anahtarını gir."
+                : isDone ? L"Client oturumu başarıyla hazırlandı."
+                : L"Açık Minecraft penceresini seç.",
+            RectF(456, 190, 302, 26), 10.5f, tertiary);
+
+        text(g, isLogin ? L"LİSANS ANAHTARI" : L"MINECRAFT OTURUMU",
+            RectF(456, 219, 300, 19), 9.5f, tertiary, false, true, true);
+        rounded_box(g, keyRect, 9, inputFill,
+            hover == 1 && !isBusy ? Color(255, 118, 75, 96) : border);
+        if (isLogin) {
+            text(g, L">", RectF(468, 247, 18, 30), 17, accent, true, true);
+            if (preview) text(g, L"••••  ••••  ••••  ••••",
+                RectF(488, 249, 196, 28), 12, tertiary, false, true);
+            text(g, reveal ? L"GİZLE" : L"GÖSTER",
+                RectF(692, 248, 60, 28), 9.5f,
+                hover == 1 && !isBusy ? fg : tertiary, true, true, true);
         } else {
-            auto selected = std::find_if(v.games.begin(), v.games.end(), [&](auto& item) { return item.pid == v.selected; });
-            const auto caption = selected == v.games.end() ? L"Minecraft bulunamadı · yenile" :
-                selected->title + L"  ·  " + std::to_wstring(selected->pid);
-            text(g, caption, RectF(239, 266, 312, 34), 12, fg);
-            text(g, L"⌄", RectF(558, 268, 24, 30), 16, muted, true);
+            const auto caption = hasSelection
+                ? chosen->title + L"  /  PID " + std::to_wstring(chosen->pid)
+                : L"Minecraft seç veya listeyi yenile";
+            text(g, caption, RectF(471, 246, 253, 34), 11.5f,
+                hasSelection ? fg : tertiary);
+            text(g, L"v", RectF(727, 247, 24, 32), 12, accent, true, true, true);
         }
-        const bool active = !busy.load();
-        Color button = hover == 2 && active ? Color(255, 151, 49, 72) : Color(255, 114, 37, 55);
-        if (!active) button = Color(255, 41, 27, 35);
-        box(g, actionRect, button, active ? Color(255, 170, 62, 85) : Color(255, 72, 40, 52));
-        std::wstring label = login ? L"Giriş yap   →" : v.screen == phase::done ? L"Client çalışıyor   ✓" : L"Client’i başlat   →";
-        if (busy.load()) label = v.screen == phase::launching ? L"Başlatılıyor" : L"Bağlanılıyor";
-        if (busy.load()) label += std::wstring(1 + int(animation * 2) % 3, L'.');
-        text(g, label, RectF(226, 325, 368, 44), 13, active ? fg : Color(255, 161, 143, 154), true, false, true);
-        const auto stateColor = v.error ? Color(255, 235, 119, 128) : green;
-        text(g, L">", RectF(226, 389, 18, 22), 12, stateColor, false, true);
-        text(g, v.message, RectF(246, 386, 348, 40), 11.5f, stateColor, false, true);
-        if (v.total && busy.load()) {
-            SolidBrush track(Color(255, 33, 31, 39)), progress(Color(255, 171, 64, 88));
-            g.FillRectangle(&track, 226, 438, 368, 2);
-            g.FillRectangle(&progress, 226.0f, 438.0f, 368.0f * float(v.received) / float(v.total), 2.0f);
+
+        const Color button = !canSubmit ? Color(255, 58, 43, 54) :
+            hover == 2 ? Color(255, 232, 118, 149) : Color(255, 200, 85, 119);
+        rounded_box(g, actionRect, 10, button,
+            canSubmit ? Color(255, 234, 129, 157) : Color(255, 72, 57, 67));
+        std::wstring label =
+            v.screen == phase::login ? L"Giriş yap   →" :
+            v.screen == phase::done ? L"Client çalışıyor" :
+            v.screen == phase::ready && !hasSelection ? L"Minecraft seç   →" :
+            L"Client'i başlat   →";
+        if (isBusy) {
+            label = v.screen == phase::launching ? L"Başlatılıyor" : L"Doğrulanıyor";
+            label += std::wstring(1 + int(animation * 2.0f) % 3, L'.');
         }
-        if (!login && !v.release.version.empty()) text(g, L"v" + launcher::wide(v.release.version), RectF(226, 432, 368, 22), 10, muted, true, true);
-        g.DrawLine(&line, 24, 471, 796, 471);
-        text(g, L"FABRIC 1.21.1  /  WINDOWS x64", RectF(27, 478, 400, 26), 9.5f, muted, false, true);
-        text(g, L"TLS / İMZA KONTROLÜ", RectF(580, 478, 213, 26), 9.5f, Color(255, 126, 156, 142), true, true);
+        text(g, label, RectF(456, 307, 300, 45), 13,
+            canSubmit ? Color(255, 255, 248, 251) : Color(255, 190, 164, 175),
+            true, false, true);
+
+        const Color statusColor = v.error ? Color(255, 248, 133, 149)
+            : isBusy ? Color(255, 199, 203, 214) : success;
+        rounded_box(g, RectF(456, 367, 300, 59), 8,
+            Color(255, 25, 29, 37), Color(255, 40, 45, 55));
+        SolidBrush statusDot(statusColor);
+        g.FillEllipse(&statusDot, 469.0f, 382.0f, 6.0f, 6.0f);
+        text(g, v.error ? L"İŞLEM BAŞARISIZ" : isBusy ? L"İŞLEM DEVAM EDİYOR" :
+            isDone ? L"OTURUM AKTİF" : L"DURUM",
+            RectF(482, 371, 258, 23), 9, statusColor, false, true, true);
+        text(g, v.message, RectF(469, 389, 274, 31), 10.1f, tertiary);
+        if (v.total != 0 && isBusy) {
+            const float ratio = float(std::min(v.received, v.total)) / float(v.total);
+            SolidBrush track(Color(255, 47, 48, 60)), progress(accent);
+            g.FillRectangle(&track, 456.0f, 439.0f, 300.0f, 3.0f);
+            g.FillRectangle(&progress, 456.0f, 439.0f, 300.0f * ratio, 3.0f);
+        }
+
+        text(g, L"FABRIC 1.21.1  /  WINDOWS x64", RectF(28, 476, 365, 26),
+            10, muted, false, true);
+        if (!v.release.version.empty() && !isLogin) {
+            text(g, L"v" + launcher::wide(v.release.version), RectF(410, 476, 190, 26),
+                9.5f, muted, true, true);
+        }
+        text(g, L"TLS  /  SIGNED RELEASE", RectF(598, 476, 194, 26),
+            9.5f, success, true, true);
     }
     void controls() {
         const auto v = snapshot();
@@ -212,7 +308,7 @@ namespace {
         return DefSubclassProc(control, message, w, l);
     }
     void resize_controls() {
-        MoveWindow(edit, int(263 * dpi), int(273 * dpi), int(263 * dpi), int(25 * dpi), TRUE);
+        MoveWindow(edit, int(488 * dpi), int(252 * dpi), int(196 * dpi), int(25 * dpi), TRUE);
         if (inputFont) DeleteObject(inputFont);
         inputFont = CreateFontW(-int(14 * dpi), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
             OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Consolas");
@@ -222,14 +318,14 @@ namespace {
         switch (message) {
         case WM_CREATE:
             window = handle; dpi = GetDpiForWindow(handle) / 96.0f;
-            editBrush = CreateSolidBrush(RGB(17, 16, 21));
+            editBrush = CreateSolidBrush(RGB(24, 27, 36));
             edit = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL | ES_PASSWORD,
                 0, 0, 0, 0, handle, reinterpret_cast<HMENU>(100), GetModuleHandleW(nullptr), nullptr);
             SendMessageW(edit, EM_SETLIMITTEXT, 128, 0); SendMessageW(edit, EM_SETPASSWORDCHAR, L'•', 0);
             SetWindowSubclass(edit, input_proc, 1, 0); resize_controls();
             SetTimer(handle, 1, 100, nullptr); SetFocus(edit); return 0;
         case WM_CTLCOLOREDIT:
-            SetTextColor(reinterpret_cast<HDC>(w), RGB(224, 216, 229)); SetBkColor(reinterpret_cast<HDC>(w), RGB(17, 16, 21));
+            SetTextColor(reinterpret_cast<HDC>(w), RGB(241, 242, 247)); SetBkColor(reinterpret_cast<HDC>(w), RGB(24, 27, 36));
             return reinterpret_cast<LRESULT>(editBrush);
         case WM_ERASEBKGND: return 1;
         case WM_PAINT: {
@@ -262,7 +358,7 @@ namespace {
             else if (inside(actionRect, x, y)) action();
             else if (inside(keyRect, x, y)) {
                 if (snapshot().screen == phase::login) {
-                    if (x >= 532) { reveal = !reveal; SendMessageW(edit, EM_SETPASSWORDCHAR, reveal ? 0 : L'•', 0); InvalidateRect(edit, nullptr, TRUE); }
+                    if (x >= 688 && !busy.load()) { reveal = !reveal; SendMessageW(edit, EM_SETPASSWORDCHAR, reveal ? 0 : L'•', 0); InvalidateRect(edit, nullptr, TRUE); }
                     else SetFocus(edit);
                 } else if (!busy.load()) select_game();
             }
