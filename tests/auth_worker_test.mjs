@@ -7,7 +7,7 @@ import { signPayload, verifySessionToken } from '../server/auth/sessions.mjs';
 import { sha256 } from '../server/core/crypto.mjs';
 
 async function create(h, key = 'LOCAL-LICENSE-1234', days = 'lifetime') {
-    const response = await h.request('/api/v1/admin/create-key', { key, days }, { admin: true });
+    const response = await h.request('/api/v1/admin/create-key', { days }, { admin: true });
     assert.equal(response.status, 200); return response.json();
 }
 async function activate(h, key) {
@@ -20,14 +20,14 @@ async function activate(h, key) {
 test('admin authorization, methods, pagination, expiry statistics and protected reveal', async () => {
     const h = await harness();
     try {
-        assert.equal((await h.request('/api/v1/admin/list-keys')).status, 401);
-        assert.equal((await h.request('/api/v1/admin/list-keys', undefined, { headers: { Authorization: 'Bearer ' + 'x'.repeat(40) } })).status, 401);
+        assert.equal((await h.request('/api/v1/admin/list-keys',undefined,{headers:{'Cf-Access-Jwt-Assertion':''}})).status, 403);
+        assert.equal((await h.request('/api/v1/admin/list-keys', undefined, { headers: { 'Cf-Access-Jwt-Assertion':'', Authorization: 'Bearer ' + 'x'.repeat(40) } })).status, 403);
         assert.equal((await h.request('/api/v1/admin/create-key', undefined, { admin: true })).status, 405);
         assert.equal((await h.request('/api/v1/admin/missing', undefined, { admin: true })).status, 404);
         assert.equal((await h.request('/api/v1/admin/create-key', { key: [], days: '30' }, { admin: true })).status, 400);
         assert.equal((await h.request('/api/v1/admin/create-key', { days: '365' }, { admin: true })).status, 400);
         const created = await create(h);
-        assert.equal((await h.request('/api/v1/admin/create-key', { key: created.key }, { admin: true })).status, 409);
+        assert.equal((await h.request('/api/v1/admin/create-key', { key: created.key }, { admin: true })).status, 400);
         await create(h, 'LOCAL-LICENSE-SECOND', '7');
         h.env.DB.sqlite.prepare("UPDATE license_keys SET expires_at='2020-01-01 00:00:00' WHERE id=?").run(created.id);
         const overview = await (await h.request('/api/v1/admin/overview', undefined, { admin: true })).json();
@@ -43,11 +43,11 @@ test('admin authorization, methods, pagination, expiry statistics and protected 
         assert.equal((await h.request('/api/v1/admin/list-keys?page=1&sort=id%3BDROP', undefined, { admin: true })).status, 400);
         const wildcard = await (await h.request('/api/v1/admin/list-keys?page=1&search=%25', undefined, { admin: true })).json();
         assert.equal(wildcard.total, 0);
-        const reveal = await (await h.request('/api/v1/admin/reveal-key', { id: created.id }, { admin: true })).json();
-        assert.ok(reveal.key === created.key);
+        const revealResponse = await h.request('/api/v1/admin/reveal-key', { id: created.id }, { admin:true });
+        assert.equal(revealResponse.status,410); assert.ok(!(await revealResponse.text()).includes(created.key));
         h.env.DB.sqlite.prepare('UPDATE license_keys SET key_encrypted=NULL WHERE id=?').run(created.id);
-        assert.equal((await h.request('/api/v1/admin/reveal-key', { id: created.id }, { admin: true })).status, 409);
-        assert.equal((await h.request('/api/v1/admin/reveal-key', { id: 999 }, { admin: true })).status, 404);
+        assert.equal((await h.request('/api/v1/admin/reveal-key', { id: created.id }, { admin: true })).status, 410);
+        assert.equal((await h.request('/api/v1/admin/reveal-key', { id: 999 }, { admin: true })).status, 410);
         for (const route of ['reset-hwid', 'ban-key', 'delete-key'])
             assert.equal((await h.request('/api/v1/admin/' + route, { id: 999 }, { admin: true })).status, 404);
         const status = await (await h.request('/api/v1/admin/status', undefined, { admin: true })).json();
@@ -93,9 +93,9 @@ test('existing pre-device sessions and license hashes remain compatible; invalid
         const now = Date.now();
         const claims = { aud: 'wolf-client-v1', success: true, key_hash: keyHash, hwid_hash: hwidHash, license_epoch: 1, iat: now, exp: now + 600000 };
         const signed = await signPayload(claims, h.env);
-        assert.deepEqual(await verifySessionToken(signed.session_token, h.env), claims);
+        assert.deepEqual(await verifySessionToken(signed.session_token, h.env), {...claims,kid:'primary'});
         const request = { request_type: 'heartbeat', hwid, nonce: 'b'.repeat(32), timestamp: Date.now(), session_token: signed.session_token };
-        assert.equal((await h.request('/api/v1/auth', request)).status, 200);
+        assert.equal((await h.request('/api/v1/auth', request)).status, 403);
         const wrongAudience = await signPayload({ ...claims, aud: 'onestep-client-v1' }, h.env);
         await assert.rejects(verifySessionToken(wrongAudience.session_token, h.env));
         await assert.rejects(verifySessionToken(signed.session_token.slice(1), h.env));
@@ -152,7 +152,7 @@ test('launcher release verification, device tickets, single redemption and revoc
         const hash = Buffer.from(await crypto.subtle.digest('SHA-256', bytes)).toString('hex');
         async function upload(digest) {
             return worker.fetch(new Request('https://local.test/api/v1/admin/release', { method: 'PUT',
-                headers: { Authorization: 'Bearer ' + h.admin, 'X-Release-Version': 'local.1', 'X-Release-Sha256': digest, 'Content-Length': '4096' }, body: bytes }), h.env, h.ctx);
+                headers: { ...h.access.header, Origin:'https://local.test', 'X-Release-Version': 'local.1', 'X-Release-Sha256': digest, 'Content-Length': '4096' }, body: bytes }), h.env, h.ctx);
         }
         assert.equal((await upload('a'.repeat(64))).status, 403); assert.equal(h.releases.has('current'), false);
         assert.equal((await upload(hash)).status, 200);
@@ -199,7 +199,7 @@ test('rate limiter and unconfigured services fail closed; malformed admin JSON i
     const h = await harness();
     try {
         const invalid = await worker.fetch(new Request('https://local.test/api/v1/admin/create-key', { method: 'POST',
-            headers: { Authorization: 'Bearer ' + h.admin, 'Content-Type': 'application/json' }, body: '{broken' }), h.env, h.ctx);
+            headers: { ...h.access.header, Origin:'https://local.test', 'Content-Type': 'application/json' }, body: '{broken' }), h.env, h.ctx);
         assert.equal(invalid.status, 400);
         h.env.RATE_LIMITER.get = () => ({ fetch: async () => Response.json({ allowed: false, retryAfterMs: 1000 }) });
         assert.equal((await h.request('/api/v1/admin/list-keys', undefined, { admin: true })).status, 429);

@@ -3,6 +3,7 @@
 #include "../../gui/gui.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../../services/game/client_context.hpp"
+#include "../../services/game/hybrid_bridge.hpp"
 #include "../ui_redirect.hpp"
 
 void modules::no_jump_delay::render_overlay()
@@ -21,6 +22,17 @@ void modules::no_jump_delay::render_overlay()
     jni::frame frame{32};
     try
     {
+        namespace hybrid = services::game::hybrid;
+        hybrid::snapshot observed;
+        const auto backend = hybrid::capture(hybrid::feature::no_jump_delay, observed);
+        if (backend != hybrid::result::native_fallback)
+        {
+            if (backend == hybrid::result::ready &&
+                no_jump_delay_policy::should_clear({enabled, focused, false, observed.flag(1),
+                    static_cast<int>(observed.data[3])}))
+                hybrid::apply(hybrid::feature::no_jump_delay, observed);
+            return;
+        }
         // Resolve the current session every frame; never write to a player
         // retained from a disconnected world or from the worker's cache.
         services::game::client_context context;

@@ -5,6 +5,8 @@
   <PropertyGroup>
     <AuthRequired Condition="'$(AuthRequired)' == ''">true</AuthRequired>
     <AuthServerDomain>onestep-auth.gogogamesas.workers.dev</AuthServerDomain>
-    <AuthPublicKeySpkiBase64>MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE35Iq5GCPT9XOiYFAssM0MsGY3yYhh1c02V8mY8vifG39uzQBzzKVIM4JN4P-MgTC5HScLZhrWSfVJdNw570CMg</AuthPublicKeySpkiBase64>
+    <!-- Public verification material, NOT a secret. Private key exists only in Cloudflare.
+         Matches staged signing release onestep-20261020-7615fc79. -->
+    <AuthPublicKeySpkiBase64>MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEqXfwmjYj4Z7EWgua6G7ppDjK3CROxJWau7QQ9bl5VlakFj6wn5u5c2t3E6WqzArtg58PDnJwny06ukO0n3aROg</AuthPublicKeySpkiBase64>
   </PropertyGroup>
 </Project>

@@ -21,8 +21,21 @@ namespace
 {
     gui::aegis::preferences state{};
     bool loaded = false;
-    bool dirty = false;
-    std::chrono::steady_clock::time_point dirty_since{};
+    struct save_schedule
+    {
+        using clock = std::chrono::steady_clock;
+        bool dirty = false;
+        clock::time_point changed_at{}, retry_after{};
+
+        void changed(clock::time_point now) { dirty = true; changed_at = now; }
+        bool ready(clock::time_point now, bool force, bool interacting) const
+        {
+            return dirty && (force || (!interacting && now >= retry_after &&
+                now - changed_at >= std::chrono::milliseconds(650)));
+        }
+        void attempted(clock::time_point now) { retry_after = now + std::chrono::seconds(2); }
+        void saved() { dirty = false; retry_after = {}; }
+    } pending_save;
 
     std::filesystem::path preferences_path()
     {
@@ -193,14 +206,15 @@ void gui::aegis::load_preferences()
 
 void gui::aegis::mark_preferences_dirty()
 {
-    if (!dirty) dirty_since = std::chrono::steady_clock::now();
-    dirty = true;
+    pending_save.changed(std::chrono::steady_clock::now());
 }
 
-void gui::aegis::flush_preferences(bool force)
+void gui::aegis::flush_preferences(bool force, bool interacting)
 {
-    if (!dirty) return;
-    if (!force && std::chrono::steady_clock::now() - dirty_since < std::chrono::milliseconds(650)) return;
+    const auto now = std::chrono::steady_clock::now();
+    if (!pending_save.ready(now, force, interacting)) return;
+    // Failure must not turn a frame callback into an unbounded disk retry loop.
+    pending_save.attempted(now);
 
     normalize(state);
     const std::filesystem::path path = preferences_path();
@@ -236,7 +250,7 @@ void gui::aegis::flush_preferences(bool force)
     if (MoveFileExW(temporary.c_str(), path.c_str(),
         MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
     {
-        dirty = false;
+        pending_save.saved();
     }
     else
     {

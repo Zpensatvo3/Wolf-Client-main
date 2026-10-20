@@ -59,6 +59,20 @@ export async function handleLauncher(request, env, ctx, s) {
                 }
             }));
             await env.RELEASES.put('dll/' + release.sha256, checked);
+            if (env.AUTH_V2_RELEASES === 'true') {
+                const target=request.headers.get('X-Minecraft-Target') || '1.21.11';
+                if (!['1.21.1','1.21.4','1.21.8','1.21.11','26.1','26.1.1','26.1.2'].includes(target))
+                    return reply({message:'Unsupported Minecraft target.'},400);
+                const old=await env.DB.prepare('SELECT * FROM approved_releases WHERE sha256=?').bind(release.sha256).first();
+                if (old && (old.revoked || old.version!==release.version || old.minecraft_target!==target || old.bytes!==release.bytes))
+                    return reply({message:'Release identity is immutable; publish a new build.'},409);
+                await env.DB.batch([
+                    env.DB.prepare('INSERT INTO approved_releases(sha256,version,minecraft_target,bytes,created_at) VALUES(?,?,?,?,?) ON CONFLICT(sha256) DO NOTHING')
+                        .bind(release.sha256,release.version,target,release.bytes,Date.now()),
+                    env.DB.prepare('INSERT INTO release_channels(minecraft_target,sha256) VALUES(?,?) ON CONFLICT(minecraft_target) DO UPDATE SET sha256=excluded.sha256')
+                        .bind(target,release.sha256)
+                ]);
+            }
             await env.RELEASES.put('current', JSON.stringify(release));
             return reply({ success: true, ...release });
         }

@@ -5,6 +5,8 @@
 #include "hud_editor_layout.hpp"
 #include "../gui/gui.hpp"
 #include "../gui/ui_state.hpp"
+#include "../gui/ui_typography.hpp"
+#include "../gui/control_draw.hpp"
 #include "../gui/watermark_draw.hpp"
 #include "../modules/core/module_registry.hpp"
 #include "../modules/render/arraylist.hpp"
@@ -107,7 +109,7 @@ namespace
     {
         ImFont* font = bold ? gui::ui_bold_font : gui::ui_font;
         if (!font) font = ImGui::GetFont();
-        draw->AddText(font, size, position, color, value);
+        draw->AddText(font, gui::typography::readable(size), position, color, value);
     }
     bool button(const char* id, const char* label, ImVec2 position, ImVec2 size, bool active = false, bool disabled = false)
     {
@@ -123,11 +125,9 @@ namespace
         draw->AddRect(position, ImVec2(position.x + size.x, position.y + size.y),
             active ? ImGui::GetColorU32(ImVec4(tint.x, tint.y, tint.z, .45f)) : ImGui::GetColorU32(ImVec4(1, 1, 1, .065f)), 6.f);
         ImFont* font = gui::ui_font ? gui::ui_font : ImGui::GetFont();
-        const float font_size = size.x < 65 ? 10.f : 12.f;
-        const ImVec2 extent = font->CalcTextSizeA(font_size, FLT_MAX, 0, label);
-        const ImVec4 clip(position.x + 2, position.y, position.x + size.x - 2, position.y + size.y);
-        draw->AddText(font, font_size, ImVec2(position.x + (size.x - extent.x) * .5f, position.y + (size.y - extent.y) * .5f),
-            active ? ImGui::GetColorU32(tint) : ImGui::GetColorU32(ImGuiCol_Text), label, nullptr, 0, &clip);
+        gui::control_draw::centered_label(draw, font, gui::typography::control, position,
+            ImVec2(position.x + size.x, position.y + size.y),
+            active ? ImGui::GetColorU32(tint) : ImGui::GetColorU32(ImGuiCol_Text), label, ImVec2(3, 3));
         ImGui::EndDisabled();
         return pressed;
     }
@@ -162,38 +162,42 @@ void gui::hud_editor::render_page()
         const auto top = ImGui::GetCursorScreenPos();
         const float width = ImGui::GetContentRegionAvail().x;
         const ImU32 primary = IM_COL32(234, 234, 241, 255);
-        draw_editor_text(draw, ImVec2(top.x + 12, top.y + 8), 15.f, primary, "HUD layout", true);
-        const auto list_top = ImVec2(top.x, top.y + 40);
+        draw_editor_text(draw, ImVec2(top.x + 12, top.y + 8), 19.f, primary, "HUD layout", true);
+        const auto list_top = ImVec2(top.x, top.y + 46);
+        const bool stacked = width < 420.f;
+        const float row_height = stacked ? 88.f : 54.f;
+        const float row_step = row_height + 8.f;
         for (int index = 0; index < overlay_count; ++index) {
             ImGui::PushID(ids[index]);
             auto* module = modules::find_module_by_id(ids[index]);
-            const ImVec2 row(list_top.x, list_top.y + index * 49.f), maximum(row.x + width, row.y + 43);
+            const ImVec2 row(list_top.x, list_top.y + index * row_step), maximum(row.x + width, row.y + row_height);
             draw->AddRectFilled(row, maximum, IM_COL32(26, 25, 32, 230), 6.f);
             ImGui::BeginDisabled(!module);
             ImGui::SetCursorScreenPos(row);
-            if (ImGui::InvisibleButton("select_row", ImVec2(std::max(1.f, width - 188), 43))) selected = index;
+            if (ImGui::InvisibleButton("select_row", ImVec2(std::max(1.f, stacked ? width : width - 220.f), stacked ? 34.f : row_height))) selected = index;
             if (ImGui::IsItemHovered()) draw->AddRectFilled(row, maximum, ImGui::GetColorU32(ImVec4(1, 1, 1, .025f)), 6.f);
-            draw->PushClipRect(ImVec2(row.x + 12, row.y), ImVec2(maximum.x - 188, maximum.y), true);
-            draw_editor_text(draw, ImVec2(row.x + 12, row.y + 14), 13.f, primary, names[index], true);
+            draw->PushClipRect(ImVec2(row.x + 12, row.y), ImVec2(maximum.x - (stacked ? 12.f : 220.f), maximum.y), true);
+            draw_editor_text(draw, ImVec2(row.x + 12, row.y + (stacked ? 10.f : 18.f)), 17.f, primary, names[index], true);
             draw->PopClipRect();
             const float scale = capture()[index].scale;
             const bool fixed_scale = index == 2;
-            draw_editor_text(draw, ImVec2(maximum.x - 176, row.y + 15), 11.f, ImGui::GetColorU32(ImGuiCol_TextDisabled), "Scale");
-            if (button("scale_down", "-", ImVec2(maximum.x - 136, row.y + 7), ImVec2(28, 29), false, fixed_scale || scale <= .5f)) {
+            const float controls_y = row.y + (stacked ? 44.f : 10.f);
+            draw_editor_text(draw, ImVec2(maximum.x - 204, controls_y + 10.f), 14.f, ImGui::GetColorU32(ImGuiCol_TextDisabled), "Scale");
+            if (button("scale_down", "-", ImVec2(maximum.x - 156, controls_y), ImVec2(34, 34), false, fixed_scale || scale <= .5f)) {
                 selected = index; set_scale(scale - .05f);
             }
             char scale_text[16];
             std::snprintf(scale_text, sizeof(scale_text), "%.2fx", capture()[index].scale);
-            button("scale_value", scale_text, ImVec2(maximum.x - 102, row.y + 7), ImVec2(50, 29), false, true);
+            button("scale_value", scale_text, ImVec2(maximum.x - 116, controls_y), ImVec2(64, 34), false, true);
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) && fixed_scale)
                 ImGui::SetTooltip("%s", "Spotify uses a fixed scale.");
-            if (button("scale_up", "+", ImVec2(maximum.x - 46, row.y + 7), ImVec2(28, 29), false, fixed_scale || scale >= 2.f)) {
+            if (button("scale_up", "+", ImVec2(maximum.x - 46, controls_y), ImVec2(34, 34), false, fixed_scale || scale >= 2.f)) {
                 selected = index; set_scale(scale + .05f);
             }
             ImGui::EndDisabled();
             ImGui::PopID();
         }
-        if (button("edit_layout", "Edit", ImVec2(top.x + width - 84, list_top.y + overlay_count * 49.f + 6), ImVec2(72, 31))) {
+        if (button("edit_layout", "Edit", ImVec2(top.x + width - 104, list_top.y + overlay_count * row_step + 6), ImVec2(104, 40))) {
             dragging = -1;
             gui::hud_layout_editor_active = true;
         }
@@ -213,8 +217,14 @@ void gui::hud_editor::render(const ImGuiViewport* viewport)
     if (ImGui::GetIO().KeyCtrl && !ImGui::IsMouseDown(ImGuiMouseButton_Left) && ImGui::IsKeyPressed(ImGuiKey_Z, false)) undo();
     const ImVec2 canvas = viewport->Size, origin = viewport->Pos;
     const float toolbar_width = std::min(720.f, std::max(1.f, canvas.x - 24.f));
-    const ImVec2 toolbar(origin.x + (canvas.x - toolbar_width) * .5f, origin.y + std::max(0.f, canvas.y - 152.f));
-    const ImVec2 toolbar_max(toolbar.x + toolbar_width, toolbar.y + 140.f);
+    const int element_columns = toolbar_width >= 560.f ? 4 : 2;
+    const int control_columns = toolbar_width >= 560.f ? 7 : 4;
+    const int element_rows = (overlay_count + element_columns - 1) / element_columns;
+    const int control_rows = (7 + control_columns - 1) / control_columns;
+    const float controls_top = 50.f + element_rows * 42.f;
+    const float toolbar_height = controls_top + control_rows * 42.f + 12.f;
+    const ImVec2 toolbar(origin.x + (canvas.x - toolbar_width) * .5f, origin.y + std::max(0.f, canvas.y - toolbar_height - 12.f));
+    const ImVec2 toolbar_max(toolbar.x + toolbar_width, toolbar.y + toolbar_height);
     ImGui::SetNextWindowPos(origin); ImGui::SetNextWindowSize(canvas); ImGui::SetNextWindowBgAlpha(0);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0);
@@ -332,25 +342,27 @@ void gui::hud_editor::render(const ImGuiViewport* viewport)
         // Fixed controls are drawn last and cannot be covered by a dragged overlay.
         draw->AddRectFilled(toolbar, toolbar_max, IM_COL32(12, 11, 16, 247), 10.f);
         draw->AddRect(toolbar, toolbar_max, IM_COL32(255, 255, 255, 18), 10.f);
-        draw_editor_text(draw, ImVec2(toolbar.x + 14, toolbar.y + 18), 14.f, IM_COL32(234, 234, 241, 255), "HUD editor", true);
+        draw_editor_text(draw, ImVec2(toolbar.x + 14, toolbar.y + 18), 17.f, IM_COL32(234, 234, 241, 255), "HUD editor", true);
         if (toolbar_width >= 560.f) {
             char position[64];
             std::snprintf(position, sizeof(position), "X %.0f   Y %.0f", items[selected].position.x, items[selected].position.y);
-            draw_editor_text(draw, ImVec2(toolbar.x + 140, toolbar.y + 20), 11.f, IM_COL32(139, 137, 151, 255), position);
+            draw_editor_text(draw, ImVec2(toolbar.x + 140, toolbar.y + 20), 14.f, IM_COL32(139, 137, 151, 255), position);
         }
         auto* selected_module = items[selected].module;
         if (button("##reset", "Reset", ImVec2(toolbar_max.x - 170, toolbar.y + 10), ImVec2(72, 30), false, !selected_module)) reset_selected();
         if (button("##done", "Done", ImVec2(toolbar_max.x - 90, toolbar.y + 10), ImVec2(76, 30))) close();
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", "Esc: return to the menu");
 
-        const float element_width = std::max(1.f, (toolbar_width - 28 - 24) / overlay_count);
+        const float element_width = std::max(1.f, (toolbar_width - 28 - 8 * (element_columns - 1)) / element_columns);
         for (int index = 0; index < overlay_count; ++index)
-            if (button(ids[index], names[index], ImVec2(toolbar.x + 14 + index * (element_width + 8), toolbar.y + 50),
-                ImVec2(element_width, 31), selected == index, !items[index].module)) selected = index;
+            if (button(ids[index], names[index], ImVec2(toolbar.x + 14 + (index % element_columns) * (element_width + 8),
+                toolbar.y + 50 + (index / element_columns) * 42.f),
+                ImVec2(element_width, 34), selected == index, !items[index].module)) selected = index;
 
-        const float slot = std::max(1.f, (toolbar_width - 28 - 48) / 7);
-        const ImVec2 button_size(slot, 30);
-        auto location = [&](int column) { return ImVec2(toolbar.x + 14 + column * (slot + 8), toolbar.y + 94); };
+        const float slot = std::max(1.f, (toolbar_width - 28 - 8 * (control_columns - 1)) / control_columns);
+        const ImVec2 button_size(slot, 34);
+        auto location = [&](int column) { return ImVec2(toolbar.x + 14 + (column % control_columns) * (slot + 8),
+            toolbar.y + controls_top + (column / control_columns) * 42.f); };
         selected_module = items[selected].module;
         const bool scalable = selected != 2 && selected_module;
         const auto value = capture();

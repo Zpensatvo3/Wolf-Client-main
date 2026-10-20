@@ -17,4 +17,5 @@ namespace auth::device
     // point and a signature leave CNG. Existing keys are never overwritten.
     proof sign_request(std::string_view type, std::string_view hwid,
         std::string_view nonce, long long timestamp, std::string_view credential);
+    proof sign_message(std::string_view message);
 }

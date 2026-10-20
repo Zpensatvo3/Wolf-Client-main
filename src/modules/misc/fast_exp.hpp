@@ -6,23 +6,23 @@
 #include <atomic>
 #include <chrono>
 #include <random>
+#include <memory>
+#include "../../platform/adapter/target_version.hpp"
 
 namespace modules
 {
 	class fast_exp : public module
 	{
 	public:
-		fast_exp() : module("fast exp", "World") { active_instance.store(this); }
-		~fast_exp() override
-		{
-			fast_exp* expected = this;
-			active_instance.compare_exchange_strong(expected, nullptr);
-		}
+        fast_exp();
+        ~fast_exp() override;
 
 		void run(::cache& cache) override;
 		void render_overlay() override;
 		void render_options() override;
 		void on_disable(::cache& cache) override;
+        void on_render_shutdown() override;
+        bool render_when_disabled() const override { return mc::target.build_id == 12111; }
 		float get_options_height() override { return 140.0f; }
 
 		static void notify_manual_right_click(bool pressed);
@@ -34,6 +34,9 @@ namespace modules
         modules::settings::store<module_settings::fast_exp> settings_;
 		inline static std::atomic<fast_exp*> active_instance{ nullptr };
 		std::atomic<bool> manual_right_down{ false };
+        std::atomic_bool reset_requested_{true};
+        struct runtime;
+        std::unique_ptr<runtime> runtime_;
 		bool was_held = false;
 		bool blocked_until_release = false;
 

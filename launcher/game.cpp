@@ -92,7 +92,7 @@ void launcher::launch(const game& selected, const release& item, std::atomic_boo
     const auto current = games();
     require(std::any_of(current.begin(), current.end(), [&](auto& g) { return g.pid == selected.pid; }),
         "Seçilen Minecraft kapandı. Listeyi yenile.");
-    require(auth::is_authenticated(), "Oturum sona erdi. Tekrar giriş yap.");
+    require(auth::permitted(auth::scope::launcher), "Oturum sona erdi. Tekrar giriş yap.");
     // Keep the verified file locked against writes/replacement until loading finishes.
     handle lock(CreateFileW(item.path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr));
     require(lock.value != INVALID_HANDLE_VALUE, "Client dosyası açılamadı.");
@@ -108,7 +108,7 @@ void launcher::launch(const game& selected, const release& item, std::atomic_boo
     std::unique_ptr<void, decltype(&LocalFree)> sd(descriptor, LocalFree);
     SECURITY_ATTRIBUTES security{sizeof(security), descriptor, FALSE};
     handle pipe(CreateNamedPipeW(auth::launch::pipe_name(selected.pid).c_str(), PIPE_ACCESS_DUPLEX |
-        FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE, PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT |
+        FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE, PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT |
         PIPE_REJECT_REMOTE_CLIENTS, 1, 256, 256, 0, &security));
     require(pipe.value != INVALID_HANDLE_VALUE, "Bu oyun için başka bir başlatma işlemi var.");
     const auto eventName = L"Local\\Onestep.Launch.Ready." + std::to_wstring(selected.pid);
@@ -120,17 +120,25 @@ void launcher::launch(const game& selected, const release& item, std::atomic_boo
     const DWORD connectError = connected ? ERROR_SUCCESS : GetLastError();
     require(connected || connectError == ERROR_IO_PENDING || connectError == ERROR_PIPE_CONNECTED, "Yerel bağlantı açılamadı.");
     status(L"Başlatma izni alınıyor...");
-    auto response = auth::post_authenticated_json("/api/v1/launcher/ticket", "\"pid\":" + std::to_string(selected.pid) +
-        ",\"release_sha256\":\"" + item.sha256 + "\"");
+    const auto process_nonce=auth::generate_nonce();
+    require(process_nonce.size()==32,"Başlatma kimliği oluşturulamadı.");
+    auto response = auth::post_authenticated_json("/api/v2/launcher/ticket", "\"pid\":" + std::to_string(selected.pid) +
+        ",\"release_sha256\":\"" + item.sha256 + "\",\"release_version\":\"" + item.version +
+        "\",\"minecraft_target\":\"" + item.minecraft_target + "\",\"process_nonce\":\"" + process_nonce + "\"");
     if (!response.success) {
         if (response.status_code == 401 || response.status_code == 403 || response.status_code == 409)
             auth::controlled_shutdown();
         throw std::runtime_error(response.message);
     }
-    auto ticket = auth::service_field(response.body, "ticket");
+    auto ticketEnvelope=auth::decode_service_payload(response.body,"onestep-launcher-v2");
+    auto ticket = auth::service_field(ticketEnvelope, "ticket");
+    auth::launch::wipe(ticketEnvelope);
     auth::launch::wipe(response.body);
     struct ticket_guard { std::string& value; ~ticket_guard() { auth::launch::wipe(value); } } secret{ticket};
     require(auth::launch::hex64(ticket), "Başlatma izni geçersiz.");
+    auto handoff="{\"ticket\":\""+ticket+"\",\"process_nonce\":\""+process_nonce+
+        "\",\"release_version\":\""+item.version+"\",\"minecraft_target\":\""+item.minecraft_target+"\"}";
+    struct handoff_guard {std::string& value;~handoff_guard(){auth::launch::wipe(value);}} wipe_handoff{handoff};
     if (cancel.load()) throw std::runtime_error("İşlem iptal edildi.");
     status(L"Client Minecraft'a yükleniyor...");
     // Standard Windows DLL loading only: no manual mapping, driver or stealth.
@@ -161,19 +169,19 @@ void launcher::launch(const game& selected, const release& item, std::atomic_boo
     inFlight = false;
     const auto after = modules(selected.pid);
     require(std::any_of(after.begin(), after.end(), [&](auto& m) { return !_wcsicmp(m.szExePath, path.c_str()); }),
-        "Client yüklenemedi. Fabric 1.21.1 ve Windows x64 kullan.");
+        "Client yüklenemedi. Fabric 1.21.11 ve Windows x64 kullan.");
     status(L"Client oturumu doğrulanıyor...");
     if (!connected && connectError == ERROR_IO_PENDING)
         require(wait(connection.operation.hEvent, 45000, cancel), "Client bağlantısı kurulamadı. Oyundaki hata mesajını kontrol et.");
     ULONG clientPid{};
     require(GetNamedPipeClientProcessId(pipe.value, &clientPid) && clientPid == selected.pid, "Yanlış işlem bağlantısı reddedildi.");
     pending_io write(pipe.value); DWORD sent{};
-    BOOL immediate = WriteFile(pipe.value, ticket.data(), DWORD(ticket.size()), &sent, &write.operation);
+    BOOL immediate = WriteFile(pipe.value, handoff.data(), DWORD(handoff.size()), &sent, &write.operation);
     if (!immediate) {
         require(GetLastError() == ERROR_IO_PENDING && wait(write.operation.hEvent, 10000, cancel) &&
             GetOverlappedResult(pipe.value, &write.operation, &sent, FALSE), "Başlatma izni iletilemedi.");
     }
-    require(sent == ticket.size(), "Başlatma izni eksik iletildi.");
+    require(sent == handoff.size(), "Başlatma izni eksik iletildi.");
     auth::launch::wipe(ticket);
     require(wait(ready.value, 45000, cancel), "Client oturumu onaylanmadı. Oyundaki giriş durumunu kontrol et.");
     status(L"Client hazır. İyi oyunlar.");

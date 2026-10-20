@@ -3,11 +3,20 @@
   "name": "onestep-auth",
   "account_id": "cfc4f3db5e820039a59aa5c480a6b866",
   "main": "worker.js",
+  // dashboardApp.toString() must not capture esbuild's external name helper.
+  "keep_names": false,
   "compatibility_date": "2026-10-16",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "preview_urls": false,
-  "vars": { "ALLOW_DEVICE_CONFIGS": "false" },
+  "vars": {
+    "ADMIN_ACCESS_EMAIL": "gogogamesas@gmail.com",
+    "ADMIN_ACCESS_TEAM_DOMAIN": "https://small-disk-6c42.cloudflareaccess.com",
+    "ADMIN_ACCESS_AUD": "e3bb549b2490050131c85645ccbed5eca1fb62f1f0392dc47ad0e045cfb523b2",
+    "SIGNING_KEY_ID": "onestep-20261020-7615fc79",
+    "AUTH_V2_RELEASES": "true",
+    "AUTH_V2_ONLY": "true"
+  },
   "kv_namespaces": [{ "binding": "RELEASES", "id": "bbdeabd4eb8e428e8dc8704d59619a03" }],
   "observability": {
     "enabled": true,

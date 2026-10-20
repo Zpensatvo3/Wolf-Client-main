@@ -1,4 +1,6 @@
 #include "auto_armor.hpp"
+#include "gear_policy.hpp"
+#include "../../services/game/inventory_bridge.hpp"
 #include "../../ui/settings_renderer.hpp"
 #include "../../cache/cache.hpp"
 #include "../../platform/jni/jni_context.hpp"
@@ -21,11 +23,7 @@ int armor_type(const maps::ItemStack& stack)
 		maps::String name = item && !platform::jni_context::clear_exception() ? item.getTranslationKey.call() : maps::String{};
 		const std::string key = name && !platform::jni_context::clear_exception() ? name.to_string() : std::string{};
 		platform::jni_context::clear_exception();
-		if (key.ends_with("_boots") || key.ends_with(".boots")) return 0;
-		if (key.ends_with("_leggings") || key.ends_with(".leggings")) return 1;
-		if (key.ends_with("_chestplate") || key.ends_with(".chestplate")) return 2;
-		if (key.ends_with("_helmet") || key.ends_with(".helmet")) return 3;
-		return -1;
+        return modules::gear_logic::armor_type(key);
 	}
 
 	bool is_elytra(const maps::ItemStack& stack)
@@ -35,7 +33,7 @@ int armor_type(const maps::ItemStack& stack)
 		maps::String name = item && !platform::jni_context::clear_exception() ? item.getTranslationKey.call() : maps::String{};
 		const std::string key = name && !platform::jni_context::clear_exception() ? name.to_string() : std::string{};
 		platform::jni_context::clear_exception();
-		return key.ends_with("_elytra") || key.ends_with(".elytra");
+        return modules::gear_logic::elytra(key);
 	}
 
 	int armor_score(const maps::ItemStack& stack)
@@ -45,13 +43,7 @@ int armor_type(const maps::ItemStack& stack)
 		maps::String name = item && !platform::jni_context::clear_exception() ? item.getTranslationKey.call() : maps::String{};
 		const std::string key = name && !platform::jni_context::clear_exception() ? name.to_string() : std::string{};
 		platform::jni_context::clear_exception();
-		if (key.find("netherite") != std::string::npos) return 6;
-		if (key.find("diamond") != std::string::npos) return 5;
-		if (key.find("iron") != std::string::npos) return 4;
-		if (key.find("chainmail") != std::string::npos) return 3;
-		if (key.find("golden") != std::string::npos) return 2;
-		if (key.find("leather") != std::string::npos) return 1;
-		return 0;
+        return modules::gear_logic::armor_score(key);
 	}
 
 	int screen_slot_from_inventory_slot(int slot)
@@ -87,6 +79,8 @@ void modules::auto_armor::reset_runtime()
 
 void modules::auto_armor::run(::cache& cache)
 {
+    if constexpr (mc::target.build_id == 12111)
+        if (!native_fallback_.load(std::memory_order_acquire)) return;
 	const auto settings_snapshot = settings_.read();
 	if (gui::draw || !cache.is_valid() || !cache.instance || !cache.player || !jni::get_env())
 	{
@@ -176,11 +170,65 @@ void modules::auto_armor::run(::cache& cache)
 
 void modules::auto_armor::on_disable(::cache&)
 {
+    if constexpr (mc::target.build_id == 12111) {
+        reset_requested_.store(true, std::memory_order_release);
+        if (!native_fallback_.load(std::memory_order_acquire)) return;
+    }
 	reset_runtime();
+}
+
+void modules::auto_armor::render_overlay()
+{
+    if constexpr (mc::target.build_id != 12111) return;
+    if (native_fallback_.load(std::memory_order_acquire) || !platform::jni_context::bind_current_thread()) return;
+    namespace bridge = services::game::inventory_bridge;
+    if (reset_requested_.exchange(false, std::memory_order_acq_rel) || !enabled) {
+        reset_runtime(); bridge::cancel(bridge::feature::armor);
+        if (!enabled) return;
+    }
+    jni::frame frame{96};
+    const auto settings = settings_.read();
+    bridge::snapshot observed;
+    const auto backend = bridge::capture(bridge::feature::armor, settings.work_without_inventory, observed);
+    if (backend == services::game::hybrid::result::native_fallback) {
+        reset_runtime(); native_fallback_.store(true, std::memory_order_release); return;
+    }
+    const int expected = current_state == state::idle ? 0 : current_state == state::pickup_source ? 1 :
+        current_state == state::pickup_armor ? 2 : 3;
+    if (backend != services::game::hybrid::result::ready || observed.stage != expected) {
+        reset_runtime(); bridge::cancel(bridge::feature::armor); return;
+    }
+    if (current_state == state::idle) {
+        if (!observed.cursor_empty) return;
+        const auto [source, type] = gear_logic::choose_armor(observed.keys, settings.protect_elytra);
+        if (source < 0) return;
+        source_screen_slot = gear_logic::screen_slot(source); armor_screen_slot = 8 - type;
+        if (!bridge::act(observed, source_screen_slot, armor_screen_slot, 0, settings.work_without_inventory)) {
+            reset_runtime(); bridge::cancel(bridge::feature::armor); return;
+        }
+        current_state = state::pickup_source;
+        next_action = steady_clock::now() + std::chrono::milliseconds(std::clamp(settings.action_delay_ms, 40, 500));
+        return;
+    }
+    if (steady_clock::now() < next_action) return;
+    if (current_state == state::return_old) { reset_runtime(); bridge::cancel(bridge::feature::armor); return; }
+    if (!bridge::act(observed, source_screen_slot, armor_screen_slot, expected, settings.work_without_inventory)) {
+        reset_runtime(); bridge::cancel(bridge::feature::armor); return;
+    }
+    current_state = current_state == state::pickup_source ? state::pickup_armor : state::return_old;
+    next_action = steady_clock::now() + std::chrono::milliseconds(current_state == state::return_old ? 60 :
+        std::clamp(settings.action_delay_ms, 40, 500));
+}
+
+void modules::auto_armor::on_render_shutdown()
+{
+    if constexpr (mc::target.build_id == 12111) {
+        services::game::inventory_bridge::cancel(services::game::inventory_bridge::feature::armor);
+        if (!native_fallback_.load(std::memory_order_acquire)) reset_runtime();
+    }
 }
 
 void modules::auto_armor::render_options()
 {
 	gui::settings::render(settings_, module_settings::auto_armor::schema());
-	ImGui::TextDisabled("%s", "Equips one better armor piece at a time.");
 }

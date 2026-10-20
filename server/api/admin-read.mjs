@@ -68,18 +68,23 @@ export async function handleAdminRead(request, env) {
         return jsonResponse({ success: true, activity: results || [], total: Number(count.total), page: paging.page, page_size: paging.size });
     }
     if (path === '/api/v1/admin/status') {
-        const configured = ['KEY_PEPPER', 'HWID_PEPPER', 'ADMIN_TOKEN_HASH', 'SIGNING_PRIVATE_KEY_PKCS8', 'SIGNING_PUBLIC_KEY_SPKI']
-            .every(name => { try { requiredSecret(env, name); return true; } catch (_) { return false; } });
+        const configured = ['KEY_PEPPER', 'HWID_PEPPER', 'SIGNING_PRIVATE_KEY_PKCS8', 'SIGNING_PUBLIC_KEY_SPKI']
+            .every(name => { try { requiredSecret(env, name); return true; } catch (_) { return false; } }) &&
+            ['ADMIN_ACCESS_TEAM_DOMAIN', 'ADMIN_ACCESS_AUD', 'ADMIN_ACCESS_EMAIL']
+                .every(name => typeof env[name] === 'string' && env[name].length > 0);
         await env.DB.prepare('SELECT 1').first();
         let release = null;
         try {
-            const value = await env.RELEASES?.get('current', 'json');
+            const value = env.AUTH_V2_RELEASES === 'true'
+                ? await env.DB.prepare(`SELECT r.version,r.bytes,r.sha256 FROM release_channels c
+                    JOIN approved_releases r ON r.sha256=c.sha256 WHERE c.minecraft_target='1.21.11' AND r.revoked=0`).first()
+                : await env.RELEASES?.get('current', 'json');
             if (validRelease(value)) release = { version: value.version, bytes: value.bytes };
         } catch (_) { /* A release may not be published yet. */ }
         return jsonResponse({ success: true, service: 'onestep-auth', database: 'ok',
             auth_configured: configured, rate_limiter_configured: Boolean(env.RATE_LIMITER),
-            releases_configured: Boolean(env.RELEASES), device_configs: env.ALLOW_DEVICE_CONFIGS === 'true',
-            release, checked_at: new Date().toISOString() });
+            releases_configured: Boolean(env.RELEASES), device_configs: false, admin_auth: 'cloudflare-access',
+            release, runtime_protocol:env.AUTH_V2_ONLY === 'true' ? 2 : 1, checked_at: new Date().toISOString() });
     }
     return null;
 }

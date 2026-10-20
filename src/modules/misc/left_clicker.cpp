@@ -4,6 +4,7 @@
 #include "../../services/input/input_service.hpp"
 #include "../../services/game/attack_coordinator.hpp"
 #include "../../services/game/client_context.hpp"
+#include "../../services/game/item_bridge.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -96,9 +97,13 @@ void modules::left_clicker::render_overlay()
 	{
 		jni::frame frame{ 32 };
 		services::game::client_context context;
-		if (!services::game::capture_client_context(context, true, false) || context.screen ||
+        services::game::items::click_snapshot observed;
+        const auto backend = services::game::items::capture_click(false, false, observed);
+        const bool using_java = backend != services::game::hybrid::result::native_fallback;
+		if ((using_java && backend != services::game::hybrid::result::ready) || (!using_java &&
+            (!services::game::capture_client_context(context, true, false) || context.screen ||
 			context.player.isAlive.call() != JNI_TRUE || context.player.isUsingItem.call() == JNI_TRUE ||
-			platform::jni_context::clear_exception())
+			platform::jni_context::clear_exception())))
 		{
 			platform::jni_context::clear_exception();
 			was_held = false;
@@ -127,6 +132,7 @@ void modules::left_clicker::render_overlay()
 		clicked = services::combat::try_unowned_attack([&]() -> bool {
 		if (!enabled || reset_timing.load() ||
 			!services::input::physical_button_down(services::input::mouse_button::left)) return false;
+        if (using_java) return services::game::items::click(observed, settings_snapshot.glfw_input);
 		if (settings_snapshot.glfw_input)
 		{
 			return services::input::game_mouse_click(services::input::mouse_button::left);
@@ -148,9 +154,16 @@ void modules::left_clicker::render_overlay()
 			return;
 		}
 
-		if (settings_snapshot.jitter_camera && context.player)
+		if (settings_snapshot.jitter_camera && (using_java || context.player))
 		{
-			apply_jitter_camera(context.player, settings_snapshot.jitter_amount, gen);
+            if (using_java) {
+                const float amount = settings_snapshot.jitter_amount;
+                if (amount > 0) {
+                    std::uniform_real_distribution<float> dist(-amount, amount);
+                    const float yaw_delta = dist(gen), pitch_delta = dist(gen);
+                    services::game::items::jitter(observed, yaw_delta, pitch_delta);
+                }
+            } else apply_jitter_camera(context.player, settings_snapshot.jitter_amount, gen);
 		}
 
 		schedule_next_click(now);

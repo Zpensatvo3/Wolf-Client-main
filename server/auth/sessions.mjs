@@ -1,8 +1,14 @@
-import { requiredSecret, base64UrlDecode, base64UrlEncode, constantTimeEqual, sha256 } from '../core/crypto.mjs';
+import { requiredSecret, base64UrlDecode, base64UrlEncode, constantTimeEqual } from '../core/crypto.mjs';
 import { licenseExpiryMs, validSessionTimes } from '../session-policy.mjs';
+import {requireRuntimeSession} from './runtime-v2.mjs';
 // Deployed signed-session audience: this is a protocol identifier, not branding.
 export const AUTH_AUDIENCE = "wolf-client-v1";
 const HEX_64 = /^[a-f0-9]{64}$/i;
+function signingKeyId(env) {
+    const id=env.SIGNING_KEY_ID ?? 'primary';
+    if (typeof id!=='string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(id)) throw new Error('Invalid signing key id');
+    return id;
+}
 
 export async function importSigningPrivateKey(env) {
     const der = base64UrlDecode(requiredSecret(env, "SIGNING_PRIVATE_KEY_PKCS8"));
@@ -15,7 +21,7 @@ export async function importSigningPublicKey(env) {
 }
 
 export async function signPayload(payload, env) {
-    const payloadText = JSON.stringify(payload);
+    const payloadText = JSON.stringify({...payload,kid:signingKeyId(env)});
     const payloadBytes = new TextEncoder().encode(payloadText);
     const signature = await crypto.subtle.sign(
         { name: "ECDSA", hash: "SHA-256" },
@@ -30,7 +36,7 @@ export async function signPayload(payload, env) {
     };
 }
 
-export async function verifySessionToken(token, env) {
+export async function verifySessionToken(token, env, audience = AUTH_AUDIENCE) {
     if (typeof token !== "string" || token.length > 16384) throw new Error("Invalid session token");
     const parts = token.split(".");
     if (parts.length !== 2) throw new Error("Invalid session token");
@@ -44,7 +50,10 @@ export async function verifySessionToken(token, env) {
     );
     if (!valid) throw new Error("Invalid session signature");
     const payload = JSON.parse(new TextDecoder().decode(payloadBytes));
-    if (!payload || payload.aud !== AUTH_AUDIENCE || !HEX_64.test(String(payload.key_hash || "")) ||
+    // Legacy no-kid tokens are accepted only before an operator activates an
+    // explicit key ID. A cutover never silently trusts retired signing keys.
+    if (!payload || (payload.kid !== signingKeyId(env) && !(payload.kid===undefined && env.SIGNING_KEY_ID===undefined)) ||
+        payload.aud !== audience || !HEX_64.test(String(payload.key_hash || "")) ||
         !HEX_64.test(String(payload.hwid_hash || "")) || !Number.isInteger(payload.license_epoch) ||
         payload.license_epoch <= 0 || !validSessionTimes(payload, Date.now())) {
         throw new Error("Expired or malformed session token");
@@ -53,34 +62,24 @@ export async function verifySessionToken(token, env) {
 }
 
 export async function requireActiveConfigSession(body, env) {
-    // During the temporary no-license-client build, configs retain a stable
-    // owner identity derived on the server from the device fingerprint. It is
-    // intentionally scoped to public config ownership and cannot authenticate
-    // a licence or access the admin API.
+    // Device identifiers are not credentials. No deployment flag may turn off auth.
     const suppliedToken = String(body && body.session_token || "");
-    if (!suppliedToken) {
-        if (env.ALLOW_DEVICE_CONFIGS !== "true") throw new Error("Missing license session");
-        const deviceId = String(body && body.device_id || "");
-        if (!HEX_64.test(deviceId)) {
-            throw new Error("Missing config device identity");
-        }
-        const hwidHash = await sha256(deviceId + requiredSecret(env, "HWID_PEPPER"));
-        return {
-            key_hash: await sha256("public-config-owner:" + hwidHash + requiredSecret(env, "KEY_PEPPER")),
-            hwid_hash: hwidHash,
-            license_epoch: 1,
-            config_only: true,
-        };
-    }
+    if (!suppliedToken) throw new Error("Missing license session");
 
-    const claims = await verifySessionToken(suppliedToken, env);
+    let claims;
+    if (env.AUTH_V2_ONLY === 'true') claims = await requireRuntimeSession(suppliedToken, env);
+    else {
+        try { claims = await requireRuntimeSession(suppliedToken, env); }
+        catch (_) { claims = await verifySessionToken(suppliedToken, env); }
+    }
     const license = await env.DB.prepare(
         "SELECT key_hash, hwid_hash, device_key_hash, license_epoch, status, expires_at FROM license_keys WHERE key_hash = ? LIMIT 1"
     ).bind(claims.key_hash).first();
     if (!license || String(license.status || "").toLowerCase() !== "active") {
         throw new Error("License session is not active");
     }
-    if (Number(license.license_epoch || 1) !== claims.license_epoch ||
+    if (!HEX_64.test(String(license.device_key_hash || "")) ||
+        Number(license.license_epoch || 1) !== claims.license_epoch ||
         !constantTimeEqual(String(license.hwid_hash || ""), claims.hwid_hash) ||
         (license.device_key_hash && !constantTimeEqual(license.device_key_hash, claims.device_key_hash || ""))) {
         throw new Error("License session was revoked");

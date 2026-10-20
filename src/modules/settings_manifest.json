@@ -170,6 +170,34 @@
       "panel": "src/modules/visual/trails.cpp"
     },
     {
+      "id": "hit_particles",
+      "owner": "src/modules/visual/hit_particles.hpp",
+      "model": "src/modules/visual/settings/hit_particles_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/visual/hit_particles.cpp"
+    },
+    {
+      "id": "jump_circles",
+      "owner": "src/modules/visual/jump_circles.hpp",
+      "model": "src/modules/visual/settings/jump_circles_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/visual/jump_circles.cpp"
+    },
+    {
+      "id": "block_highlight",
+      "owner": "src/modules/visual/block_highlight.hpp",
+      "model": "src/modules/visual/settings/block_highlight_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/visual/block_highlight.cpp"
+    },
+    {
+      "id": "view_model",
+      "owner": "src/modules/visual/view_model.hpp",
+      "model": "src/modules/visual/settings/view_model_settings.hpp",
+      "ownership": "snapshot_store",
+      "panel": "src/modules/visual/view_model.cpp"
+    },
+    {
       "id": "player_esp",
       "owner": "src/modules/visual/player_esp.hpp",
       "model": "src/modules/visual/settings/player_esp_settings.hpp",

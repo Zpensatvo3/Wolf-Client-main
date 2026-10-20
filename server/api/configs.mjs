@@ -39,7 +39,9 @@ export async function handleConfigs(request, env, ctx) {
             }
 
             const body = await readConfigJson(request);
-            const claims = await requireActiveConfigSession(body, env);
+            let claims;
+            try { claims = await requireActiveConfigSession(body, env); }
+            catch (_) { return jsonResponse({success:false,message:'Runtime permission required.'},403); }
 
             if (url.pathname === "/api/v1/configs/list") {
                 const { results } = await env.DB.prepare(

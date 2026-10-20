@@ -45,6 +45,12 @@ CREATE TABLE IF NOT EXISTS launcher_tickets (
 );
 CREATE INDEX IF NOT EXISTS idx_launcher_tickets_exp ON launcher_tickets(exp);
 
+CREATE TABLE IF NOT EXISTS auth_request_nonces (
+    nonce_hash TEXT PRIMARY KEY,
+    exp INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_auth_request_nonces_exp ON auth_request_nonces(exp);
+
 -- Public, license-owned client configurations. Payloads intentionally contain
 -- client preferences only; license keys, HWIDs and session data never enter
 -- this table.
@@ -68,3 +74,24 @@ CREATE INDEX IF NOT EXISTS idx_public_configs_hwid_owner ON public_configs(owner
 
 -- Do not seed production with a known/demo key. Create the first license from
 -- the protected admin panel after configuring all Worker secrets.
+
+-- Additive only. No license hashes, bindings, keys or customer configs are changed.
+CREATE TABLE IF NOT EXISTS approved_releases (
+ sha256 TEXT PRIMARY KEY, version TEXT NOT NULL, minecraft_target TEXT NOT NULL,
+ bytes INTEGER NOT NULL CHECK(bytes >= 4096 AND bytes <= 25165824),
+ revoked INTEGER NOT NULL DEFAULT 0 CHECK(revoked IN (0,1)),
+ created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS release_channels (
+ minecraft_target TEXT PRIMARY KEY, sha256 TEXT NOT NULL REFERENCES approved_releases(sha256)
+);
+CREATE TABLE IF NOT EXISTS runtime_sessions (
+ session_id TEXT PRIMARY KEY, key_hash TEXT NOT NULL, hwid_hash TEXT NOT NULL,
+ device_key_hash TEXT NOT NULL, license_epoch INTEGER NOT NULL,
+ release_sha256 TEXT NOT NULL, release_version TEXT NOT NULL, minecraft_target TEXT NOT NULL,
+ pid INTEGER NOT NULL, process_nonce TEXT NOT NULL, sequence INTEGER NOT NULL DEFAULT 0,
+ exp INTEGER NOT NULL, revoked INTEGER NOT NULL DEFAULT 0,
+ ticket_hash TEXT UNIQUE, ticket_exp INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_runtime_sessions_exp ON runtime_sessions(exp);
+CREATE INDEX IF NOT EXISTS idx_runtime_sessions_license ON runtime_sessions(key_hash);

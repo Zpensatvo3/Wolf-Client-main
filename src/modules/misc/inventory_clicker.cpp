@@ -4,6 +4,8 @@
 #include <Windows.h>
 #include "../../cache/cache.hpp"
 #include "../../platform/jni/jni_context.hpp"
+#include "../../services/game/item_bridge.hpp"
+#include "../../services/input/input_service.hpp"
 #include <algorithm>
 #include <chrono>
 #include <random>
@@ -39,8 +41,22 @@ long long now_milliseconds()
 	}
 }
 
+struct modules::inventory_clicker::runtime
+{
+    maps::Screen screen{nullptr, true};
+    maps::ScreenHandler handler{nullptr, true};
+    bool down = false;
+    void reset() { screen = {}; handler = {}; down = false; }
+};
+
+modules::inventory_clicker::inventory_clicker()
+    : module("inventory clicker", "Player"), runtime_(std::make_unique<runtime>()) {}
+modules::inventory_clicker::~inventory_clicker() = default;
+
 void modules::inventory_clicker::run(::cache& cache)
 {
+    if constexpr (mc::target.build_id == 12111)
+        if (!native_fallback_.load(std::memory_order_acquire)) return;
     auto settings_snapshot = settings_.read();
 	const bool lmb_down = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
 	HWND minecraft_window = gui::get_window();
@@ -138,12 +154,72 @@ void modules::inventory_clicker::run(::cache& cache)
 
 void modules::inventory_clicker::on_disable(::cache& cache)
 {
+    if constexpr (mc::target.build_id == 12111)
+    {
+        reset_requested_.store(true, std::memory_order_release);
+        if (!native_fallback_.load(std::memory_order_acquire)) return;
+    }
     auto settings_snapshot = settings_.read();
 	(void)cache;
 	previous_lmb_down = false;
 	last_click_time = 0;
 	settings_snapshot.click_delay = 150;
 	settings_.update([&](auto& current) { current.click_delay = settings_snapshot.click_delay; return true; });
+}
+
+void modules::inventory_clicker::render_overlay()
+{
+    if constexpr (mc::target.build_id != 12111) return;
+    if (native_fallback_.load(std::memory_order_acquire) || !platform::jni_context::bind_current_thread()) return;
+    auto& state = *runtime_;
+    if (reset_requested_.exchange(false, std::memory_order_acq_rel)) {
+        state.reset(); last_click_time = 0;
+        settings_.update([](auto& settings) { settings.click_delay = 150; return true; });
+    }
+    if (!enabled || !services::input::physical_button_down(services::input::mouse_button::left)) {
+        state.reset(); last_click_time = 0; return;
+    }
+    struct cleanup { ~cleanup() { platform::jni_context::clear_exception(); } } cleanup;
+    jni::frame frame{32};
+    services::game::items::inventory_snapshot observed;
+    const auto backend = services::game::items::capture_inventory(observed);
+    if (backend == services::game::hybrid::result::native_fallback) {
+        state.reset(); last_click_time = 0; previous_lmb_down = false;
+        native_fallback_.store(true, std::memory_order_release);
+        return;
+    }
+    if (backend != services::game::hybrid::result::ready) { state.reset(); last_click_time = 0; return; }
+    const maps::Screen screen{observed.screen, false};
+    const maps::ScreenHandler handler{observed.handler, false};
+    if (!state.screen || !state.screen.is_same_object(screen) || !state.handler.is_same_object(handler)) {
+        state.reset();
+        state.screen = screen;
+        state.handler = handler;
+        last_click_time = 0;
+    }
+    const auto settings = settings_.read();
+    const auto now = now_milliseconds();
+    if (!state.down) {
+        state.down = true; last_click_time = now;
+        const int delay = random_click_delay(settings.min_cps, settings.max_cps);
+        settings_.update([&](auto& current) { current.click_delay = delay; return true; });
+        return; // Keep the original physical click first, including a new screen.
+    }
+    if (now - last_click_time < settings.click_delay) return;
+    if (observed.slot < 0) { last_click_time = now; return; }
+    if (!enabled || reset_requested_.load(std::memory_order_acquire) || !services::game::items::pickup(observed)) {
+        state.reset(); last_click_time = 0; return;
+    }
+    last_click_time = now;
+    const int delay = random_click_delay(settings.min_cps, settings.max_cps);
+    settings_.update([&](auto& current) { current.click_delay = delay; return true; });
+}
+
+void modules::inventory_clicker::on_render_shutdown()
+{
+    if constexpr (mc::target.build_id == 12111) {
+        if (!native_fallback_.load(std::memory_order_acquire)) { runtime_->reset(); last_click_time = 0; }
+    }
 }
 
 void modules::inventory_clicker::render_options()

@@ -6,6 +6,7 @@
 #include "../gui/gui.hpp"
 #include "../gui/ui_state.hpp"
 #include "../gui/theme_palette.hpp"
+#include "../gui/ui_typography.hpp"
 #include <algorithm>
 
 namespace gui::themes_page
@@ -23,12 +24,12 @@ namespace gui::themes_page
             auto* bold = gui::ui_bold_font ? gui::ui_bold_font : text_font;
             const auto heading = ImGui::GetCursorScreenPos();
             const float width = ImGui::GetContentRegionAvail().x;
-            draw->AddText(bold, 13.f, heading, IM_COL32(234, 234, 241, 255), "Accent color");
-            ImGui::Dummy(ImVec2(0, 18));
+            draw->AddText(bold, typography::control, heading, IM_COL32(234, 234, 241, 255), "Accent color");
+            ImGui::Dummy(ImVec2(0, 24));
 
             constexpr float gap = 8.f;
-            const int columns = std::clamp(static_cast<int>((width + gap) / 145.f), 1, 4);
-            const ImVec2 size(std::max(1.f, (width - gap * (columns - 1)) / columns), 34.f);
+            const int columns = std::clamp(static_cast<int>((width + gap) / 174.f), 1, 4);
+            const ImVec2 size(std::max(1.f, (width - gap * (columns - 1)) / columns), 38.f);
             const auto start = ImGui::GetCursorScreenPos();
             for (int i = 0; i < theme::count; ++i) {
                 ImGui::PushID(i);
@@ -46,12 +47,12 @@ namespace gui::themes_page
                 draw->AddRect(p, maximum, selected ? tone(palette.stops[0], .65f)
                     : IM_COL32(255, 255, 255, hovered ? 30 : 13), 6.f);
                 for (int stop = 0; stop < 3; ++stop)
-                    draw->AddCircleFilled(ImVec2(p.x + 13 + stop * 7.f, p.y + 17), 4.5f, tone(palette.stops[stop]));
+                    draw->AddCircleFilled(ImVec2(p.x + 13 + stop * 7.f, p.y + 19), 4.5f, tone(palette.stops[stop]));
                 const ImVec4 clip(p.x + 40, p.y, maximum.x - 20, maximum.y);
-                draw->AddText(text_font, 11.5f, ImVec2(p.x + 40, p.y + 11), IM_COL32(234, 234, 241, 255),
+                draw->AddText(text_font, typography::caption, ImVec2(p.x + 40, p.y + 11), IM_COL32(234, 234, 241, 255),
                     i == 0 ? "OneStep" : palette.name, nullptr, 0.f, &clip);
                 if (selected) {
-                    const ImVec2 check(maximum.x - 13, p.y + 17);
+                    const ImVec2 check(maximum.x - 13, p.y + 19);
                     const ImVec2 points[] = { {check.x - 3, check.y}, {check.x - 1, check.y + 2}, {check.x + 3, check.y - 3} };
                     draw->AddPolyline(points, 3, tone(palette.stops[0]), 0, 1.4f);
                 }
@@ -65,6 +66,7 @@ namespace gui::themes_page
 
     void render()
     {
+        typography::scoped_font workspace_font(gui::ui_font);
         ImGui::PushID("theme_selection");
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8, 4));
         ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6.f);

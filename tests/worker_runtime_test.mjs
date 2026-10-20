@@ -18,10 +18,13 @@ test('bundled Worker in workerd: D1, SQLite Durable Object concurrency and signe
     execFileSync(process.execPath, [join(serverRoot, 'node_modules/wrangler/bin/wrangler.js'), 'deploy', '--dry-run', '--outdir', directory],
         { cwd: serverRoot, env: { ...process.env, WRANGLER_SEND_METRICS: 'false' }, stdio: 'pipe' });
     const h = await harness();
-    const bindings = Object.fromEntries(['KEY_PEPPER', 'HWID_PEPPER', 'ADMIN_TOKEN_HASH', 'SIGNING_PRIVATE_KEY_PKCS8', 'SIGNING_PUBLIC_KEY_SPKI', 'ALLOW_DEVICE_CONFIGS'].map(key => [key, h.env[key]]));
+    const bindings = Object.fromEntries(['KEY_PEPPER', 'HWID_PEPPER', 'SIGNING_PRIVATE_KEY_PKCS8', 'SIGNING_PUBLIC_KEY_SPKI',
+        'ADMIN_ACCESS_TEAM_DOMAIN','ADMIN_ACCESS_AUD','ADMIN_ACCESS_EMAIL'].map(key => [key, h.env[key]]));
     const runtime = new Miniflare(convertV4MiniflareOptions({ rootPath: directory, modulesRoot: directory,
         modules: true, scriptPath: join(directory, 'worker.js'),
         compatibilityDate: '2026-10-16', compatibilityFlags: ['nodejs_compat'], bindings,
+        outboundService: async request => request.url===h.env.ADMIN_ACCESS_TEAM_DOMAIN+'/cdn-cgi/access/certs'
+            ? Response.json(h.access.jwks) : new Response('Unexpected outbound request',{status:403}),
         d1Databases: ['DB'], kvNamespaces: ['RELEASES'],
         durableObjects: { RATE_LIMITER: { className: 'RateLimiter', useSQLite: true } } }));
     try {
@@ -30,14 +33,15 @@ test('bundled Worker in workerd: D1, SQLite Durable Object concurrency and signe
         await db.batch(schema.split(';').map(sql => sql.trim()).filter(Boolean).map(sql => db.prepare(sql)));
         const request = (path, body, admin = false) => runtime.dispatchFetch('https://local.test' + path, {
             method: body === undefined ? 'GET' : 'POST',
-            headers: { ...(admin ? { Authorization: 'Bearer ' + h.admin } : {}), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+            headers: { ...h.access.header, Origin:'https://local.test', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
             body: body === undefined ? undefined : JSON.stringify(body)
         });
         assert.equal((await request('/health')).status, 200);
         assert.equal((await request('/admin')).status, 200);
         const app = await (await request('/admin/assets/app.js')).text();
         assert.doesNotThrow(() => new Function(app));
-        assert.equal((await request('/api/v1/admin/list-keys')).status, 401);
+        assert.equal((await runtime.dispatchFetch('https://local.test/api/v1/admin/list-keys')).status, 403);
+        assert.equal((await request('/api/v1/admin/list-keys')).status, 200);
         const created = await (await request('/api/v1/admin/create-key', { days: '7' }, true)).json();
         assert.equal(created.success, true);
         const device = await h.device();

@@ -42,7 +42,7 @@ namespace modules
         const char* get_id() const;
         const char* get_name() const;
         const char* get_category() const;
-        void key_bind_selector();
+        void key_bind_selector(float width = 132.f);
         void begin_keybind_capture();
         bool is_keybind_capture_active() const { return scanning; }
 

@@ -31,7 +31,12 @@ def main():
         source.write_text('#include "src/auth/config.hpp"\nint main() {}\n', encoding="utf-8")
         required = {"ONESTEP_AUTH_REQUIRED": "1"}
         complete = {**required, "ONESTEP_AUTH_SERVER_DOMAIN": f'"{domain}"', "ONESTEP_AUTH_PUBLIC_KEY_SPKI_BASE64": f'"{public}"'}
-        cases = [("production metadata", complete, True), ("explicit development", {}, True),
+        cases = [("production metadata", complete, True), ("missing default metadata", {}, False),
+                 ("default requires authentication", {k:v for k,v in complete.items() if k != "ONESTEP_AUTH_REQUIRED"}, True),
+                 ("unmarked bypass rejected", {"ONESTEP_AUTH_REQUIRED":"0"}, False),
+                 ("isolated test probe", {"ONESTEP_AUTH_REQUIRED":"0", "ONESTEP_AUTH_INSECURE_TEST_BUILD":"1"}, True),
+                 ("release bypass rejected", {"ONESTEP_AUTH_REQUIRED":"0", "ONESTEP_AUTH_INSECURE_TEST_BUILD":"1", "NDEBUG":"1"}, False),
+                 ("invalid auth define", {**complete,"ONESTEP_AUTH_REQUIRED":"2"}, False),
                  ("missing production metadata", required, False),
                  ("missing domain", {k: v for k, v in complete.items() if k != "ONESTEP_AUTH_SERVER_DOMAIN"}, False),
                  ("missing public key", {k: v for k, v in complete.items() if k != "ONESTEP_AUTH_PUBLIC_KEY_SPKI_BASE64"}, False)]

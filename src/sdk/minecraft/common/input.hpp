@@ -21,6 +21,7 @@ namespace maps
         jni::method<InputKeyType, ONESTEP_MC_NAME("method_1442")> getCategory{ *this };
     END_KLASS_DEF()
         BEGIN_KLASS_DEF(KeyBinding, ONESTEP_MC_NAME("net/minecraft/class_304"))
+    jni::method<void, ONESTEP_MC_NAME("method_1437"), jni::STATIC> unpressAll{ *this };
     jni::field<InputKey, ONESTEP_MC_NAME("field_1655")> boundKey{ *this };
         jni::method<jboolean, ONESTEP_MC_NAME("method_1434")> isPressed{ *this };
     jni::method<void, ONESTEP_MC_NAME("method_23481"), jni::NOT_STATIC, jboolean> setPressed{ *this };
@@ -48,6 +49,9 @@ namespace maps
     END_KLASS_DEF()
 #endif
         BEGIN_KLASS_DEF(Mouse, ONESTEP_MC_NAME("net/minecraft/class_312"))
+    jni::method<jboolean, ONESTEP_MC_NAME("method_1613")> isCursorLocked{ *this };
+    jni::method<void, ONESTEP_MC_NAME("method_1610")> unlockCursor{ *this };
+    jni::method<void, ONESTEP_MC_NAME("method_1612")> lockCursor{ *this };
 #if ONESTEP_MINECRAFT_VERSION >= 12111
         jni::method<void, ONESTEP_MC_NAME("method_1601"), jni::NOT_STATIC, jlong, MouseInput, jint> onMouseInput{*this};
         struct mouse_button

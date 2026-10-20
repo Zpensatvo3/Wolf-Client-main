@@ -2,6 +2,7 @@
 #include "gui.hpp"
 #include "ui_state.hpp"
 #include "control_draw.hpp"
+#include "popup_controls.hpp"
 #include "../services/notifications/notification_service.hpp"
 #include "../ui/notification_renderer.hpp"
 #include <algorithm>
@@ -26,7 +27,7 @@ namespace
     std::unordered_map<ImGuiID, animation_state> animations;
 
     constexpr float option_right_gutter = 0.0f;
-    constexpr float toggle_height = 34.0f;
+    constexpr float toggle_height = 36.0f;
     constexpr float slider_height = 48.0f;
 
     void draw_option_row(ImDrawList* draw, const ImVec2& start, float width, float height, float hover)
@@ -153,11 +154,11 @@ namespace
         ImFont* font = ImGui::GetFont();
         const ImVec4 accent = ImGui::GetStyleColorVec4(ImGuiCol_SliderGrabActive);
         const ImU32 text_color = ImGui::GetColorU32(ImGuiCol_Text);
-        const ImVec2 value_extent = font->CalcTextSizeA(13.0f, FLT_MAX, 0.0f, value_text);
+        const ImVec2 value_extent = font->CalcTextSizeA(gui::typography::caption, FLT_MAX, 0.0f, value_text);
         draw_option_row(draw, start, width, height, anim.hover);
-        draw_label_clipped(draw, font, 13.5f, ImVec2(start.x + 10.0f, start.y + 7.0f),
+        draw_label_clipped(draw, font, gui::typography::control, ImVec2(start.x + 10.0f, start.y + 7.0f),
             start.x + width - value_extent.x - 24.0f, text_color, label);
-        draw_text_right(draw, font, 13.0f, ImVec2(start.x + width - 10.0f, start.y + 7.0f),
+        draw_text_right(draw, font, gui::typography::caption, ImVec2(start.x + width - 10.0f, start.y + 7.0f),
             ImGui::GetColorU32(ImGuiCol_TextDisabled), value_text);
 		draw->AddRectFilled(ImVec2(track_left, track_y), ImVec2(track_right, track_y + 2.0f),
 			IM_COL32(55, 59, 70, 220), 1.0f);
@@ -220,11 +221,11 @@ namespace
         ImDrawList* draw = ImGui::GetWindowDrawList();
         ImFont* font = ImGui::GetFont();
         const ImVec4 accent = ImGui::GetStyleColorVec4(ImGuiCol_SliderGrabActive);
-        const ImVec2 value_extent = font->CalcTextSizeA(13.0f, FLT_MAX, 0.0f, combined);
+        const ImVec2 value_extent = font->CalcTextSizeA(gui::typography::caption, FLT_MAX, 0.0f, combined);
         draw_option_row(draw, start, width, slider_height, anim.hover);
-        draw_label_clipped(draw, font, 13.5f, ImVec2(start.x + 10.0f, start.y + 7.0f), start.x + width - value_extent.x - 24.0f,
+        draw_label_clipped(draw, font, gui::typography::control, ImVec2(start.x + 10.0f, start.y + 7.0f), start.x + width - value_extent.x - 24.0f,
             ImGui::GetColorU32(ImGuiCol_Text), label);
-        draw_text_right(draw, font, 13.0f, ImVec2(start.x + width - 10.0f, start.y + 7.0f), ImGui::GetColorU32(ImGuiCol_TextDisabled), combined);
+        draw_text_right(draw, font, gui::typography::caption, ImVec2(start.x + width - 10.0f, start.y + 7.0f), ImGui::GetColorU32(ImGuiCol_TextDisabled), combined);
         draw->AddRectFilled(ImVec2(track_left, track_y), ImVec2(track_right, track_y + 2.0f), IM_COL32(55, 59, 70, 220), 1.0f);
         const float low_x = track_left + (track_right - track_left) * std::clamp(static_cast<float>(value[0] - minimum) / static_cast<float>(maximum - minimum), 0.0f, 1.0f);
         const float high_x = track_left + (track_right - track_left) * std::clamp(static_cast<float>(value[1] - minimum) / static_cast<float>(maximum - minimum), 0.0f, 1.0f);
@@ -418,7 +419,7 @@ bool gui::option_toggle(const char* label, bool* value, bool highlight_row)
     ImDrawList* draw = ImGui::GetWindowDrawList();
     ImFont* font = ImGui::GetFont();
     draw_option_row(draw, start, width, toggle_height, highlight_row ? anim.hover : 0.f);
-    draw_label_clipped(draw, font, 13.5f, ImVec2(start.x + 10.0f, start.y + 9.0f), start.x + width - 52.0f,
+    draw_label_clipped(draw, font, typography::control, ImVec2(start.x + 10.0f, start.y + 9.0f), start.x + width - 52.0f,
         ImGui::GetColorU32(ImGuiCol_Text), label);
     const ImVec2 toggle_min(start.x + width - 42.0f, start.y + 8.0f);
     const ImVec2 toggle_max(start.x + width - 10.0f, start.y + 26.0f);
@@ -474,16 +475,16 @@ bool gui::option_combo(const char* label, int* current_item, const char* const i
     const ImVec2 start = ImGui::GetCursorScreenPos();
     const float width = std::max(120.f, ImGui::GetContentRegionAvail().x - option_right_gutter);
     ImFont* font = ImGui::GetFont();
-    constexpr float value_size = 13.5f;
-    constexpr float value_gutter = 24.f;
+    constexpr float value_size = typography::control;
+    constexpr float value_gutter = 20.f;
     // Use all choices, not the current value, to keep the field stable.
     float longest_value = 0.f;
     for (int index = 0; index < item_count; ++index)
         longest_value = std::max(longest_value, font->CalcTextSizeA(value_size, FLT_MAX, 0.f, items[index]).x);
     const float control_right = start.x + width - 10.f;
-    const float control_width = std::clamp(longest_value + value_gutter * 2.f,
-        104.f, std::max(104.f, width * .53f));
-    const float label_width = font->CalcTextSizeA(13.5f, FLT_MAX, 0.f, label, visible_end(label)).x;
+    const float desired_width = std::max(120.f, longest_value + value_gutter * 2.f + 8.f);
+    const float control_width = std::min(desired_width, width - 20.f);
+    const float label_width = font->CalcTextSizeA(typography::control, FLT_MAX, 0.f, label, visible_end(label)).x;
     const bool stacked = label_width + control_width + 28.f > width;
     const float row_height = stacked ? 60.f : toggle_height;
     const float control_left = stacked ? start.x + 10.f : control_right - control_width;
@@ -500,7 +501,7 @@ bool gui::option_combo(const char* label, int* current_item, const char* const i
     draw->AddRectFilled(control_min, control_max,
         ImGui::GetColorU32(ImVec4(1.f, 1.f, 1.f, .045f + .035f * anim.hover)), 6.f);
     draw->AddRect(control_min, control_max, with_alpha(accent, .24f * anim.hover), 6.f);
-    draw_label_clipped(draw, font, 13.5f, ImVec2(start.x + 10.f, start.y + 9.f),
+    draw_label_clipped(draw, font, typography::control, ImVec2(start.x + 10.f, start.y + 9.f),
         stacked ? control_right : std::max(start.x + 10.f, control_left - 8.f),
         ImGui::GetColorU32(ImGuiCol_Text), label);
 
@@ -522,14 +523,15 @@ bool gui::option_combo(const char* label, int* current_item, const char* const i
     draw->PathLineTo(ImVec2(arrow_x, arrow_y + 1.5f * direction));
     draw->PathLineTo(ImVec2(arrow_x + 3.f, arrow_y - 1.5f * direction));
     draw->PathStroke(arrow_color, 0, 1.4f);
-    if (hovered && fitted != selected) ImGui::SetTooltip("%s", selected);
+    // The full-width stacked field handles long values without floating labels.
 
     bool changed = false;
     if (open)
     {
         const int visible_items = std::min(item_count, popup_max_height_in_items > 0 ? popup_max_height_in_items : 8);
-        const float popup_width = std::min(width - 20.f, std::max(control_right - control_left, longest_value + 40.f));
-        const float popup_height = 12.f + visible_items * 30.f;
+        const float popup_width = std::min(width - 20.f, std::max(control_right - control_left, longest_value + 58.f));
+        const float popup_height = 2.f * typography::popup_padding + visible_items * typography::choice_height
+            + std::max(0, visible_items - 1) * typography::popup_gap;
         const ImGuiViewport* viewport = ImGui::GetMainViewport();
         const float popup_x = std::clamp(control_right - popup_width, viewport->WorkPos.x,
             std::max(viewport->WorkPos.x, viewport->WorkPos.x + viewport->WorkSize.x - popup_width));
@@ -537,37 +539,16 @@ bool gui::option_combo(const char* label, int* current_item, const char* const i
             ? std::max(viewport->WorkPos.y, start.y - popup_height) : start.y + row_height;
         ImGui::SetNextWindowPos(ImVec2(popup_x, popup_y));
         ImGui::SetNextWindowSizeConstraints(ImVec2(popup_width, 0.f), ImVec2(popup_width, popup_height));
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(6.f, 6.f));
-        ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 8.f);
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.f, 2.f));
-        ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 0.f);
-        ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(.065f, .065f, .082f, .99f));
-        ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(1.f, 1.f, 1.f, .09f));
-        ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(accent.x, accent.y, accent.z, .16f));
-        ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(accent.x, accent.y, accent.z, .23f));
-        ImGui::PushStyleColor(ImGuiCol_ScrollbarGrab, ImVec4(accent.x, accent.y, accent.z, .45f));
-        ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabHovered, ImVec4(accent.x, accent.y, accent.z, .65f));
-        ImGui::PushStyleColor(ImGuiCol_ScrollbarGrabActive, accent);
+        popup_controls::style popup_style;
         if (ImGui::BeginPopup("##option_choices", ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar))
         {
+          {
+            typography::scoped_font popup_font(font);
             for (int index = 0; index < item_count; ++index)
             {
                 ImGui::PushID(index);
-                const ImVec2 item_min = ImGui::GetCursorScreenPos();
-                const float item_width = ImGui::GetContentRegionAvail().x;
                 const bool item_selected = index == *current_item;
-                const bool clicked = ImGui::Selectable("##choice", item_selected, 0, ImVec2(0.f, 28.f));
-                const std::string item_text = fit_option_value(font, value_size, item_width - 26.f, items[index]);
-                ImDrawList* item_draw = ImGui::GetWindowDrawList();
-                item_draw->AddText(font, value_size, ImVec2(item_min.x + 7.f, item_min.y + 7.f),
-                    item_selected ? with_alpha(accent, .98f) : ImGui::GetColorU32(ImGuiCol_Text), item_text.c_str());
-                if (item_selected)
-                {
-                    item_draw->AddCircleFilled(ImVec2(item_min.x + item_width - 8.f, item_min.y + 14.f),
-                        2.f, with_alpha(accent, .95f));
-                    ImGui::SetItemDefaultFocus();
-                }
-                if (ImGui::IsItemHovered() && item_text != items[index]) ImGui::SetTooltip("%s", items[index]);
+                const bool clicked = popup_controls::choice("##choice", items[index], item_selected, font, accent);
                 if (clicked)
                 {
                     changed = *current_item != index;
@@ -575,10 +556,9 @@ bool gui::option_combo(const char* label, int* current_item, const char* const i
                 }
                 ImGui::PopID();
             }
+          }
             ImGui::EndPopup();
         }
-        ImGui::PopStyleColor(7);
-        ImGui::PopStyleVar(4);
     }
     ImGui::PopID();
     return changed;
@@ -600,7 +580,7 @@ bool gui::option_color(const char* label, float color[4], ImGuiColorEditFlags)
     ImDrawList* draw = ImGui::GetWindowDrawList();
     const ImU32 text = ImGui::GetColorU32(ImGuiCol_Text);
     draw_option_row(draw, start, width, toggle_height, anim.hover);
-    draw_label_clipped(draw, ImGui::GetFont(), 13.5f, ImVec2(start.x + 10.0f, start.y + 9.0f),
+    draw_label_clipped(draw, ImGui::GetFont(), typography::control, ImVec2(start.x + 10.0f, start.y + 9.0f),
         start.x + width - 52.0f, text, label);
     const ImVec2 swatch_min(start.x + width - 43.0f, start.y + 7.0f);
     const ImVec2 swatch_max(start.x + width - 8.0f, start.y + 27.0f);
@@ -683,7 +663,7 @@ bool gui::option_color(const char* label, float color[4], ImGuiColorEditFlags)
         std::snprintf(hex, sizeof(hex), "#%02X%02X%02X  %d%%",
             static_cast<int>(color[0] * 255.0f), static_cast<int>(color[1] * 255.0f),
             static_cast<int>(color[2] * 255.0f), static_cast<int>(color[3] * 100.0f));
-        draw->AddText(ImGui::GetFont(), 13.0f, ImVec2(panel_min.x + 10.0f, panel_min.y + 161.0f),
+        draw->AddText(ImGui::GetFont(), typography::caption, ImVec2(panel_min.x + 10.0f, panel_min.y + 161.0f),
             IM_COL32(188, 184, 198, static_cast<int>(255.0f * eased)), hex);
         draw->PopClipRect();
         ImGui::SetCursorScreenPos(ImVec2(start.x, panel_max.y + 5.0f));
@@ -698,7 +678,7 @@ void gui::option_section(const char* label)
     if (!label || !*label) return;
     ImGui::Dummy(ImVec2(0.0f, 4.0f));
     const ImVec2 position = ImGui::GetCursorScreenPos();
-    ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), 13.0f, position,
+    ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), typography::caption, position,
         IM_COL32(132, 136, 149, 255), label, visible_end(label));
     ImGui::Dummy(ImVec2(0.0f, 17.0f));
 }

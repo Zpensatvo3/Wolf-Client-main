@@ -3,7 +3,13 @@
 #include <string_view>
 
 #ifndef ONESTEP_AUTH_REQUIRED
-#define ONESTEP_AUTH_REQUIRED 0
+#define ONESTEP_AUTH_REQUIRED 1
+#endif
+#if ONESTEP_AUTH_REQUIRED != 0 && ONESTEP_AUTH_REQUIRED != 1
+#error ONESTEP_AUTH_REQUIRED must be 0 or 1.
+#endif
+#if !ONESTEP_AUTH_REQUIRED && (!defined(ONESTEP_AUTH_INSECURE_TEST_BUILD) || ONESTEP_AUTH_INSECURE_TEST_BUILD != 1 || defined(NDEBUG))
+#error Disabling authentication is permitted only in explicitly marked non-release test probes.
 #endif
 #ifndef ONESTEP_AUTH_SERVER_DOMAIN
 #define ONESTEP_AUTH_SERVER_DOMAIN ""

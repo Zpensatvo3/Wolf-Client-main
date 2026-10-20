@@ -2,6 +2,7 @@
 #include "../../cache/cache.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../../services/game/client_context.hpp"
+#include "../../services/game/utility_bridge.hpp"
 #include "../../services/input/input_service.hpp"
 #include <algorithm>
 #include "fast_place.hpp"
@@ -52,6 +53,10 @@ void modules::fast_place::render_overlay()
     struct clear_on_exit { ~clear_on_exit() { platform::jni_context::clear_exception(); } } cleanup;
 	try {
         jni::frame frame{48};
+        const auto backend = services::game::utility::update(services::game::utility::feature::fast_place,
+            enabled, std::clamp(settings_snapshot.delay, 0, 4),
+            services::input::physical_button_down(services::input::mouse_button::right));
+        if (backend != services::game::hybrid::result::native_fallback) return;
         services::game::client_context context;
         if (!services::game::capture_client_context(context, true, false) || context.screen ||
             context.player.isAlive.call() != JNI_TRUE || platform::jni_context::clear_exception()) return;

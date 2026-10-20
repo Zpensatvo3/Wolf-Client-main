@@ -18,6 +18,7 @@ namespace modules
         void on_enable(::cache&) override { reset_requested.store(true); }
         void on_disable(::cache&) override { reset_requested.store(true); }
         void cancel_on_client_thread();
+        void on_render_shutdown() override { cancel_on_client_thread(); }
         void render_options() override;
         float get_options_height() override { return 200.f; }
         void visit_config(config_visitor& v) override { settings_.visit(v, module_settings::inv_walk::schema()); }

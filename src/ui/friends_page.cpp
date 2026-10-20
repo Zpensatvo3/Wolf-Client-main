@@ -5,6 +5,7 @@
 #include "../friends/friends.hpp"
 #include "../gui/gui.hpp"
 #include "../gui/control_draw.hpp"
+#include "../gui/popup_controls.hpp"
 #include "../gui/ui_state.hpp"
 #include "../modules/core/module_registry.hpp"
 #include <algorithm>
@@ -43,6 +44,7 @@ namespace gui::friends_page
         void label(ImVec2 at, const char* text, float size = 12.f, ImU32 color = muted,
             bool bold = false, float width = FLT_MAX)
         {
+            size = typography::readable(size);
             const ImVec4 clip(at.x, at.y, at.x + width, at.y + size + 4);
             ImGui::GetWindowDrawList()->AddText(font(bold), size, at, tint(color), text, nullptr, 0.f, &clip);
         }
@@ -113,17 +115,22 @@ namespace gui::friends_page
             const float width = ImGui::GetContentRegionAvail().x, height = ImGui::GetFrameHeight();
             auto* draw = ImGui::GetWindowDrawList();
             ImGui::SetNextItemWidth(-1);
-            const bool open = ImGui::BeginCombo("##friend_mode", "", ImGuiComboFlags_NoArrowButton);
+            bool open = false;
+          {
+            popup_controls::style popup_style;
+            open = ImGui::BeginCombo("##friend_mode", "", ImGuiComboFlags_NoArrowButton);
             if (open) {
                 for (int i = 0; i < 2; ++i) {
-                    if (ImGui::Selectable(modes[i], state.mode == i)) state.mode = i;
-                    if (state.mode == i) ImGui::SetItemDefaultFocus();
+                    ImGui::PushID(i);
+                    if (popup_controls::choice("##mode", modes[i], state.mode == i, font(), ImGui::ColorConvertU32ToFloat4(accent()))) state.mode = i;
+                    ImGui::PopID();
                 }
                 ImGui::EndCombo();
             }
-            label(ImVec2(p.x + 10, p.y + (height - 12.f) * .5f), "Mode", 12.f, primary, false, width * .4f);
-            const auto extent = font(true)->CalcTextSizeA(12.f, FLT_MAX, 0, modes[state.mode]);
-            label(ImVec2(p.x + width - extent.x - 34, p.y + (height - 12.f) * .5f), modes[state.mode], 12.f, primary, true);
+          }
+            label(ImVec2(p.x + 10, p.y + (height - typography::control) * .5f), "Mode", typography::control, primary, false, width * .4f);
+            const auto extent = font(true)->CalcTextSizeA(typography::control, FLT_MAX, 0, modes[state.mode]);
+            label(ImVec2(p.x + width - extent.x - 34, p.y + (height - typography::control) * .5f), modes[state.mode], typography::control, primary, true);
             const ImVec2 center(p.x + width - 15, p.y + height * .5f);
             const float d = open ? -1.f : 1.f;
             const ImVec2 points[] = { {center.x - 3.5f, center.y - d * 1.75f}, {center.x, center.y + d * 1.75f}, {center.x + 3.5f, center.y - d * 1.75f} };
@@ -181,7 +188,7 @@ namespace gui::friends_page
             draw->PathStroke(tint(faint), 0, 1.3f);
             const char* text = state.mode == 0 ? "No friends added yet" : state.search[0]
                 ? "No matching players" : "Join a server to find players";
-            const auto extent = font()->CalcTextSizeA(12.f, FLT_MAX, 0, text);
+            const auto extent = font()->CalcTextSizeA(typography::caption, FLT_MAX, 0, text);
             label(ImVec2(center.x - extent.x * .5f, center.y + 25), text, 12.f, faint);
         }
         void render_rows()
@@ -227,6 +234,7 @@ namespace gui::friends_page
 
     void render(bool embedded)
     {
+        typography::scoped_font workspace_font(font());
         if (!embedded) gui::page_header("Friends", "Manage your session friends");
         ImGui::PushID("friends_workspace");
         ImGui::PushFont(font());

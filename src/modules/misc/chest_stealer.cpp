@@ -1,4 +1,5 @@
 #include "chest_stealer.hpp"
+#include "../../services/game/inventory_bridge.hpp"
 #include "../../ui/settings_renderer.hpp"
 #include "../../cache/cache.hpp"
 #include "../../platform/jni/jni_context.hpp"
@@ -28,6 +29,24 @@ int next_delay(int minimum, int maximum)
 	}
 }
 
+struct modules::chest_stealer::runtime
+{
+    maps::Object player{nullptr, true}, world{nullptr, true}, screen{nullptr, true}, handler{nullptr, true};
+    void clear() { player = {}; world = {}; screen = {}; handler = {}; }
+    bool matches(const services::game::inventory_bridge::snapshot& s) const {
+        auto env = jni::get_env();
+        return player && env->IsSameObject(player.object_instance, s.player) &&
+            env->IsSameObject(world.object_instance, s.world) && env->IsSameObject(screen.object_instance, s.screen) &&
+            env->IsSameObject(handler.object_instance, s.handler);
+    }
+    void remember(const services::game::inventory_bridge::snapshot& s) {
+        player = maps::Object{s.player, false}; world = maps::Object{s.world, false};
+        screen = maps::Object{s.screen, false}; handler = maps::Object{s.handler, false};
+    }
+};
+modules::chest_stealer::chest_stealer() : module("chest stealer", "World"), runtime_(std::make_unique<runtime>()) {}
+modules::chest_stealer::~chest_stealer() = default;
+
 void modules::chest_stealer::run(::cache&)
 {
 	// Container clicks must run on Minecraft's client thread. render_overlay()
@@ -44,19 +63,47 @@ void modules::chest_stealer::render_overlay()
 	{
 		chest_seen = false;
 		next_action_time = {};
+        runtime_->clear();
+        services::game::inventory_bridge::cancel(services::game::inventory_bridge::feature::chest);
 	}
+    if constexpr (mc::target.build_id == 12111) {
+        if (!enabled) { on_render_shutdown(); return; }
+    }
 
 	const HWND game_window = gui::get_window();
 	if (!game_window || GetForegroundWindow() != game_window || gui::draw || gui::loader_visible)
 	{
 		chest_seen = false;
 		next_action_time = {};
+        runtime_->clear();
+        services::game::inventory_bridge::cancel(services::game::inventory_bridge::feature::chest);
 		return;
 	}
 
 	try
 	{
 		jni::frame frame{ 144 };
+        namespace bridge = services::game::inventory_bridge;
+        bridge::snapshot observed;
+        const auto backend = bridge::capture(bridge::feature::chest, false, observed);
+        if (backend != services::game::hybrid::result::native_fallback) {
+            if (backend != services::game::hybrid::result::ready) { on_render_shutdown(); return; }
+            const auto now = steady_clock::now();
+            if (!runtime_->matches(observed)) {
+                runtime_->remember(observed); chest_seen = true;
+                next_action_time = now + std::chrono::milliseconds(std::clamp(settings_snapshot.open_reaction_ms, 25, 800));
+                return;
+            }
+            if (now < next_action_time || observed.candidates.empty() || !observed.cursor_empty) return;
+            int selected = observed.candidates.front();
+            if (settings_snapshot.random_slot_order && observed.candidates.size() > 1) {
+                std::uniform_int_distribution<std::size_t> pick(0, observed.candidates.size() - 1);
+                selected = observed.candidates[pick(chest_random)];
+            }
+            if (!bridge::act(observed, selected, -1, 0, false)) { on_render_shutdown(); return; }
+            next_action_time = now + std::chrono::milliseconds(next_delay(settings_snapshot.min_delay_ms, settings_snapshot.max_delay_ms));
+            return;
+        }
 		maps::MinecraftClient instance = maps::MinecraftClient{}.instance.get();
 		maps::ClientPlayerEntity player = instance ? instance.player.get() : maps::ClientPlayerEntity{};
 		maps::Screen screen = instance ? instance.currentScreen.get() : maps::Screen{};
@@ -142,6 +189,13 @@ void modules::chest_stealer::render_overlay()
 void modules::chest_stealer::on_disable(::cache&)
 {
 	reset_requested.store(true, std::memory_order_release);
+}
+
+void modules::chest_stealer::on_render_shutdown()
+{
+    chest_seen = false; next_action_time = {};
+    runtime_->clear();
+    services::game::inventory_bridge::cancel(services::game::inventory_bridge::feature::chest);
 }
 
 void modules::chest_stealer::render_options()

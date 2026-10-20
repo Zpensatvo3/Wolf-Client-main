@@ -35,6 +35,7 @@ namespace services::input
         click_validation validate = click_validation{});
     click_receipt trigger_click_receipt(std::uint32_t ticket);
     void cancel_trigger_click(std::uint32_t ticket = 0);
+    void cancel_automatic_inputs();
     bool observe_tracked_event(std::uintptr_t tag, bool pressed, event_path path);
     bool accept_restore_event(std::uintptr_t tag);
     std::uint32_t press_jump_space(HWND expected_window, click_validation validate);

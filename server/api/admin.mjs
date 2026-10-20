@@ -1,47 +1,26 @@
-import { requiredSecret, sha256, constantTimeEqual, encryptLicenseKey, decryptLicenseKey } from '../core/crypto.mjs';
+import { requiredSecret, sha256 } from '../core/crypto.mjs';
+import { verifyAdminAccess } from '../auth/admin-access.mjs';
 import { jsonResponse, readJson } from '../core/http.mjs';
 import { ensureDatabaseSchema } from '../database/schema.mjs';
 import { enforceRateLimit } from '../core/rate-limit.mjs';
 import { handleAdminRead } from './admin-read.mjs';
-const HEX_64 = /^[a-f0-9]{64}$/i;
-const KEY_CODE = /^[A-Za-z0-9-]{8,128}$/;
 
 function generateRandomKey() {
-    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    const randomIndex = () => {
-        // Rejection sampling avoids modulo bias while using Web Crypto instead
-        // of predictable Math.random().
-        const bytes = new Uint8Array(1);
-        do { crypto.getRandomValues(bytes); } while (bytes[0] >= 252);
-        return bytes[0] % chars.length;
-    };
-    const seg = (len) => Array.from({ length: len }, () => chars[randomIndex()]).join('');
-    return `ONESTEP-${seg(4)}-${seg(4)}-${seg(4)}`;
+    // 128 unpredictable bits. No administrator-selected dictionary keys.
+    const hex = Array.from(crypto.getRandomValues(new Uint8Array(16)),byte=>byte.toString(16).padStart(2,'0')).join('').toUpperCase();
+    return 'ONESTEP-'+hex.match(/.{8}/g).join('-');
 }
 
 export async function verifyAdminAuth(request, env) {
-    const authorization = request.headers.get("Authorization") || "";
-    if (!authorization.startsWith("Bearer ")) return false;
-    const token = authorization.slice(7).trim();
-    if (token.length < 32 || token.length > 512) return false;
-    const inputHash = await sha256(token);
-    const configuredHash = requiredSecret(env, "ADMIN_TOKEN_HASH");
-    return HEX_64.test(configuredHash) && constantTimeEqual(inputHash, configuredHash.toLowerCase());
-}
-
-function writeAdminAudit(ctx, env, request, action, keyId, reason) {
-    try {
-        ctx.waitUntil(env.DB.prepare(
-            "INSERT INTO admin_audit_logs (admin_id, action, key_hash, previous_epoch, new_epoch, reason, ip_address) " +
-            "SELECT ?, ?, key_hash, license_epoch, license_epoch, ?, ? FROM license_keys WHERE id = ?"
-        ).bind(
-            "dashboard",
-            action,
-            reason,
-            request.headers.get("CF-Connecting-IP") || "0.0.0.0",
-            keyId
-        ).run());
-    } catch (_) { }
+    // Access is the sole identity boundary. A legacy bearer never grants access.
+    if (!await verifyAdminAccess(request, env)) return false;
+    // Cookie-authenticated mutations must originate from this application.
+    // Apply to release uploads too, not only JSON/form routes.
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
+        if (request.headers.get('Origin') !== new URL(request.url).origin) return false;
+        if (request.headers.get('Sec-Fetch-Site') === 'cross-site') return false;
+    }
+    return true;
 }
 
 async function auditedUpdate(env, request, action, keyId, reason, update) {
@@ -86,7 +65,7 @@ export async function handleAdmin(request, env, ctx) {
         }
 
         const readRoutes = new Set(['list-keys', 'overview', 'activity', 'status']);
-        const writeRoutes = new Set(['create-key', 'reveal-key', 'reset-hwid', 'delete-key', 'ban-key', 'delete-config']);
+        const writeRoutes = new Set(['create-key', 'reveal-key', 'reset-hwid', 'delete-key', 'ban-key', 'delete-config', 'revoke-release']);
         const route = url.pathname.slice('/api/v1/admin/'.length);
         if (!readRoutes.has(route) && !writeRoutes.has(route))
             return jsonResponse({ success: false, message: 'Unknown admin endpoint.' }, 404);
@@ -100,13 +79,26 @@ export async function handleAdmin(request, env, ctx) {
         try { body = await readJson(request); }
         catch (_) { return jsonResponse({ success: false, message: 'Invalid JSON request.' }, 400); }
 
+        if (route === 'revoke-release') {
+            if (!/^[a-f0-9]{64}$/.test(body.sha256 || '')) return jsonResponse({message:'Invalid release hash.'},400);
+            await env.DB.batch([
+                env.DB.prepare('UPDATE approved_releases SET revoked=1 WHERE sha256=?').bind(body.sha256),
+                env.DB.prepare('UPDATE runtime_sessions SET revoked=1 WHERE release_sha256=?').bind(body.sha256),
+                env.DB.prepare('DELETE FROM release_channels WHERE sha256=?').bind(body.sha256),
+                env.DB.prepare("INSERT INTO admin_audit_logs(admin_id,action,reason,ip_address) VALUES('dashboard','REVOKE_RELEASE',?,?)")
+                    .bind(body.sha256,request.headers.get('CF-Connecting-IP') || '0.0.0.0')
+            ]);
+            return jsonResponse({success:true});
+        }
+
         // CREATE KEY
         if (url.pathname === "/api/v1/admin/create-key" && request.method === "POST") {
             try {
 
-                const keyToCreate = body.key || generateRandomKey();
+                if (body.key !== undefined) return jsonResponse({success:false,message:'Custom license keys are not supported.'},400);
+                const keyToCreate = generateRandomKey();
                 const days = String(body.days || "lifetime");
-                if (typeof keyToCreate !== "string" || !KEY_CODE.test(keyToCreate) || !["lifetime", "1", "7", "30"].includes(days)) {
+                if (!["lifetime", "1", "7", "30"].includes(days)) {
                     return jsonResponse({ success: false, message: "Invalid license request." }, 400);
                 }
 
@@ -119,11 +111,10 @@ export async function handleAdmin(request, env, ctx) {
 
                 const keyHash = await sha256(keyToCreate + requiredSecret(env, "KEY_PEPPER"));
 
-                const encryptedKey = await encryptLicenseKey(keyToCreate, env);
                 const insert = env.DB.prepare(
-                    "INSERT INTO license_keys (key_hash, key_encrypted, expires_at, status) VALUES (?, ?, ?, 'unused')"
+                    "INSERT INTO license_keys (key_hash, expires_at, status) VALUES (?, ?, 'unused')"
                 )
-                    .bind(keyHash, encryptedKey, expiresAt);
+                    .bind(keyHash, expiresAt);
                 const [insertResult] = await env.DB.batch([insert, env.DB.prepare(
                     "INSERT INTO admin_audit_logs (admin_id,action,key_hash,previous_epoch,new_epoch,reason,ip_address) VALUES (?,?,?,?,?,?,?)"
                 ).bind("dashboard", "CREATE_KEY", keyHash, 1, 1, "License created from admin dashboard",
@@ -145,33 +136,7 @@ export async function handleAdmin(request, env, ctx) {
 
         // REVEAL KEY
         if (url.pathname === "/api/v1/admin/reveal-key" && request.method === "POST") {
-            try {
-
-                const keyId = Number(body.id);
-                if (!Number.isSafeInteger(keyId) || keyId <= 0) {
-                    return jsonResponse({ success: false, message: "Invalid license id." }, 400);
-                }
-
-                const license = await env.DB.prepare(
-                    "SELECT key_encrypted FROM license_keys WHERE id = ? LIMIT 1"
-                ).bind(keyId).first();
-                if (!license) {
-                    return jsonResponse({ success: false, message: "License not found." }, 404);
-                }
-                if (!license.key_encrypted) {
-                    return jsonResponse({
-                        success: false,
-                        message: "This older license was stored as a one-way hash and cannot be revealed."
-                    }, 409);
-                }
-
-                const key = await decryptLicenseKey(license.key_encrypted, env);
-                writeAdminAudit(ctx, env, request, "REVEAL_KEY", keyId, "License key revealed from admin dashboard");
-                return jsonResponse({ success: true, key });
-            } catch (error) {
-                console.error("admin_reveal_key_failed");
-                return jsonResponse({ success: false, message: "Unable to reveal license key." }, 500);
-            }
+            return jsonResponse({success:false,message:'License keys are shown only once, when created.'},410);
         }
 
         // RESET HWID

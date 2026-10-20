@@ -3,6 +3,8 @@
 #include "../../cache/cache.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../../platform/adapter/game_adapter.hpp"
+#include "../../platform/adapter/item_model.hpp"
+#include "block_icon_bindings.hpp"
 #include "../../services/game/loaded_chunks.hpp"
 #include "../ui_redirect.hpp"
 #include <algorithm>
@@ -13,6 +15,7 @@
 #include <vector>
 #include <array>
 #include <unordered_map>
+#include <optional>
 
 #include <imgui/imgui.h>
 
@@ -358,44 +361,104 @@ void modules::block_esp::render_options()
     gui::settings::render(candidate, module_settings::block_esp::schema());
 
 	std::vector<std::string> catalog;
-	std::vector<std::string> selected;
 	{
 		std::scoped_lock lock(marker_mutex);
 		catalog = available_blocks;
-		selected = candidate.selected_blocks;
 	}
-	ImGui::InputTextWithHint("##block_search", "Search blocks...",
-		block_search, sizeof(block_search));
-	ImGui::SameLine();
-	if (ImGui::Button("Clear"))
-	{
-		std::scoped_lock lock(marker_mutex);
-		candidate.selected_blocks.clear(); markers.clear(); scan_index = 0; scan_section = 0;
-		selected.clear();
-	}
-	ImGui::TextDisabled("%zu / %zu", selected.size(), catalog.size());
-	std::string query = block_search;
-	std::transform(query.begin(), query.end(), query.begin(), [](unsigned char value)
-		{ return static_cast<char>(std::tolower(value)); });
-	ImGui::BeginChild("##block_catalog", ImVec2(0.0f, 255.0f), true);
-	for (const std::string& identifier : catalog)
-	{
-		const std::string label = display_block_name(identifier);
-		std::string searchable = identifier + " " + label;
-		std::transform(searchable.begin(), searchable.end(), searchable.begin(), [](unsigned char value)
-			{ return static_cast<char>(std::tolower(value)); });
-		if (!query.empty() && searchable.find(query) == std::string::npos) continue;
-		const bool is_selected = std::find(selected.begin(), selected.end(), identifier) != selected.end();
-		if (ImGui::Selectable((label + "##" + identifier).c_str(), is_selected))
-		{
-			std::scoped_lock lock(marker_mutex);
-			auto found = std::find(candidate.selected_blocks.begin(), candidate.selected_blocks.end(), identifier);
-			if (found == candidate.selected_blocks.end()) candidate.selected_blocks.push_back(identifier);
-			else candidate.selected_blocks.erase(found);
-			markers.clear(); scan_index = 0; scan_section = 0;
-		}
-	}
-	ImGui::EndChild();
+    if (picker_catalog_.size() != catalog.size())
+    {
+        picker_catalog_.clear();
+        for (const auto& key : catalog)
+        {
+            const auto label = display_block_name(key);
+            picker_catalog_.push_back({key,label,gui::block_picker::lowercase(key+" "+label)});
+        }
+    }
+    const int frame_number = ImGui::GetFrameCount();
+    if (picker_frame_ + 1 != frame_number) block_icons_.clear();
+    picker_frame_ = frame_number;
+    // LRU pruning happens before drawing, never while a cached icon is referenced.
+    while (block_icons_.size() > 192)
+    {
+        auto oldest = std::min_element(block_icons_.begin(),block_icons_.end(),
+            [](const auto& a,const auto& b) { return a.second.last_used < b.second.last_used; });
+        block_icons_.erase(oldest);
+    }
+    std::optional<services::game::client_context> context;
+    bool context_checked = false, game_ready = false;
+    int reads_left = 2; // Only visible tiles; never rebuild the entire registry in a frame.
+    const double now = ImGui::GetTime();
+    const auto icon = [&](const std::string& key, ImDrawList* draw, ImVec2 minimum, ImVec2 maximum)
+    {
+        auto found = block_icons_.find(key);
+        if (reads_left > 0 && (found == block_icons_.end() || found->second.refresh_at <= now))
+        {
+            --reads_left;
+            std::vector<gui::item_icons::quad> quads;
+            try
+            {
+                // Warm, unchanged tiles do not read the game at all.
+                if (!context_checked)
+                {
+                    context_checked = true;
+                    if (platform::jni_context::bind_current_thread())
+                    {
+                        context.emplace();
+                        game_ready = services::game::capture_client_context(*context,true,false);
+                    }
+                }
+                if (game_ready)
+                {
+                    jni::frame icon_frame{128};
+                    const auto identifier = block_icon_bindings::Identifier{}.parse.call(maps::String::create(key.c_str()));
+                    const auto registry = maps::Registries{}.BLOCK.get();
+                    const auto object = identifier && registry && !platform::jni_context::clear_exception()
+                        ? block_icon_bindings::Registry(registry.object_instance,false).get.call(identifier) : maps::Object{};
+                    const auto item = object && !platform::jni_context::clear_exception()
+                        ? maps::Block(object.object_instance,false).asItem.call() : maps::Item{};
+                    const auto stack = item && !platform::jni_context::clear_exception()
+                        ? block_icon_bindings::Item(item.object_instance,false).default_stack.call() : maps::ItemStack{};
+                    if (stack && !platform::jni_context::clear_exception() && stack.isEmpty.call() != JNI_TRUE
+                        && !platform::jni_context::clear_exception())
+                    {
+                        const auto translation = item.getTranslationKey.call();
+                        if (translation && !platform::jni_context::clear_exception())
+                            quads = gui::item_icons::project(platform::adapter::read_item_model(context->instance,
+                                maps::World(context->world.object_instance,false),
+                                maps::LivingEntity(context->player.object_instance,false),stack,translation.to_string()));
+                    }
+                }
+            }
+            catch (...) { quads.clear(); }
+            if (platform::jni_context::clear_exception()) quads.clear();
+            auto& cached = block_icons_[key];
+            cached.quads = std::move(quads);
+            cached.refresh_at = now + 2.; // Refresh borrowed atlas/model data after resource changes.
+            found = block_icons_.find(key);
+        }
+        if (found != block_icons_.end()) found->second.last_used = frame_number;
+        if (found != block_icons_.end() && !found->second.quads.empty())
+            gui::item_icons::draw(draw,found->second.quads,minimum,maximum);
+        else
+        {
+            // Blocks without an inventory item (air, fluids, etc.) remain selectable.
+            const ImVec2 center((minimum.x+maximum.x)*.5f,(minimum.y+maximum.y)*.5f);
+            const ImU32 color = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+            draw->AddQuad({center.x,center.y-9.f},{center.x+9.f,center.y-4.f},
+                {center.x,center.y+1.f},{center.x-9.f,center.y-4.f},color,1.4f);
+            draw->AddLine({center.x-9.f,center.y-4.f},{center.x-9.f,center.y+5.f},color,1.4f);
+            draw->AddLine({center.x+9.f,center.y-4.f},{center.x+9.f,center.y+5.f},color,1.4f);
+            draw->AddLine({center.x,center.y+1.f},{center.x,center.y+10.f},color,1.4f);
+            draw->AddLine({center.x-9.f,center.y+5.f},{center.x,center.y+10.f},color,1.4f);
+            draw->AddLine({center.x+9.f,center.y+5.f},{center.x,center.y+10.f},color,1.4f);
+        }
+    };
+    if (gui::block_picker::render(picker_catalog_,candidate.selected_blocks,picker_state_,
+        gui::ui_font,ImGui::GetStyleColorVec4(ImGuiCol_CheckMark),icon))
+    {
+        std::scoped_lock lock(marker_mutex);
+        markers.clear(); scan_index = 0; scan_section = 0;
+    }
 
     });
 }

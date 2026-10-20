@@ -16,7 +16,8 @@ namespace modules
         void on_enable(::cache&) override { reset_generation_.fetch_add(1, std::memory_order_release); }
         void on_disable(::cache&) override { reset_generation_.fetch_add(1, std::memory_order_release); }
         void render_options() override;
-        float get_options_height() override { return 410.f; }
+        void on_render_shutdown() override { motion_.clear(); }
+        float get_options_height() override { return 460.f; }
         void visit_config(config_visitor& visitor) override { settings_.visit(visitor, module_settings::cape::schema()); }
     private:
         modules::settings::store<module_settings::cape> settings_;

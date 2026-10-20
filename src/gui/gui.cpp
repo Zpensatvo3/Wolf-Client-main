@@ -5,6 +5,7 @@
 #include "gui.hpp"
 #include "auth_screen.hpp"
 #include "../auth/client.hpp"
+#include "../auth/auth.hpp"
 #include "ui_state.hpp"
 #include "theme_palette.hpp"
 #include "surface_style.hpp"
@@ -34,11 +35,14 @@
 #include "../platform/input/key_codes.hpp"
 #include "../services/input/input_service.hpp"
 #include "../services/game/attack_service.hpp"
+#include "../services/game/menu_input.hpp"
+#include "../services/game/menu_input_policy.hpp"
 #include "../../resource.h"
 #include <MinHook.h>
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cfloat>
 #include <array>
 #include <cstdint>
 #include <limits>
@@ -67,6 +71,7 @@ namespace
 
 	std::atomic_bool request_shutdown{ false };
 	std::atomic_bool shut_down{ false };
+	std::atomic_bool focus_reset_pending{ false };
 	volatile bool run_once = true;
 
 	int last_pressed_key = 0;
@@ -75,8 +80,8 @@ namespace
 	std::vector<unsigned char> ui_font_data{};
 	std::vector<unsigned char> ui_bold_font_data{};
 	std::vector<unsigned char> icon_font_data{};
-	std::array<GLuint, 3> icon_textures{};
-	std::array<bool, 3> icon_texture_attempted{};
+	std::array<GLuint, static_cast<size_t>(gui::icon_asset::count)> icon_textures{};
+	std::array<bool, static_cast<size_t>(gui::icon_asset::count)> icon_texture_attempted{};
 	struct background_texture { GLuint id = 0; ImVec2 size{}; bool attempted = false; };
 	std::array<background_texture, static_cast<std::size_t>(gui::background::style::count)> backgrounds{};
 	std::mutex background_import_mutex;
@@ -151,6 +156,11 @@ namespace
 		case gui::icon_asset::helmet: return IDR_ICON_HELMET;
 		case gui::icon_asset::background: return IDR_BACKGROUND_MAIN;
 		case gui::icon_asset::spotify: return IDR_ICON_SPOTIFY;
+        case gui::icon_asset::wing_dragon: return IDR_WING_DRAGON;
+        case gui::icon_asset::wing_angel: return IDR_WING_ANGEL;
+        case gui::icon_asset::wing_butterfly: return IDR_WING_BUTTERFLY;
+        case gui::icon_asset::cape_phoenix: return IDR_CAPE_PHOENIX;
+        case gui::icon_asset::cape_astral: return IDR_CAPE_ASTRAL;
 		default: return 0;
 		}
 	}
@@ -288,9 +298,39 @@ namespace
 		return success;
 	}
 
-	// Virtual mouse position for GLFW cursor-disabled raw-input tracking
-	static float virt_mouse_x = 0.0f;
-	static float virt_mouse_y = 0.0f;
+	bool panel_was_open = false;
+
+	void sync_panel_input()
+	{
+		const bool open = gui::draw;
+		const bool focused = window && GetForegroundWindow() == window;
+		const bool opening = open && !panel_was_open;
+		if (open != panel_was_open)
+		{
+			services::input::cancel_trigger_click();
+			services::input::reset_physical_buttons();
+			modules::left_clicker::notify_manual_click(false);
+			modules::right_clicker::notify_manual_click(false);
+			modules::fast_exp::notify_manual_right_click(false);
+			panel_was_open = open;
+		}
+		services::game::menu_input::update(open, focused, !gui::should_unload);
+		// Software cursor appears on this frame even without WM_MOUSEMOVE or
+		// WM_SETCURSOR. The Win32 backend hides the OS cursor to avoid doubling.
+		ImGui::GetIO().MouseDrawCursor = open && focused;
+		if (!open || !focused) return;
+		ClipCursor(nullptr);
+		SetCursor(nullptr);
+		if (opening)
+		{
+			RECT client{};
+			if (GetClientRect(window, &client))
+			{
+				POINT point{client.right / 2, client.bottom / 2};
+				if (ClientToScreen(window, &point)) SetCursorPos(point.x, point.y);
+			}
+		}
+	}
 
 	void focus_minecraft_window(HWND minecraft_window)
 	{
@@ -325,7 +365,6 @@ void gui::render_click_gui_options()
 {
 	// This is deliberately fixed and has no keybind-capture control in the UI.
 	gui::menu_key = VK_RSHIFT;
-	ImGui::TextDisabled("Right Shift: open menu / Esc: close");
 
 }
 
@@ -343,6 +382,25 @@ void gui::request_panic()
 }
 
 extern LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+static void release_panel_mouse(HWND hWnd)
+{
+	if (ImGui::GetCurrentContext())
+	{
+		// Reset the backend's button mask as well as ImGui's state. These are
+		// internal UI messages, never SendInput events or game button releases.
+		for (const UINT message : {WM_LBUTTONUP, WM_RBUTTONUP, WM_MBUTTONUP})
+			ImGui_ImplWin32_WndProcHandler(hWnd, message, 0, 0);
+		ImGui_ImplWin32_WndProcHandler(hWnd, WM_XBUTTONUP, MAKEWPARAM(0, XBUTTON1), 0);
+		ImGui_ImplWin32_WndProcHandler(hWnd, WM_XBUTTONUP, MAKEWPARAM(0, XBUTTON2), 0);
+		auto& io = ImGui::GetIO();
+		io.AddFocusEvent(false);
+		io.AddMousePosEvent(-FLT_MAX, -FLT_MAX);
+		io.MouseDrawCursor = false;
+	}
+	if (GetCapture() == hWnd) ReleaseCapture();
+	ClipCursor(nullptr);
+}
 static LRESULT CALLBACK detour_WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	static HCURSOR arrow_cursor = LoadCursorW(nullptr, IDC_ARROW);
@@ -350,32 +408,10 @@ static LRESULT CALLBACK detour_WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	static bool physical_right_down = false;
 	static bool prev_gui_draw = false;
 
-	auto release_common_keys = [&](HWND window_handle)
-	{
-		static const int keys_to_reset[] = {
-			'W', 'A', 'S', 'D',
-			VK_SPACE, VK_SHIFT, VK_CONTROL, VK_MENU,
-			VK_LBUTTON, VK_RBUTTON, VK_MBUTTON
-		};
-
-		for (int vk : keys_to_reset)
-		{
-			if ((GetAsyncKeyState(vk) & 0x8000) == 0)
-			{
-				CallWindowProcA(original_WndProc, window_handle, WM_KEYUP, static_cast<WPARAM>(vk), 0xC0000001);
-			}
-		}
-	};
-
 	if (prev_gui_draw != gui::draw)
 	{
 		prev_gui_draw = gui::draw;
 		physical_left_down = physical_right_down = false;
-		services::input::reset_physical_buttons();
-		services::input::cancel_trigger_click();
-		modules::left_clicker::notify_manual_click(false);
-		modules::right_clicker::notify_manual_click(false);
-		release_common_keys(hWnd);
 	}
 
 	auto update_physical_button = [&](bool left, bool pressed)
@@ -385,7 +421,7 @@ static LRESULT CALLBACK detour_WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			return;
 		previous = pressed;
 		services::input::observe_physical(left ? services::input::mouse_button::left : services::input::mouse_button::right, pressed);
-		if (!auth::client::access_allowed()) return;
+		if (!auth::permitted(auth::scope::render)) return;
 		if (left)
 		{
 			modules::left_clicker::notify_manual_click(pressed);
@@ -407,8 +443,11 @@ static LRESULT CALLBACK detour_WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 	// GLFW commonly receives hardware mouse buttons through raw input. Reading
 	// WM_INPUT here keeps manual clicks separate from our tagged SendInput pulses.
-	if (msg == WM_KILLFOCUS)
+	const bool focus_lost = msg == WM_KILLFOCUS || (msg == WM_ACTIVATEAPP && !wParam) ||
+		(msg == WM_ACTIVATE && LOWORD(wParam) == WA_INACTIVE);
+	if (focus_lost)
 	{
+		focus_reset_pending.store(true, std::memory_order_release);
 		physical_left_down = physical_right_down = false;
 		services::input::reset_physical_buttons();
 		if (auto* jump = dynamic_cast<modules::jump_reset*>(modules::find_module_by_id("jump_reset")))
@@ -418,9 +457,15 @@ static LRESULT CALLBACK detour_WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		services::input::cancel_trigger_click();
 		modules::left_clicker::notify_manual_click(false);
 		modules::right_clicker::notify_manual_click(false);
+		if (gui::draw) release_panel_mouse(hWnd);
 	}
 	if (msg == WM_SETFOCUS)
 		services::input::reset_physical_keys();
+	if (focus_lost || msg == WM_SETFOCUS)
+	{
+		if (ImGui::GetCurrentContext()) ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam);
+		return CallWindowProcA(original_WndProc, hWnd, msg, wParam, lParam);
+	}
 	if (msg == WM_INPUT)
 	{
 		RAWINPUT raw{};
@@ -431,6 +476,9 @@ static LRESULT CALLBACK detour_WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		{
 			const USHORT flags = raw.data.mouse.usButtonFlags;
 			const auto tag = static_cast<std::uintptr_t>(raw.data.mouse.ulExtraInformation);
+            if (static_cast<std::uint32_t>(tag)==static_cast<std::uint32_t>(modules::synthetic_mouse_tag) &&
+                !auth::permitted(auth::scope::input) && (flags & (RI_MOUSE_LEFT_BUTTON_DOWN|RI_MOUSE_RIGHT_BUTTON_DOWN)))
+                return DefWindowProcA(hWnd,msg,wParam,lParam);
 			if (services::input::restore_tag(tag))
 			{
 				if (services::input::accept_restore_event(tag))
@@ -456,6 +504,11 @@ static LRESULT CALLBACK detour_WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	const auto mouse_tag = static_cast<std::uintptr_t>(GetMessageExtraInfo());
 	const bool key_down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
 	const bool key_up = msg == WM_KEYUP || msg == WM_SYSKEYUP;
+    if (static_cast<std::uint32_t>(mouse_tag)==static_cast<std::uint32_t>(modules::synthetic_mouse_tag) &&
+        !auth::permitted(auth::scope::input) && (key_down || msg==WM_LBUTTONDOWN || msg==WM_RBUTTONDOWN)) return 0;
+	if (gui::draw && (key_down || key_up) && services::game::menu_input::system_shortcut(
+		static_cast<unsigned>(wParam), msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP || (lParam & (1LL << 29))))
+		return CallWindowProcA(original_WndProc, hWnd, msg, wParam, lParam);
 	if ((key_down || key_up) && services::input::jump_key_tag(mouse_tag))
 	{
 		if (wParam != VK_SPACE || !services::input::observe_jump_space_event(mouse_tag, key_down)) return 0;
@@ -499,26 +552,26 @@ static LRESULT CALLBACK detour_WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 	if (gui::draw)
 	{
-		if (msg == WM_SETCURSOR)
+		// Consume raw input without forwarding it to GLFW, but still perform
+		// Windows' required raw-input cleanup after the tracking above.
+		if (msg == WM_INPUT) return DefWindowProcA(hWnd, msg, wParam, lParam);
+		const bool focused = GetForegroundWindow() == hWnd;
+		if (msg == WM_SETCURSOR && focused && LOWORD(lParam) == HTCLIENT)
 		{
-			SetCursor(arrow_cursor);
+			SetCursor(ImGui::GetIO().MouseDrawCursor ? nullptr : arrow_cursor);
 			return TRUE;
 		}
 
-		if (msg == WM_RBUTTONDOWN || msg == WM_RBUTTONUP)
-		{
-			modules::fast_exp::notify_manual_right_click(msg == WM_RBUTTONDOWN);
-		}
-
-		// Pass key release events through to original WndProc so GLFW and Minecraft register key releases while UI is open
-		if (msg == WM_KEYUP || msg == WM_SYSKEYUP)
-		{
-			CallWindowProcA(original_WndProc, hWnd, msg, wParam, lParam);
-		}
-
-		ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam);
-		SetCursor(arrow_cursor);
-		return 0;
+		// Do not swallow OS window switching/closing shortcuts. Ordinary game
+		// keys and mouse clicks still stay inside the panel.
+		if (ImGui::GetCurrentContext()) ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam);
+		const bool keyboard_message = (msg >= WM_KEYFIRST && msg <= WM_KEYLAST) || msg == WM_IME_CHAR;
+		const bool mouse_message = (msg >= WM_MOUSEFIRST && msg <= WM_MOUSELAST) || msg == WM_MOUSELEAVE;
+		// Forward releases exactly once so GLFW cannot retain a pre-menu hold.
+		if (key_up) return CallWindowProcA(original_WndProc, hWnd, msg, wParam, lParam);
+		if (keyboard_message || mouse_message) return 0;
+		// Focus, activation and resize still belong to GLFW/the game window.
+		return CallWindowProcA(original_WndProc, hWnd, msg, wParam, lParam);
 	}
 
 	// Legacy mouse messages remain as a fallback. The transition guard above
@@ -539,6 +592,8 @@ static LRESULT CALLBACK detour_WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 static void uninit(HWND hWnd, HDC device)
 {
+    services::game::menu_input::shutdown();
+	panel_was_open = false;
     for (auto* module : modules::get_modules())
         module->on_render_shutdown();
 	// Release owned jump input while client-thread JNI and the input guard are
@@ -811,44 +866,42 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 		gui::suppress_menu_key_until_release = true;
 	}
 	previous_auth_open = auth_open;
+	const bool focus_interrupted = focus_reset_pending.exchange(false, std::memory_order_acq_rel);
 
 	// Poll the fixed Right Shift shortcut every frame. GLFW does not reliably
 	// expose every Windows virtual key through the hooked WndProc path.
 	{
-		static bool previous_menu_key = false;
+		static services::game::menu_input::focused_shortcut menu_shortcut;
+		if (focus_interrupted) menu_shortcut.pressed(false, false);
+		const bool focused = window && GetForegroundWindow() == window;
 		const bool current_menu_key = (GetAsyncKeyState(VK_RSHIFT) & 0x8000) != 0;
+		const bool shortcut_pressed = menu_shortcut.pressed(focused, current_menu_key);
 		if (gui::suppress_menu_key_until_release)
 		{
 			if (!current_menu_key)
 				gui::suppress_menu_key_until_release = false;
 		}
-		else if (current_menu_key && !previous_menu_key && !gui::menu_key_scanning &&
+		else if (shortcut_pressed && !gui::menu_key_scanning &&
 			!std::any_of(modules::get_modules().begin(), modules::get_modules().end(),
 				[](const modules::module* entry) { return entry->is_keybind_capture_active(); }) &&
 			!gui::should_unload && !gui::loader_visible && !auth_open)
 		{
 			gui::draw = !gui::draw;
-			ClipCursor(NULL);
-			if (gui::draw)
-			{
-				// Initialise virtual cursor at client centre
-				RECT client{};
-				GetClientRect(window, &client);
-				virt_mouse_x = (float)(client.right  / 2);
-				virt_mouse_y = (float)(client.bottom / 2);
-				POINT pt{ (LONG)virt_mouse_x, (LONG)virt_mouse_y };
-				ClientToScreen(window, &pt);
-				SetCursorPos(pt.x, pt.y);
-			}
 		}
-		previous_menu_key = current_menu_key;
 	}
 	if ((GetAsyncKeyState(VK_ESCAPE) & 0x8000) == 0)
 		gui::suppress_escape_until_release.store(false, std::memory_order_release);
 
+	sync_panel_input();
 	ImGui_ImplOpenGL3_NewFrame();
 	ImGui_ImplWin32_NewFrame();
-	if (gui::draw)
+	static services::game::menu_input::focused_pointer panel_pointer;
+	if (focus_interrupted) panel_pointer.accepts(false, false);
+	const bool pointer_focused = services::game::menu_input::accepts_panel_pointer(gui::draw, window && GetForegroundWindow() == window);
+	const bool left_down = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+	const bool right_down = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
+	const bool accept_buttons = panel_pointer.accepts(pointer_focused, left_down || right_down);
+	if (pointer_focused)
 	{
 		ClipCursor(NULL);
 		POINT mouse_pos{};
@@ -856,11 +909,11 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 		{
 			ImGui::GetIO().AddMousePosEvent((float)mouse_pos.x, (float)mouse_pos.y);
 		}
-		ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0);
-		ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Right, (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0);
+		ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, accept_buttons && left_down);
+		ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Right, accept_buttons && right_down);
 	}
 	ImGui::NewFrame();
-	if (auth::client::access_allowed()) platform::client_dispatcher::drain();
+	if (auth::permitted(auth::scope::render)) platform::client_dispatcher::drain();
 	else platform::client_dispatcher::clear();
 
 
@@ -920,11 +973,11 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 	// Render HUD and ArrayList overlays
 	gui::hud_editor::restore_saved_layout();
 	gui::hud_editor_active = gui::draw && gui::hud_layout_editor_active;
-	if (!gui::loader_visible && auth::client::access_allowed())
+	if (!gui::loader_visible && auth::permitted(auth::scope::render))
 	{
 		for (modules::module* module : modules::get_modules())
 		{
-			if (!auth::client::access_allowed()) break;
+			if (!auth::permitted(auth::scope::render)) break;
 			if (module->enabled || module->render_when_disabled())
 				module->render_overlay();
 		}
@@ -937,7 +990,7 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 			walk->cancel_on_client_thread();
 	}
 
-	if (gui::draw && !gui::loader_visible && auth::client::access_allowed())
+	if (gui::draw && !gui::loader_visible && auth::permitted(auth::scope::render))
 	{
 		const ImGuiViewport* reference_viewport = ImGui::GetMainViewport();
 
@@ -948,9 +1001,12 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 
 
 	}
-	if (auth::client::access_allowed()) gui::render_notifications();
+	if (auth::permitted(auth::scope::render)) gui::render_notifications();
 	if (!gui::loader_visible) gui::render_auth_screen();
-	gui::aegis::flush_preferences();
+	// Escape/auth can close the panel inside the UI render. Restore capture on
+	// that same frame and neutralize any input written by earlier callbacks.
+	sync_panel_input();
+	gui::aegis::flush_preferences(false, ImGui::IsAnyItemActive());
 	configs::keybind_profile::flush();
 	ImGui::EndFrame();
 	ImGui::Render();

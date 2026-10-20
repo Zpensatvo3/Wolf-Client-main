@@ -10,6 +10,7 @@
 #include <imgui/imgui.h>
 
 #include "pearl_macro.hpp"
+#include "../../services/game/world_bridge.hpp"
 #include "../../ui/settings_renderer.hpp"
 #include "../ui_redirect.hpp"
 #include "../../gui/gui.hpp"
@@ -66,6 +67,8 @@ void modules::pearl_macro::finish(::cache& cache, bool turn_off)
 
 void modules::pearl_macro::run(::cache& cache)
 {
+    if constexpr (mc::target.build_id == 12111)
+        if (!native_fallback_.load(std::memory_order_acquire)) return;
 	const auto settings_snapshot = settings_.read();
 	const HWND minecraft_window = gui::get_window();
 	if (gui::draw || !minecraft_window || GetForegroundWindow() != minecraft_window ||
@@ -157,7 +160,57 @@ void modules::pearl_macro::run(::cache& cache)
 
 void modules::pearl_macro::on_disable(::cache& cache)
 {
+    if constexpr (mc::target.build_id == 12111) {
+        reset_requested_.store(true, std::memory_order_release);
+        if (!native_fallback_.load(std::memory_order_acquire)) return;
+    }
 	finish(cache, false);
+}
+
+void modules::pearl_macro::render_overlay()
+{
+    if constexpr (mc::target.build_id != 12111) return;
+    if (native_fallback_.load(std::memory_order_acquire) || !platform::jni_context::bind_current_thread()) return;
+    namespace bridge = services::game::world_bridge;
+    try {
+        jni::frame frame{96};
+        if (reset_requested_.exchange(false, std::memory_order_acq_rel) || !enabled) {
+            if (!bridge::release_pearl()) { reset_requested_.store(true, std::memory_order_release); return; }
+            state = State::IDLE; next_action = {}; if (!enabled) return;
+        }
+        bridge::pearl_snapshot observed;
+        const auto backend = bridge::capture_pearl(observed);
+        if (backend == services::game::hybrid::result::native_fallback) {
+            state = State::IDLE; next_action = {}; native_fallback_.store(true, std::memory_order_release); return;
+        }
+        const auto stop = [&] { bridge::release_pearl(); state = State::IDLE; next_action = {}; enabled = false; };
+        if (backend != services::game::hybrid::result::ready) { stop(); return; }
+        const auto settings = settings_.read(); const auto now = steady_clock::now();
+        if (state == State::IDLE) {
+            int chosen = -1;
+            for (int i = 0; i < 9; ++i) if (observed.pearls[i]) { chosen = i; break; }
+            if (chosen < 0 || !bridge::begin_pearl(observed, chosen)) { stop(); return; }
+            state = State::WAIT_SWITCH;
+            next_action = now + std::chrono::milliseconds(std::clamp(settings.switch_delay, 0, 150)); return;
+        }
+        if (!observed.owned) { stop(); return; }
+        if (now < next_action) return;
+        if (state == State::WAIT_SWITCH) {
+            if (!bridge::use_pearl()) { stop(); return; }
+            state = State::HOLD_USE; next_action = now + std::chrono::milliseconds(55); return;
+        }
+        if (state == State::HOLD_USE) {
+            state = State::WAIT_RETURN;
+            next_action = now + std::chrono::milliseconds(std::clamp(settings.return_delay, 0, 250)); return;
+        }
+        if (state == State::WAIT_RETURN) stop();
+    } catch (...) { platform::jni_context::clear_exception(); on_render_shutdown(); enabled = false; }
+}
+
+void modules::pearl_macro::on_render_shutdown()
+{
+    services::game::world_bridge::release_pearl();
+    if (!native_fallback_.load(std::memory_order_acquire)) { state = State::IDLE; next_action = {}; }
 }
 
 void modules::pearl_macro::render_options()

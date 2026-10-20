@@ -68,17 +68,17 @@ std::string modules::module::make_stable_id(const char* value)
     return id.empty() ? "module" : id;
 }
 
-void modules::module::key_bind_selector()
+void modules::module::key_bind_selector(float width)
 {
-    if (!supports_keybind()) { ImGui::TextDisabled("Right Shift"); return; }
-    utils::null_string display = (scanning ? "LISTENING" : keycode_to_string(keybind));
-    const ImVec2 button_size(72.0f, 26.0f);
+    const bool editable = supports_keybind();
+    utils::null_string display = !editable ? "Right Shift" : (scanning ? "LISTENING" : keycode_to_string(keybind));
+    const ImVec2 button_size(std::max(1.f, width), 28.f);
     const ImVec2 button_min = ImGui::GetCursorScreenPos();
     ImGui::PushID(get_id());
     ImGui::InvisibleButton("##keybind", button_size);
     const bool hovered = ImGui::IsItemHovered();
     const bool held = ImGui::IsItemActive();
-    const bool pressed = ImGui::IsItemClicked();
+    const bool pressed = editable && ImGui::IsItemClicked();
     ImDrawList* draw_list = ImGui::GetWindowDrawList();
     draw_list->AddRectFilled(button_min, ImVec2(button_min.x + button_size.x, button_min.y + button_size.y),
         ImGui::GetColorU32(held ? ImGuiCol_ButtonActive : (hovered ? ImGuiCol_ButtonHovered : ImGuiCol_Button)),
@@ -89,7 +89,7 @@ void modules::module::key_bind_selector()
         ImGui::GetColorU32(ImGuiCol_Text), display.data);
     ImGui::PopID();
     if (pressed) begin_keybind_capture();
-    if (scanning)
+    if (editable && scanning)
     {
         int last_pressed = gui::get_last_pressed_key();
         if (!last_pressed) return;

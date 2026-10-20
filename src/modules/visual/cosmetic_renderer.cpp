@@ -3,12 +3,17 @@
 #endif
 #include "cosmetic_renderer.hpp"
 #include "chams_model.hpp"
+#include "block_highlight_bindings.hpp"
+#include "visual_effects_logic.hpp"
+#include "cape_design.hpp"
+#include "cosmetic_physics.hpp"
 #include "../../gui/gui.hpp"
 #include "../../gui/ui_state.hpp"
 #include "../../platform/adapter/game_adapter.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../../services/game/client_context.hpp"
 #include "../../services/game/overlay_context.hpp"
+#include "../../services/game/target_service.hpp"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -48,7 +53,10 @@ namespace
     };
     using polygon = std::vector<point>;
     using shadow = std::vector<plane>;
-    struct triangle { std::array<point,3> vertices; ImVec4 color; };
+    struct triangle {
+        std::array<point,3> vertices; ImVec4 color;
+        ImTextureID texture=nullptr; std::array<ImVec2,3> uv{};
+    };
     struct edge { point a,b; ImVec4 color; };
     struct mesh { std::vector<triangle> faces; std::vector<edge> edges; };
     struct scene
@@ -92,6 +100,46 @@ namespace
             a=b; da=db;
         }
         return output;
+    }
+
+    struct texture_vertex { point position; ImVec2 uv; };
+    using texture_polygon=std::vector<texture_vertex>;
+    texture_polygon clip_texture(const texture_polygon& input,plane boundary,bool inside=true)
+    {
+        texture_polygon output; if (input.empty()) return output;
+        output.reserve(input.size()+1); auto a=input.back();
+        double da=boundary.distance(a.position)*(inside ? 1. : -1.);
+        for (const auto& b:input) {
+            const double db=boundary.distance(b.position)*(inside ? 1. : -1.);
+            if ((da>=0)!=(db>=0)) {
+                const double t=da/(da-db);
+                output.push_back({a.position+(b.position-a.position)*t,
+                    {float(a.uv.x+(b.uv.x-a.uv.x)*t),float(a.uv.y+(b.uv.y-a.uv.y)*t)}});
+            }
+            if (db>=0) output.push_back(b);
+            a=b; da=db;
+        }
+        return output;
+    }
+    std::vector<texture_polygon> unoccluded_texture(texture_polygon input,const scene& s)
+    {
+        std::vector<texture_polygon> pieces{std::move(input)};
+        for (const auto& volume:s.occluders) {
+            std::vector<texture_polygon> next;
+            for (auto& p:pieces) {
+                bool separate=false;
+                for (const auto& plane:volume)
+                    if (std::all_of(p.begin(),p.end(),[&](const auto& v) { return plane.distance(v.position)<0; })) { separate=true; break; }
+                if (separate) { next.push_back(std::move(p)); continue; }
+                for (const auto& plane:volume) {
+                    auto outside=clip_texture(p,plane,false);
+                    if (outside.size()>=3) next.push_back(std::move(outside));
+                    p=clip_texture(p,plane); if (p.size()<3) break;
+                }
+            }
+            pieces=std::move(next); if (pieces.empty() || pieces.size()>256) break;
+        }
+        return pieces.size()>256 ? std::vector<texture_polygon>{} : pieces;
     }
 
     // A convex box casts a convex shadow from the camera. Subtracting these
@@ -213,7 +261,7 @@ namespace
         return pieces.size()>128 ? std::vector<std::pair<point,point>>{} : pieces;
     }
 
-    bool capture(scene& s,bool only_third_person=true)
+    bool capture(scene& s,bool only_third_person=true,bool cosmetic_pose=true)
     {
         using platform::jni_context::clear_exception;
         if (gui::draw || gui::loader_visible || gui::hud_editor_active || gui::should_unload ||
@@ -225,9 +273,9 @@ namespace
         const bool third_person=camera.isThirdPerson.call()==JNI_TRUE;
         if (clear_exception() || (only_third_person && !third_person)) return false;
         const auto& player=s.context.player;
-        if (!player.isAlive.call() || player.isSpectator.call() || player.isInvisible.call() ||
-            player.isSleeping.call() || player.isFallFlying.call() || player.isSwimming.call() ||
-            player.hasVehicle.call() || clear_exception()) return false;
+        if (!player.isAlive.call() || player.isSpectator.call() || clear_exception()) return false;
+        if (cosmetic_pose && (player.isInvisible.call() || player.isSleeping.call() ||
+            player.isFallFlying.call() || player.isSwimming.call() || player.hasVehicle.call() || clear_exception())) return false;
         auto& adapter=platform::adapter::get();
         const float delta=std::clamp(adapter.get_tick_delta(s.context.instance),0.f,1.f);
         if (!std::isfinite(delta) || clear_exception()) return false;
@@ -320,12 +368,30 @@ namespace
     }
     void render(const scene& s, const mesh& m, bool glow)
     {
-        struct face { std::vector<ImVec2> vertices; ImU32 color; double depth; };
+        struct face {
+            std::vector<ImVec2> vertices; ImU32 color; double depth;
+            ImTextureID texture=nullptr; std::vector<ImVec2> uv;
+        };
         struct line { ImVec2 a,b; ImVec4 color; };
         std::vector<face> faces;
         std::vector<line> lines;
+        faces.reserve(m.faces.size()*2); lines.reserve(m.edges.size()*2);
         const auto planes=frustum(s);
-        for (const auto& triangle:m.faces)
+        for (const auto& triangle:m.faces) {
+            if (triangle.texture) {
+                texture_polygon source; source.reserve(3);
+                for (int i=0;i<3;++i) source.push_back({triangle.vertices[i],triangle.uv[i]});
+                for (auto polygon:unoccluded_texture(std::move(source),s)) {
+                    for (auto& p:polygon) p.position=s.to_view(p.position);
+                    for (const auto& plane:planes) polygon=clip_texture(polygon,plane);
+                    if (polygon.size()<3) continue;
+                    face f{{},ImGui::ColorConvertFloat4ToU32(triangle.color),0,triangle.texture,{}};
+                    f.vertices.reserve(polygon.size()); f.uv.reserve(polygon.size());
+                    for (const auto& p:polygon) { f.vertices.push_back(s.project(p.position)); f.uv.push_back(p.uv); f.depth+=p.position.z; }
+                    f.depth/=polygon.size(); faces.push_back(std::move(f));
+                }
+                continue;
+            }
             for (auto polygon:unoccluded({triangle.vertices.begin(),triangle.vertices.end()},s))
             {
                 for (auto& p:polygon) p=s.to_view(p);
@@ -344,6 +410,7 @@ namespace
                 if (area<0) std::reverse(f.vertices.begin(),f.vertices.end());
                 faces.push_back(std::move(f));
             }
+        }
         for (const auto& edge:m.edges)
             for (auto [a,b]:unoccluded_edge(edge.a,edge.b,s))
             {
@@ -353,13 +420,28 @@ namespace
         std::sort(faces.begin(),faces.end(),[](const auto& a,const auto& b) { return a.depth>b.depth; });
         auto* draw=ImGui::GetBackgroundDrawList();
         draw->PushClipRect(s.origin,ImVec2(s.origin.x+s.size.x,s.origin.y+s.size.y),true);
+        const auto image_face=[&](const face& f,ImVec2 offset,ImU32 color) {
+            draw->PushTextureID(f.texture);
+            const int count=static_cast<int>(f.vertices.size()-2)*3; draw->PrimReserve(count,count);
+            for (std::size_t i=1;i+1<f.vertices.size();++i) for (const auto index:{std::size_t(0),i,i+1}) {
+                const auto p=f.vertices[index]; draw->PrimVtx({p.x+offset.x,p.y+offset.y},f.uv[index],color);
+            }
+            draw->PopTextureID();
+        };
+        if (glow) for (int layer=2;layer>0;--layer) for (const auto& f:faces) if (f.texture) {
+            auto c=ImGui::ColorConvertU32ToFloat4(f.color); c.w*=.045f;
+            const auto color=ImGui::ColorConvertFloat4ToU32(c); const float distance=layer*1.5f;
+            for (const auto offset:{ImVec2(-distance,0),ImVec2(distance,0),ImVec2(0,-distance),ImVec2(0,distance)}) image_face(f,offset,color);
+        }
         if (glow) for (int layer=3;layer>0;--layer) for (const auto& line:lines)
         {
             ImVec4 c=line.color; c.w*=.06f;
             draw->AddLine(line.a,line.b,ImGui::ColorConvertFloat4ToU32(c),1.f+layer*1.5f);
         }
-        for (const auto& face:faces)
-            draw->AddConvexPolyFilled(face.vertices.data(),static_cast<int>(face.vertices.size()),face.color);
+        for (const auto& face:faces) {
+            if (face.texture) image_face(face,{0,0},face.color);
+            else draw->AddConvexPolyFilled(face.vertices.data(),static_cast<int>(face.vertices.size()),face.color);
+        }
         for (const auto& line:lines) draw->AddLine(line.a,line.b,ImGui::ColorConvertFloat4ToU32(line.color),1.25f);
         draw->PopClipRect();
     }
@@ -575,27 +657,73 @@ void cosmetics::draw_hat(const module_settings::china_hat& config)
     },config.glow);
 }
 
-void cosmetics::draw_wings(const module_settings::wings& config)
+struct cosmetics::cape_motion::runtime
 {
-    draw_cosmetic([&](const scene& s,mesh& m)
+    services::game::overlay_session session;
+    cosmetic_physics::signal signal;
+    cosmetic_physics::wing_rig wings;
+    cosmetic_physics::cloth cloth;
+    bool observe(const scene& s,bool animate,double speed=1)
     {
-        if (!std::isfinite(config.size) || !std::isfinite(config.speed)) return;
+        const int entity=s.context.player.getId.call(),age=s.context.player.age.get();
+        if (platform::jni_context::clear_exception()) return false;
+        if (session.observe({s.context.world,s.context.player})) { signal.clear(); cloth.initialized=false; wings.reset(); }
+        const bool reset=signal.observe({{s.position.x,s.position.y,s.position.z},ImGui::GetTime(),
+            std::atan2(s.body.right.z,s.body.right.x),entity,age},animate,speed);
+        if (reset) { cloth.initialized=false; wings.reset(); }
+        return signal.initialized;
+    }
+};
+cosmetics::cape_motion::cape_motion() : state_(std::make_unique<runtime>()) {}
+cosmetics::cape_motion::~cape_motion() = default;
+void cosmetics::cape_motion::clear()
+{
+    state_->signal.clear(); state_->cloth.initialized=false; state_->wings.reset();
+    if (jni::get_env()) state_->session.reset(); else state_->session.invalidate();
+}
+
+void cosmetics::draw_wings(const module_settings::wings& config,cape_motion& motion)
+{
+    const bool rendered=draw_cosmetic([&](const scene& s,mesh& m)
+    {
+        if (!std::isfinite(config.size) || !std::isfinite(config.speed) || !std::isfinite(config.physics)) return;
         const double size=std::clamp(config.size,.5f,1.6f);
         const bool animate=config.animate && !gui::aegis::get_preferences().reduce_motion;
-        const double flap=animate ? std::sin(ImGui::GetTime()*2.6*std::clamp(config.speed,.25f,2.f)) : 0.;
-        const double angle=(22.+flap*14.)*pi/180.;
+        auto& rig=*motion.state_;
+        if (!rig.observe(s,animate,std::clamp(config.speed,.25f,2.f))) return;
+        rig.wings.advance(rig.signal,rig.signal.steps(),config.physics);
+        const auto asset=config.style==1 ? gui::icon_asset::wing_angel : config.style==2 ? gui::icon_asset::wing_butterfly : gui::icon_asset::wing_dragon;
+        const auto image=config.detailed_art ? gui::get_icon_texture(asset) : nullptr;
+        m.faces.reserve(image ? 576 : 384);
         for (int side:{-1,1})
         {
+            const int joint=side<0 ? 0 : 1;
+            const double angle=animate ? rig.wings.shoulder[joint].position : .38;
+            const double flex=animate ? (rig.wings.tip[joint].position-angle)*std::clamp(config.physics,0.f,1.5f) : 0.;
             const auto transform=[&](point p)
             {
-                return s.body_point({side*(.11+p.x*size*std::cos(angle)),
-                    1.25+p.y*size,-.19-p.x*size*std::sin(angle)+p.z*size});
+                const double span=std::clamp(p.x/1.45,0.,1.),fold=angle+flex*span*span;
+                return s.body_point({side*(.11+p.x*size*std::cos(fold)),
+                    1.25+p.y*size,-.19-p.x*size*std::sin(fold)+p.z*size});
             };
             const auto color=[&](int offset=0) { return tint(config.theme_color,config.color,config.opacity,offset); };
             const auto rib=[&](point a,point b,int offset=0,float alpha=1.1f) {
                 auto c=color(offset); c.w=std::min(1.f,c.w*alpha);
                 m.edges.push_back({transform(a),transform(b),c});
             };
+            if (image) {
+                constexpr int columns=12,rows=12;
+                const double root=config.style==0 ? .64 : config.style==1 ? .49 : .50;
+                const auto vertex=[&](float u,float v) { return transform({u*1.45,(root-v)*1.75,0}); };
+                const auto ink=config.tint_art ? color() : ImVec4(1,1,1,config.opacity);
+                for (int y=0;y<rows;++y) for (int x=0;x<columns;++x) {
+                    const float u=float(x)/columns,v=float(y)/rows,a=float(x+1)/columns,b=float(y+1)/rows;
+                    const auto p=vertex(u,v),q=vertex(a,v),r=vertex(u,b),t=vertex(a,b);
+                    m.faces.push_back({{p,r,q},ink,image,{{{u,v},{u,b},{a,v}}}});
+                    m.faces.push_back({{q,r,t},ink,image,{{{a,v},{u,b},{a,b}}}});
+                }
+                continue;
+            }
             if (config.style==1)
             {
                 // Long, curved feathers fan down from a rounded shoulder cover.
@@ -662,76 +790,28 @@ void cosmetics::draw_wings(const module_settings::wings& config)
             }
         }
     },config.glow);
+    if (!rendered) motion.clear();
 }
 
 void cosmetics::draw_cape(const module_settings::cape& config,cape_motion& motion)
 {
     const bool rendered=draw_cosmetic([&](const scene& s,mesh& m)
     {
-        if (!std::isfinite(config.length) || !std::isfinite(config.width) || !std::isfinite(config.motion)) return;
-        const auto& player=s.context.player;
-        const int entity=static_cast<int>(player.getId.call());
-        const int age=static_cast<int>(player.age.get());
-        if (platform::jni_context::clear_exception()) return;
-        const double now=ImGui::GetTime();
-        const double yaw=std::atan2(s.body.right.z,s.body.right.x);
-        const point previous{motion.x,motion.y,motion.z};
-        const point displacement=s.position-previous;
-        double elapsed=now-motion.time;
-        // Reset after teleport/respawn, a hidden frame or a long render pause.
-        // No JNI references or game state are retained by this animation.
-        if (!motion.initialized || motion.entity!=entity || age<motion.age ||
-            elapsed<=0 || elapsed>.25 || dot(displacement,displacement)>16.)
-        {
-            motion={}; motion.initialized=true; motion.entity=entity;
-            motion.yaw=yaw;
-            elapsed=0;
-        }
-        const double dt=std::clamp(elapsed,0.,.05);
-        const bool animate=config.animate && !gui::aegis::get_preferences().reduce_motion;
-        const double strength=std::clamp(config.motion,.25f,1.75f);
-        if (elapsed>1e-6 && animate)
-        {
-            // Actual rendered displacement catches walking, strafing, jumping
-            // and knockback. Exponential smoothing is independent of frame rate.
-            const point velocity=displacement*(1./elapsed);
-            const double blend=1.-std::exp(-dt*9.);
-            const double speed=std::min(12.,std::hypot(velocity.x,velocity.z));
-            const double side=std::clamp(dot(velocity,s.body.right),-8.,8.);
-            const double vertical=std::clamp(velocity.y,-8.,8.);
-            const double turn=std::clamp(std::remainder(yaw-motion.yaw,2*pi)/elapsed,-6.,6.);
-            motion.speed+=(speed-motion.speed)*blend;
-            motion.sideways+=(side-motion.sideways)*blend;
-            motion.vertical+=(vertical-motion.vertical)*blend;
-            motion.turn+=(turn-motion.turn)*blend;
-            motion.phase=std::fmod(motion.phase+dt*(2.1+motion.speed*.45),2*pi);
-        }
-        else if (!animate)
-        {
-            motion.speed=motion.sideways=motion.vertical=motion.turn=motion.phase=0;
-        }
-        motion.time=now; motion.yaw=yaw; motion.age=age;
-        motion.x=s.position.x; motion.y=s.position.y; motion.z=s.position.z;
-
-        const double length=std::clamp(config.length,.65f,1.30f);
-        const double width=std::clamp(config.width,.45f,.95f);
-        const double wind=animate ? std::min(.80,motion.speed*.058*strength) : 0.;
-        const double lean=.17+wind+(animate ? std::clamp(-motion.vertical*.023*strength,-.08,.15) : 0.);
-        const double lateral=animate ? std::clamp((-motion.sideways*.028-motion.turn*.045)*strength,-.30,.30) : 0.;
-        const double phase=motion.phase;
+        if (!std::isfinite(config.length) || !std::isfinite(config.width) ||
+            !std::isfinite(config.motion) || !std::isfinite(config.physics)) return;
+        const double length=std::clamp(config.length,.65f,1.30f),width=std::clamp(config.width,.45f,.95f);
+        const bool animate=config.animate && config.physics>0 && !gui::aegis::get_preferences().reduce_motion;
+        auto& rig=*motion.state_;
+        if (!rig.observe(s,animate)) return;
+        if (!rig.cloth.initialized || std::abs(rig.cloth.width-width)>1e-5 || std::abs(rig.cloth.length-length)>1e-5)
+            rig.cloth.reset(width,length);
+        if (animate) rig.cloth.advance(rig.signal,rig.signal.steps(),config.motion*config.physics);
+        const auto image=config.style==8 ? gui::get_icon_texture(gui::icon_asset::cape_phoenix) :
+            config.style==9 ? gui::get_icon_texture(gui::icon_asset::cape_astral) : nullptr;
         const auto surface=[&](double u,double v)
         {
-            const double across=u*2-1;
-            // Shoulder edge stays pinned. Fold/wind amplitude increases toward
-            // the hem, whose length remains bounded even during fast movement.
-            const double amplitude=animate ? (.010+wind*.065)*strength : 0.;
-            const double ripple=std::sin(v*7.-phase+across*.8)*amplitude*v*v;
-            const double folds=std::cos(across*3*pi+v*.65)*.015*v;
-            const double roll=animate ? std::sin(phase*.8+v*3.)*.010*strength*v*v : 0.;
-            const double flare=1.+v*.10;
-            return s.body_point({across*width*.5*flare+lateral*v*v+roll,
-                1.46-length*v*std::cos(lean)+.012*std::cos(across*pi)*v*v,
-                -.255-length*v*std::sin(lean)+folds+ripple});
+            const auto p=rig.cloth.at(u,v);
+            return s.body_point({p.x,p.y,p.z+.004*std::cos(u*6*pi)*v*(1-v)});
         };
         constexpr int columns=12,rows=14;
         const auto u_at=[](int i) { return i==0 ? 0. : i==columns ? 1. : .055+(i-1)*.89/(columns-2); };
@@ -743,18 +823,31 @@ void cosmetics::draw_cape(const module_settings::cape& config,cape_motion& motio
         for (int y=0;y<rows;++y) for (int x=0;x<columns;++x)
         {
             const double u=(u_at(x)+u_at(x+1))*.5,v=(v_at(y)+v_at(y+1))*.5;
-            auto c=tint(config.theme_color,config.color,config.opacity,static_cast<int>(v*100+u*20));
-            const bool border=config.style!=0 && (x==0 || x==columns-1 || y==0 || y==rows-1);
-            const float shade=static_cast<float>(.80+.12*std::cos((u*2-1)*3*pi+v*.65)-.10*v);
-            c.x*=shade; c.y*=shade; c.z*=shade;
+            auto c=image && !config.tint_art ? ImVec4(1,1,1,config.opacity) :
+                tint(config.theme_color,config.color,config.opacity,static_cast<int>(v*100+u*20));
+            const bool border=(config.style==1 || config.style==2 || config.style==3 || config.style==6) &&
+                (x==0 || x==columns-1 || y==0 || y==rows-1);
+            const auto pattern=cape_design::sample(config.style,u,v);
+            const float shade=static_cast<float>(image ? .94+.06*std::cos((u*2-1)*3*pi+v*.65) :
+                .80+.12*std::cos((u*2-1)*3*pi+v*.65)-.10*v);
+            c.x*=shade*pattern.shade; c.y*=shade*pattern.shade; c.z*=shade*pattern.shade;
+            if (pattern.ember>0) {
+                const float blend=pattern.ember*.85f;
+                c.x=c.x*(1-blend)+blend;
+                c.y=c.y*(1-blend)+blend*(.12f+pattern.ember*.55f);
+                c.z=c.z*(1-blend)+blend*.035f;
+            }
             if (border)
             {
                 c.x=c.x*.45f+.50f; c.y=c.y*.45f+.50f; c.z=c.z*.45f+.50f;
             }
             const auto a=cloth[y][x],b=cloth[y][x+1],d=cloth[y+1][x],e=cloth[y+1][x+1];
-            m.faces.push_back({{a,d,b},c}); m.faces.push_back({{b,d,e},c});
+            const float u0=float(u_at(x)),u1=float(u_at(x+1)),v0=float(v_at(y)),v1=float(v_at(y+1));
+            m.faces.push_back({{a,d,b},c,image,{{{u0,v0},{u0,v1},{u1,v0}}}});
+            m.faces.push_back({{b,d,e},c,image,{{{u1,v0},{u0,v1},{u1,v1}}}});
         }
         auto edge_color=tint(config.theme_color,config.color,config.opacity);
+        if (image && !config.tint_art) edge_color=config.style==8 ? ImVec4(.96f,.63f,.21f,config.opacity) : ImVec4(.64f,.79f,1.f,config.opacity);
         edge_color.w=std::min(1.f,edge_color.w*1.15f);
         for (int y=0;y<rows;++y)
         {
@@ -766,13 +859,14 @@ void cosmetics::draw_cape(const module_settings::cape& config,cape_motion& motio
             m.edges.push_back({cloth[0][x],cloth[0][x+1],edge_color});
             m.edges.push_back({cloth[rows][x],cloth[rows][x+1],edge_color});
         }
-        if (config.style==2)
+        const auto design=cape_design::strokes(config.style);
+        if (!design.empty() || config.style==4)
         {
             // The emblem is traced on the same deformed cloth, so it bends with
             // the fabric instead of floating as a flat, camera-facing overlay.
             auto emblem=edge_color;
             emblem.x=emblem.x*.25f+.72f; emblem.y=emblem.y*.25f+.72f; emblem.z=emblem.z*.25f+.72f;
-            const auto stroke=[&](ImVec2 a,ImVec2 b)
+            const auto stroke=[&](cape_design::uv a,cape_design::uv b)
             {
                 constexpr int steps=10;
                 point previous=surface(a.x,a.y);
@@ -783,12 +877,21 @@ void cosmetics::draw_cape(const module_settings::cape& config,cape_motion& motio
                     m.edges.push_back({previous,next,emblem}); previous=next;
                 }
             };
-            stroke({.5f,.19f},{.73f,.39f}); stroke({.73f,.39f},{.5f,.65f});
-            stroke({.5f,.65f},{.27f,.39f}); stroke({.27f,.39f},{.5f,.19f});
-            stroke({.38f,.38f},{.5f,.51f}); stroke({.5f,.51f},{.62f,.38f});
+            for (const auto& line:design) stroke(line.a,line.b);
+            if (config.style==4) {
+                emblem={1.f,.48f,.12f,edge_color.w};
+                // Smooth silhouette over the low-cost cloth shading.
+                for (int i=0;i<24;++i) {
+                    const auto flame=[](double u) {
+                        return cape_design::uv{static_cast<float>(u),
+                            static_cast<float>(.45+.22*std::sin(u*19.)+.12*std::cos(u*31.))};
+                    };
+                    stroke(flame(.06+i*.88/24),flame(.06+(i+1)*.88/24));
+                }
+            }
         }
     },config.glow);
-    if (!rendered) motion={};
+    if (!rendered) motion.clear();
 }
 
 void cosmetics::draw_trails(const module_settings::trails& config,trail_state& storage)
@@ -925,4 +1028,239 @@ void cosmetics::draw_trails(const module_settings::trails& config,trail_state& s
         if (!m.faces.empty()) render(s,m,config.glow);
     }
     catch (...) { platform::jni_context::clear_exception(); storage.clear(); }
+}
+
+struct cosmetics::visual_effect_state::runtime
+{
+    services::game::overlay_session session;
+    std::deque<trail_particle> particles;
+    std::deque<footprint> circles;
+    std::vector<std::array<point,2>> boxes;
+    maps::LivingEntity target{nullptr,true};
+    visual_effects_logic::hit_detector hits;
+    visual_effects_logic::jump_detector jumps;
+    point previous{}, block{};
+    double time = -1, next_shape = 0, target_seen = -1;
+    int age = -1;
+    bool block_valid = false;
+    std::uint32_t random = 0x91bd235fu;
+    std::size_t visibility_cursor = 0;
+    double noise() { random ^= random<<13; random ^= random>>17; random ^= random<<5; return random/4294967295.; }
+    void reset()
+    {
+        particles.clear(); circles.clear(); boxes.clear(); target.clear_ref();
+        hits.reset(); jumps.reset(); previous = {}; time = -1; age = -1;
+        next_shape = 0; target_seen = -1; block_valid = false; visibility_cursor = 0;
+    }
+    bool observe(const scene& s, double now)
+    {
+        const int current_age = s.context.player.age.get();
+        if (platform::jni_context::clear_exception()) return false;
+        if (session.observe({s.context.world,s.context.player}) || now < time || now-time > .5 ||
+            current_age < age || (time >= 0 && dot(s.position-previous,s.position-previous) > 9.)) reset();
+        age = current_age; return true;
+    }
+    void advance(const scene& s, double now) { previous = s.position; time = now; }
+};
+cosmetics::visual_effect_state::visual_effect_state() : state_(std::make_unique<runtime>()) {}
+cosmetics::visual_effect_state::~visual_effect_state() = default;
+void cosmetics::visual_effect_state::clear() { state_->reset(); state_->session.reset(); }
+
+namespace
+{
+    void effect_ring(mesh& m, point center, point right, point up, double radius, ImVec4 color, int segments = 32)
+    {
+        for (int i=0;i<segments;++i) {
+            const double a=2*pi*i/segments,b=2*pi*(i+1)/segments;
+            m.edges.push_back({center+(right*std::cos(a)+up*std::sin(a))*radius,
+                center+(right*std::cos(b)+up*std::sin(b))*radius,color});
+        }
+    }
+    bool effect_visible(const scene& s, point p)
+    {
+        trail_ray ray;
+        return cast_trail_ray(s,s.camera,p,ray) && !ray.blocked;
+    }
+    struct effect_cleanup { ~effect_cleanup() { platform::jni_context::clear_exception(); } };
+}
+
+void cosmetics::draw_hit_particles(const module_settings::hit_particles& config, visual_effect_state& storage)
+{
+    if (!platform::jni_context::bind_current_thread()) return;
+    effect_cleanup cleanup; jni::frame frame{128};
+    auto& state=*storage.state_;
+    try {
+        scene s; const double now=ImGui::GetTime();
+        if (!capture(s,false,false) || !state.observe(s,now)) { storage.clear(); return; }
+        const int ticks=s.context.player.lastAttackedTicks.get();
+        if (platform::jni_context::clear_exception()) { storage.clear(); return; }
+        // Arm BEFORE refreshing the crosshair. Knockback can move the attacked
+        // entity out of the crosshair on the very frame the cooldown resets.
+        state.hits.observe_attack(ticks,now);
+        // Briefly retain the same target during acknowledgement; a quick
+        // crosshair exit must not turn this into particles on another entity.
+        if (!state.hits.pending(now)) {
+            // A cosmetic follows vanilla's living target, not combat filters
+            // (friends/AntiBot must not suppress actual visible hit effects).
+            auto target=services::target::crosshair_entity(s.context.instance);
+            if (platform::jni_context::clear_exception()) { storage.clear(); return; }
+            const bool valid=target && target.is_instance_of<maps::LivingEntity>() &&
+                !target.is_same_object(s.context.player) && target.isAlive.call()==JNI_TRUE;
+            if (platform::jni_context::clear_exception()) { storage.clear(); return; }
+            if (valid) {
+                state.target_seen=now;
+                if (!state.target.is_same_object(target)) state.target=maps::LivingEntity(target.object_instance,false);
+            } else if (now-state.target_seen>.12) state.target.clear_ref();
+        }
+        if (state.target) {
+            auto position=state.target.getLerpedPos.call(std::clamp(platform::adapter::get().get_tick_delta(s.context.instance),0.f,1.f));
+            const int id=state.target.getId.call(),hurt=state.target.hurtTime.get();
+            const float health=state.target.getHealth.call();
+            const double height=state.target.getHeight.call();
+            if (platform::jni_context::clear_exception() || !position) { storage.clear(); return; }
+            const point center=from(position.to_vector3d())+point{0,height*.6,0};
+            if (platform::jni_context::clear_exception() || !finite(center) || !std::isfinite(height) || height<=0) { storage.clear(); return; }
+            const bool hit=state.hits.sample(ticks,id,hurt,health,now);
+            if (hit && dot(center-s.camera,center-s.camera)<144. && effect_visible(s,center)) {
+                const int count=gui::aegis::get_preferences().reduce_motion ? 4 : std::clamp(config.count,4,24);
+                for (int i=0;i<count;++i) {
+                    while (state.particles.size()>=visual_effects_logic::max_particles) state.particles.pop_front();
+                    trail_particle p;
+                    p.origin=center+point{(state.noise()-.5)*.35,(state.noise()-.5)*.4,(state.noise()-.5)*.35};
+                    p.velocity={(state.noise()-.5)*1.7,.2+state.noise()*.8,(state.noise()-.5)*1.7};
+                    p.color=tint(config.theme_color,config.color,1.f,i*12); p.born=now;
+                    p.radius=.045+state.noise()*.025; p.visible=true; state.particles.push_back(p);
+                }
+            }
+        } else state.hits.sample(ticks,-1,0,0,now);
+        const double lifetime=std::clamp(config.lifetime,.2f,1.5f);
+        while (!state.particles.empty() && now-state.particles.front().born>=lifetime) state.particles.pop_front();
+        // Visibility queries are round-robin and bounded independently of FPS/count.
+        int budget=4;
+        for (std::size_t n=0;n<state.particles.size() && budget>0;++n) {
+            auto& p=state.particles[state.visibility_cursor++%state.particles.size()];
+            if (p.next_visibility>now) continue;
+            --budget; p.visible=effect_visible(s,p.position(now-p.born)); p.next_visibility=now+.18;
+        }
+        mesh m;
+        for (const auto& p:state.particles) {
+            if (!p.visible) continue;
+            const double age=now-p.born,t=std::clamp(age/lifetime,0.,1.);
+            const point center=p.position(age);
+            if (dot(center-s.camera,center-s.camera)>576.) continue;
+            auto color=p.color; color.w*=config.opacity*static_cast<float>((1-t)*(1-t));
+            const double r=p.radius*std::clamp(config.size,.5f,2.f)*(1-t*.3);
+            if (config.style==2) effect_ring(m,center,s.view.right,s.view.up,r,color,12);
+            else if (config.style==1) m.edges.push_back({center,center-p.velocity*.06,color});
+            else {
+                m.edges.push_back({center-s.view.right*r,center+s.view.right*r,color});
+                m.edges.push_back({center-s.view.up*r,center+s.view.up*r,color});
+                m.edges.push_back({center-(s.view.right+s.view.up)*r*.45,center+(s.view.right+s.view.up)*r*.45,color});
+                m.edges.push_back({center-(s.view.right-s.view.up)*r*.45,center+(s.view.right-s.view.up)*r*.45,color});
+            }
+        }
+        render(s,m,config.glow); state.advance(s,now);
+    } catch (...) { storage.clear(); }
+}
+
+void cosmetics::draw_jump_circles(const module_settings::jump_circles& config, visual_effect_state& storage)
+{
+    if (!platform::jni_context::bind_current_thread()) return;
+    effect_cleanup cleanup; jni::frame frame{96};
+    auto& state=*storage.state_;
+    try {
+        scene s; const double now=ImGui::GetTime();
+        if (!capture(s,false,false) || !state.observe(s,now)) { storage.clear(); return; }
+        const bool grounded=s.context.player.isOnGround.call()==JNI_TRUE;
+        const bool excluded=s.context.player.isTouchingWater.call() || s.context.player.isInLava.call() ||
+            s.context.player.hasVehicle.call() || s.context.player.isFallFlying.call();
+        auto velocity=s.context.player.getVelocity.call();
+        if (platform::jni_context::clear_exception() || !velocity) { storage.clear(); return; }
+        const double vertical=velocity.y.get();
+        if (platform::jni_context::clear_exception() || !std::isfinite(vertical)) { storage.clear(); return; }
+        const int event=state.jumps.sample(grounded,vertical>.05);
+        if (excluded) state.jumps.reset();
+        if (!excluded && event && (config.trigger==2 || config.trigger==event-1)) {
+            const point origin=event==1 ? state.previous : s.position;
+            trail_ray ground;
+            if (cast_trail_ray(s,origin+point{0,.25,0},origin-point{0,1.2,0},ground,true) && ground.blocked && ground.top) {
+                while (state.circles.size()>=visual_effects_logic::max_circles) state.circles.pop_front();
+                footprint ring; ring.position=ground.position+point{0,.025,0}; ring.born=now;
+                ring.color=tint(config.theme_color,config.color,1.f); state.circles.push_back(ring);
+            }
+        }
+        const double lifetime=std::clamp(config.lifetime,.3f,2.f);
+        while (!state.circles.empty() && now-state.circles.front().born>=lifetime) state.circles.pop_front();
+        mesh m; int budget=2;
+        for (auto& ring:state.circles) {
+            if (ring.next_visibility<=now && budget>0) {
+                --budget; ring.visible=effect_visible(s,ring.position+point{0,.02,0}); ring.next_visibility=now+.2;
+            }
+            if (!ring.visible || dot(ring.position-s.camera,ring.position-s.camera)>1024.) continue;
+            const double t=std::clamp((now-ring.born)/lifetime,0.,1.);
+            const double expand=gui::aegis::get_preferences().reduce_motion ? .75 : .15+.85*(1-std::pow(1-t,3));
+            const double radius=std::clamp(config.radius,.3f,1.5f)*expand;
+            auto color=ring.color; color.w*=config.opacity*static_cast<float>((1-t)*(1-t));
+            effect_ring(m,ring.position,{1,0,0},{0,0,1},radius,color,48);
+            if (config.style==1) { color.w*=.5f; effect_ring(m,ring.position,{1,0,0},{0,0,1},radius*.77,color,48); }
+        }
+        render(s,m,config.glow); state.advance(s,now);
+    } catch (...) { storage.clear(); }
+}
+
+void cosmetics::draw_block_highlight(const module_settings::block_highlight& config, visual_effect_state& storage)
+{
+    if (!platform::jni_context::bind_current_thread()) return;
+    effect_cleanup cleanup; jni::frame frame{128};
+    auto& state=*storage.state_;
+    try {
+        scene s; const double now=ImGui::GetTime();
+        if (!capture(s,false,false) || !state.observe(s,now)) { storage.clear(); return; }
+        auto hit=s.context.instance.crosshairTarget.get();
+        auto type=hit ? hit.getType.call() : maps::HitResult$Type{};
+        auto block_type=maps::HitResult$Type{}.BLOCK.get();
+        if (platform::jni_context::clear_exception() || !type || !type.is_same_object(block_type)) { state.block_valid=false; state.boxes.clear(); state.advance(s,now); return; }
+        auto pos=maps::BlockHitResult(hit.object_instance,false).getBlockPos.call();
+        if (platform::jni_context::clear_exception() || !pos) { storage.clear(); return; }
+        const point block{double(pos.getX.call()),double(pos.getY.call()),double(pos.getZ.call())};
+        if (platform::jni_context::clear_exception() || !finite(block)) { storage.clear(); return; }
+        if (!state.block_valid || dot(block-state.block,block-state.block)>0 || now>=state.next_shape) {
+            state.boxes.clear(); state.block=block; state.block_valid=true; state.next_shape=now+.05;
+            auto raw=s.context.world.getBlockState.call(pos);
+            if (platform::jni_context::clear_exception() || !raw) { storage.clear(); return; }
+            block_highlight_bindings::State value(raw.object_instance,false);
+            auto shape=value.outline.call(block_highlight_bindings::BlockView(s.context.world.object_instance,false),pos);
+            auto boxes=shape ? shape.boxes.call() : block_highlight_bindings::List{};
+            const int count=boxes ? boxes.size.call() : 0;
+            if (platform::jni_context::clear_exception() || count<0 || count>static_cast<int>(visual_effects_logic::max_shape_boxes)) { storage.clear(); return; }
+            for (int i=0;i<count;++i) {
+                jni::frame box_frame{8};
+                auto object=boxes.get.call(i); maps::Box box(object.object_instance,false);
+                if (platform::jni_context::clear_exception() || !box) { storage.clear(); return; }
+                const point low{box.minX.get(),box.minY.get(),box.minZ.get()}, high{box.maxX.get(),box.maxY.get(),box.maxZ.get()};
+                if (platform::jni_context::clear_exception() || !finite(low) || !finite(high)) { storage.clear(); return; }
+                state.boxes.push_back({block+low,block+high});
+            }
+        }
+        mesh m;
+        const auto outline=tint(config.theme_color,config.color,config.opacity);
+        auto fill=outline; fill.w=config.fill ? config.fill_opacity*outline.w : 0.f;
+        constexpr int edges[][2]{{0,1},{1,2},{2,3},{3,0},{4,5},{5,6},{6,7},{7,4},{0,4},{1,5},{2,6},{3,7}};
+        constexpr int faces[][4]{{0,3,2,1},{4,5,6,7},{0,1,5,4},{1,2,6,5},{3,7,6,2},{0,4,7,3}};
+        for (const auto& box:state.boxes) {
+            const auto a=box[0]-point{.002,.002,.002},b=box[1]+point{.002,.002,.002};
+            const point p[]{{a.x,a.y,a.z},{b.x,a.y,a.z},{b.x,b.y,a.z},{a.x,b.y,a.z},
+                {a.x,a.y,b.z},{b.x,a.y,b.z},{b.x,b.y,b.z},{a.x,b.y,b.z}};
+            for (const auto& edge:edges) m.edges.push_back({p[edge[0]],p[edge[1]],outline});
+            if (fill.w>0) for (const auto& face:faces) {
+                const auto center=(p[face[0]]+p[face[2]])*.5;
+                const auto normal=cross(p[face[1]]-p[face[0]],p[face[2]]-p[face[0]]);
+                // Only camera-facing surfaces: no translucent back-face pileup.
+                if (dot(normal,s.camera-center)<=0) continue;
+                m.faces.push_back({{p[face[0]],p[face[1]],p[face[2]]},fill});
+                m.faces.push_back({{p[face[0]],p[face[2]],p[face[3]]},fill});
+            }
+        }
+        render(s,m,config.glow); state.advance(s,now);
+    } catch (...) { storage.clear(); }
 }

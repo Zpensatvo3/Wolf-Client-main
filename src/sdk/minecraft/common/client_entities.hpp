@@ -16,6 +16,11 @@ namespace maps
 #endif
 
 		BEGIN_KLASS_DEF(Input, ONESTEP_MC_NAME("net/minecraft/class_744"))
+#if ONESTEP_MINECRAFT_VERSION >= 12104
+        jni::method<void, ONESTEP_MC_NAME("method_3129")> tick{*this};
+#else
+        jni::method<void, ONESTEP_MC_NAME("method_3129"), jni::NOT_STATIC, jboolean, jfloat> tick{*this};
+#endif
 #if ONESTEP_MINECRAFT_VERSION >= 12108
         struct axis
         {

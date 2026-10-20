@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import worker from '../../server/worker.js';
 import { base64UrlEncode, sha256 } from '../../server/core/crypto.mjs';
 import { deviceMessage } from '../../server/device-proof.mjs';
+import { accessFixture } from './access-fixture.mjs';
 
 // A real, isolated SQLite database with the D1 prepared-statement surface.
 // No production resource, network call or persistent credential is used.
@@ -46,10 +47,12 @@ export class LocalD1 {
 }
 
 export async function harness() {
+    const access = await accessFixture();
     const pair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
     const admin = base64UrlEncode(crypto.getRandomValues(new Uint8Array(36)));
     const releases = new Map();
     const env = {
+        ...access.env,
         DB: new LocalD1(), KEY_PEPPER: base64UrlEncode(crypto.getRandomValues(new Uint8Array(32))),
         HWID_PEPPER: base64UrlEncode(crypto.getRandomValues(new Uint8Array(32))),
         ADMIN_TOKEN_HASH: await sha256(admin),
@@ -72,7 +75,7 @@ export async function harness() {
     const ctx = { waitUntil(promise) { pending.push(promise); } };
     async function drain() { await Promise.all(pending.splice(0)); }
     async function request(path, body, options = {}) {
-        const headers = { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        const headers = { ...access.header, Origin:'https://local.test', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
             ...(options.admin ? { Authorization: 'Bearer ' + admin } : {}), ...options.headers };
         const req = new Request('https://local.test' + path, { method: options.method || (body === undefined ? 'GET' : 'POST'),
             headers, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -91,5 +94,5 @@ export async function harness() {
             return body;
         } };
     }
-    return { env, admin, releases, ctx, request, drain, device, async close() { await drain(); env.DB.close(); } };
+    return { env, admin, access, releases, ctx, request, drain, device, async close() { await drain(); env.DB.close(); } };
 }

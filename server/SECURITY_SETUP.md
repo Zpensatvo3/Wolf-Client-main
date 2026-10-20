@@ -1,5 +1,11 @@
 # Onestep — Lisans girişi kurulumu
 
+> **20 Ekim güvenlik güncellemesi:** Aşağıdaki eski vault/kopyalama talimatları
+> artık geçerli değildir. Güncel ve henüz canlıya alınmamış geçiş planı
+> [AUTH_HARDENING.md](AUTH_HARDENING.md) içindedir. Kaynakta auth zorunludur;
+> `AuthRequired=false` DLL üretiminde reddedilir. Eski sırlar yenilenmeden ve
+> Access etkinleşmeden olay kapatılmış sayılmaz.
+
 > Aşağıdaki ilk kurulum ve canlı kontrol notları `77373b6` döneminin tarihsel
 > kaydıdır; bu çalışma sırasında yeniden canlı test yapılmadı. Yeni kaynak yapısı,
 > dashboard, yerel testler ve güncel yayın adımları [README.md](README.md) içindedir.

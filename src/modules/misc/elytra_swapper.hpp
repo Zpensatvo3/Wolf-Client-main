@@ -3,6 +3,7 @@
 #include "../module_support.hpp"
 #include "../core/settings_store.hpp"
 #include "settings/elytra_swapper_settings.hpp"
+#include "../../platform/adapter/target_version.hpp"
 
 namespace modules
 {
@@ -14,6 +15,8 @@ class elytra_swapper : public module
 		void run(::cache& cache) override;
 		void render_overlay() override;
 		void on_disable(::cache& cache) override;
+        void on_render_shutdown() override;
+        bool render_when_disabled() const override { return mc::target.build_id == 12111; }
 		void render_options() override;
 		float get_options_height() override { return 230.0f; }
 		void visit_config(config_visitor& v) override
@@ -27,5 +30,6 @@ class elytra_swapper : public module
 		std::chrono::steady_clock::time_point next_action{};
 
 		void finish();
+        std::atomic_bool reset_requested_{true};
 	};
 }

@@ -1,4 +1,5 @@
 #include "input_service.hpp"
+#include "../../auth/auth.hpp"
 
 #include "../../modules/core/module.hpp"
 #include "../../services/game/client_context.hpp"
@@ -85,7 +86,7 @@ void services::input::reset_physical_keys()
 
 std::uint32_t services::input::press_jump_space(HWND expected_window, click_validation validate)
 {
-    if (!expected_window || GetForegroundWindow() != expected_window || physical_key_down(VK_SPACE)) return 0;
+    if (!auth::permitted(auth::scope::input) || !expected_window || GetForegroundWindow() != expected_window || physical_key_down(VK_SPACE)) return 0;
     std::uint32_t id;
     {
         std::lock_guard lock(jump_mutex); id = jump_ledger.reserve();
@@ -142,7 +143,7 @@ bool services::input::observe_jump_space_event(std::uintptr_t tag, bool pressed)
         id = jump_ledger.active; validate = jump_validation;
         expected_window = jump_window; expected_thread = jump_thread;
     }
-    bool valid = expected_window && GetForegroundWindow() == expected_window && GetCurrentThreadId() == expected_thread;
+    bool valid = auth::permitted(auth::scope::input) && expected_window && GetForegroundWindow() == expected_window && GetCurrentThreadId() == expected_thread;
     if (valid && validate) { try { valid = validate(); } catch (...) { valid = false; } }
     bool allowed, rejected;
     {
@@ -161,7 +162,7 @@ void services::input::reset_physical_buttons()
 }
 services::input::click_ticket services::input::submit_trigger_click(HWND expected_window, bool preserve, click_validation validate)
 {
-    if (!expected_window || !IsWindow(expected_window) || GetForegroundWindow() != expected_window) return {};
+    if (!auth::permitted(auth::scope::input) || !expected_window || !IsWindow(expected_window) || GetForegroundWindow() != expected_window) return {};
     std::uint32_t id;
     {
         std::lock_guard lock(ledger_mutex); id = ledger.reserve(preserve);
@@ -210,6 +211,13 @@ void services::input::cancel_trigger_click(std::uint32_t id)
     if (repair && expected_window && GetForegroundWindow() == expected_window)
         restore_trigger_hold(id, expected_window);
 }
+void services::input::cancel_automatic_inputs()
+{
+    cancel_trigger_click();
+    std::uint32_t jump;
+    { std::lock_guard lock(jump_mutex); jump=jump_ledger.active; }
+    if(jump)release_jump_space(jump);
+}
 bool services::input::observe_tracked_event(std::uintptr_t tag, bool pressed, event_path path)
 {
     click_validation validate;
@@ -225,7 +233,7 @@ bool services::input::observe_tracked_event(std::uintptr_t tag, bool pressed, ev
     }
     // Never hold the ledger mutex across JNI or a user-supplied validator.
     // A concurrent disable can cancel the ticket while validation is in flight.
-    bool valid = expected_window && GetForegroundWindow() == expected_window;
+    bool valid = auth::permitted(auth::scope::input) && expected_window && GetForegroundWindow() == expected_window;
     if (validate) {
         valid = valid && GetCurrentThreadId() == expected_thread;
         if (valid) { try { valid = validate(); } catch (...) { valid = false; } }
@@ -248,6 +256,7 @@ bool services::input::accept_restore_event(std::uintptr_t tag)
 
 bool services::input::mouse_button_state(mouse_button button, bool pressed)
 {
+    if (pressed && !auth::permitted(auth::scope::input)) return false;
     INPUT input{};
     input.type = INPUT_MOUSE;
     input.mi.dwFlags = mouse_flag(button, pressed);
@@ -257,6 +266,7 @@ bool services::input::mouse_button_state(mouse_button button, bool pressed)
 
 bool services::input::game_mouse_click(mouse_button button)
 {
+    if (!auth::permitted(auth::scope::input)) return false;
     const HWND expected_window = gui::get_window();
     if (!expected_window || GetForegroundWindow() != expected_window || gui::draw || gui::loader_visible ||
         gui::should_unload || !physical_button_down(button) || !platform::jni_context::bind_current_thread()) return false;
@@ -294,6 +304,7 @@ bool services::input::game_mouse_click(mouse_button button)
 bool services::input::mouse_click(mouse_button button,
     HWND message_window, bool preserve_physical_press)
 {
+    if (!auth::permitted(auth::scope::input)) return false;
     INPUT inputs[2]{};
     for (INPUT& input : inputs)
     {
@@ -309,6 +320,7 @@ bool services::input::mouse_click(mouse_button button,
 
 bool services::input::key_scan_state(UINT virtual_key, bool pressed)
 {
+    if (pressed && !auth::permitted(auth::scope::input)) return false;
     const UINT scan_code = MapVirtualKeyW(virtual_key, MAPVK_VK_TO_VSC);
     if (!scan_code)
         return false;
@@ -324,6 +336,7 @@ bool services::input::key_scan_state(UINT virtual_key, bool pressed)
 
 bool services::input::key_pulse(UINT virtual_key)
 {
+    if (!auth::permitted(auth::scope::input)) return false;
     INPUT inputs[2]{};
     for (INPUT& input : inputs)
     {

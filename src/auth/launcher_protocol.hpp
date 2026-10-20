@@ -63,21 +63,22 @@ namespace auth::launch {
         HANDLE pipe = CreateFileW(name.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING,
             FILE_FLAG_OVERLAPPED | SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION, nullptr);
         if (pipe == INVALID_HANDLE_VALUE) return {};
-        char buffer[65]{}; DWORD read{}; OVERLAPPED operation{};
+        DWORD mode=PIPE_READMODE_MESSAGE;
+        if(!SetNamedPipeHandleState(pipe,&mode,nullptr,nullptr)){CloseHandle(pipe);return {};}
+        char buffer[1024]{}; DWORD read{}; OVERLAPPED operation{};
         operation.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
         bool ok = false;
         if (operation.hEvent) {
-            BOOL immediate = ReadFile(pipe, buffer, 64, &read, &operation);
-            if (immediate) ok = read == 64;
+            BOOL immediate = ReadFile(pipe, buffer, sizeof(buffer), &read, &operation);
+            if (immediate) ok = read > 64 && read < sizeof(buffer);
             else if (GetLastError() == ERROR_IO_PENDING && WaitForSingleObject(operation.hEvent, 10000) == WAIT_OBJECT_0)
-                ok = GetOverlappedResult(pipe, &operation, &read, FALSE) && read == 64;
+                ok = GetOverlappedResult(pipe, &operation, &read, FALSE) && read > 64 && read < sizeof(buffer);
             if (!ok) { CancelIoEx(pipe, &operation); GetOverlappedResult(pipe, &operation, &read, TRUE); }
             CloseHandle(operation.hEvent);
         }
         CloseHandle(pipe);
-        std::string ticket(buffer, ok ? 64 : 0);
+        std::string ticket(buffer, ok ? read : 0);
         SecureZeroMemory(buffer, sizeof(buffer));
-        if (!hex64(ticket)) wipe(ticket);
         return ticket;
     }
     inline std::wstring own_module_path() {

@@ -36,8 +36,20 @@
   </PropertyGroup>
   <Target Name="ValidateAuthConfiguration" BeforeTargets="PrepareForBuild">
     <Error Condition="'$(AuthRequired)' != 'true' and '$(AuthRequired)' != 'false'" Text="AuthRequired must be true or false." />
+    <Error Condition="'$(AuthRequired)' != 'true'" Text="DLL builds always require authentication. Use isolated, explicitly marked test probes instead." />
     <Error Condition="'$(AuthRequired)' == 'true' and '$(Platform)' != 'x64'" Text="Authenticated builds require the supported x64 platform." />
     <Error Condition="'$(AuthRequired)' == 'true' and ('$(AuthServerDomain)' == '' or '$(AuthPublicKeySpkiBase64)' == '')" Text="Auth builds require explicit AuthServerDomain and AuthPublicKeySpkiBase64 properties. See server/SECURITY_SETUP.md." />
+  </Target>
+  <Target Name="BuildSpotifyVector" BeforeTargets="ClCompile"
+          Inputs="$(ProjectDir)assets\icons\spotify.svg;$(ProjectDir)scripts\Build-SpotifyVector.py"
+          Outputs="$(ProjectDir)src\ui\spotify_vector_data.hpp">
+    <Exec Command="python &quot;$(ProjectDir)scripts\Build-SpotifyVector.py&quot;" />
+  </Target>
+  <Target Name="BuildGameBridge" BeforeTargets="ResourceCompile"
+          Inputs="$(ProjectDir)src\bridge\GameBridge.java;$(ProjectDir)src\bridge\UtilityBridge.java;$(ProjectDir)src\bridge\ItemBridge.java;$(ProjectDir)src\bridge\InventoryBridge.java;$(ProjectDir)src\bridge\WorldBridge.java;$(ProjectDir)src\bridge\ClientBridge.java"
+          Outputs="$(ProjectDir)assets\hybrid\net\onestep\hybrid\GameBridge.class;$(ProjectDir)assets\hybrid\net\onestep\hybrid\UtilityBridge.class;$(ProjectDir)assets\hybrid\net\onestep\hybrid\ItemBridge.class;$(ProjectDir)assets\hybrid\net\onestep\hybrid\InventoryBridge.class;$(ProjectDir)assets\hybrid\net\onestep\hybrid\WorldBridge.class;$(ProjectDir)assets\hybrid\net\onestep\hybrid\ClientBridge.class">
+    <MakeDir Directories="$(ProjectDir)assets\hybrid" />
+    <Exec Command="javac --release 17 -encoding UTF-8 -g:none -d &quot;$(ProjectDir)assets\hybrid&quot; &quot;$(ProjectDir)src\bridge\GameBridge.java&quot; &quot;$(ProjectDir)src\bridge\UtilityBridge.java&quot; &quot;$(ProjectDir)src\bridge\ItemBridge.java&quot; &quot;$(ProjectDir)src\bridge\InventoryBridge.java&quot; &quot;$(ProjectDir)src\bridge\WorldBridge.java&quot; &quot;$(ProjectDir)src\bridge\ClientBridge.java&quot;" />
   </Target>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -225,6 +237,13 @@
     <ClCompile Include="src\platform\jni\client_dispatcher.cpp" />
     <ClCompile Include="src\services\game\hotbar_service.cpp" />
     <ClCompile Include="src\services\game\client_context.cpp" />
+    <ClCompile Include="src\services\game\menu_input.cpp" />
+    <ClCompile Include="src\services\game\hybrid_bridge.cpp" />
+    <ClCompile Include="src\services\game\utility_bridge.cpp" />
+    <ClCompile Include="src\services\game\item_bridge.cpp" />
+    <ClCompile Include="src\services\game\inventory_bridge.cpp" />
+    <ClCompile Include="src\services\game\world_bridge.cpp" />
+    <ClCompile Include="src\services\game\client_bridge.cpp" />
     <ClCompile Include="src\services\game\inventory_service.cpp" />
     <ClCompile Include="src\services\game\target_service.cpp" />
     <ClCompile Include="src\services\game\anti_bot_service.cpp" />
@@ -607,6 +626,8 @@
     <ClInclude Include="src\gui\module_descriptions.hpp" />
     <None Include="src\modules\settings_manifest.json" />
     <ClInclude Include="src\gui\control_draw.hpp" />
+    <ClInclude Include="src\gui\ui_typography.hpp" />
+    <ClInclude Include="src\gui\popup_controls.hpp" />
     <ClInclude Include="src\services\game\attack_coordinator.hpp" />
     <ClInclude Include="src\services\input\click_tracking.hpp" />
     <ClInclude Include="src\jvmti\jvmti.hpp" />
@@ -623,6 +644,15 @@
     <ClInclude Include="src\modules\visual\settings\*.hpp" />
     <ClInclude Include="src\modules\render\settings\*.hpp" />
     <ClInclude Include="src\ui\settings_renderer.hpp" />
+    <ClInclude Include="src\ui\dock_layout.hpp" />
+    <ClInclude Include="src\ui\module_categories.hpp" />
+    <ClInclude Include="src\ui\keyboard_layout.hpp" />
+    <ClInclude Include="src\ui\block_picker.hpp" />
+    <ClInclude Include="src\ui\item_icon.hpp" />
+    <None Include="assets\icons\spotify-2015-seeklogo.png" />
+    <ClInclude Include="src\ui\spotify_vector.hpp" />
+    <ClInclude Include="src\ui\spotify_vector_data.hpp" />
+    <None Include="assets\icons\spotify.svg" />
     <ClInclude Include="src\sdk\minecraft\common\*.hpp" />
     <None Include="src\sdk\minecraft\common\manifest.json" />
     <ClInclude Include="src\platform\jni\jvm_session.hpp" />

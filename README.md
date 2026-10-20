@@ -6,6 +6,123 @@ istemcisi içerir.
 
 ## Güncel durum
 
+- Auth güvenlik sertleştirmesi kaynakta uygulandı: varsayılan zorunlu auth,
+  admin API/release yollarında Access JWT + bearer, tek gösterimlik rastgele
+  lisans, zorunlu cihaz imzası, D1 nonce tekrar koruması ve lisanslı config.
+  Parolalı harici kasa akışı hazır; eski otomatik DPAPI/kopyalama kaldırıldı.
+  **Canlı deploy, kasa taşıma, veri temizliği ve secret rotasyonu yapılmadı.**
+  Access hesapta henüz etkin değil. Geçiş/geriye uyumluluk ve kalan operatör
+  adımları: [Auth hardening](server/AUTH_HARDENING.md). Mevcut DLL korunur.
+- ClickGUI alt kısayol yazısı kaldırıldı; sabit/değiştirilebilir keybind'ler taşmayan
+  ortak kutu kullanır. Uzun seçenekler dar alanda tam genişlikte ayrı satıra geçer;
+  gereksiz değer balonu kaldırıldı. Seçili modülün yuvarlak çerçevesinde tema rengi
+  akar (Reduce Motion açıksa sabit). Keybinds tuş balonları dar/satır kaydırmalı;
+  sistem tuşlarının atama koruması korunur. Block ESP'de satır listesi yerine gerçek
+  oyun item modelleriyle ikon ızgarası, seçili filtresi ve açılır arama vardır.
+  Yalnızca görünen ikonlar kare başına iki okuma bütçesiyle hazırlanır; item'i
+  olmayan bloklar küp simgesiyle seçilebilir. 1.21.11 x64 Release test DLL'si:
+  `build/ui-cosmetics-update-20261020/1.21.11/Onestep.dll` (0 uyarı, 0 hata).
+  Oyun içi görünüm/FPS kontrolü henüz yapılmadı; önceki DLL korundu.
+- Wings/Cape görsel-fizik güncellemesi: Dragon, Angel ve Butterfly için üç özgün
+  saydam PNG kaplama, Cape'e Phoenix ve Astral Dragon desenleri eklendi. Wings'te
+  Detailed Art varsayılan açık; kapatıldığında eski sade çizime dönülür. Görselin
+  kendi renkleri korunur, Tint Artwork istenirse tema/özel rengi uygular. Eski
+  Cape stilleri 0-7 ve kayıtlı ayarlar korunur. Pelerinin 9x13 parçacıklı kumaşı,
+  kanatların sönümlü omuz/uç eklemleri hareket ve dönüşe tepki verir; Physics
+  şiddeti ayarlanır. Sabit adım/bütçe, gövde çarpışması ve oturum/teleport sıfırlama
+  vardır. Oyuncu hareketi, girişler ve paketler değişmez. Reduce Motion/Animation
+  kapalıyken poz sabittir. Görseller gömülüdür, ağdan indirilmez. Kaynak/promptlar:
+  [Cosmetics artwork](assets/cosmetics/README.md). Yukarıdaki 1.21.11 test DLL'sine
+  dahildir; oyun içi görsel/FPS kontrolü henüz yapılmadı.
+- Hit Particles saldırı sayacı sıfırlamasını hedef yenilemeden önce okur; kısa
+  nişangâh çıkışlarında hedefi, gecikmiş hasarda en fazla 500 ms vuruş takibini korur.
+  Hasar/sayaç gözlem sırası farkına 75 ms tolerans vardır; hedef değişince eski hasar
+  taşınmaz. Efektler combat arkadaş/AntiBot filtresinden bağımsızdır; saldırı göndermez.
+  View Model'e Vanilla, Compact, PvP, Low ve Cinematic hazır profilleri eklendi.
+  Elle değişiklikler Custom görünür; config aynı transform alanlarını saklar,
+  profil seçimi Both Hands tercihini değiştirmez. Cape'e Split, Inferno,
+  Constellation, Circuit ve Wings desenleri eklendi; eski üç stilin config değerleri
+  korundu. Desenler aynı deforme kumaşa çizilir, ayrı görsel indirmez.
+  Bu değişiklikler için DLL ve oyun içi görsel doğrulama henüz yapılmadı.
+- Visuals'a Hit Particles (yıldız/kıvılcım/halka), Jump Circles (zıplama/iniş),
+  gerçek blok şekline uyan Block Highlight ve View Model eklendi. Damage Numbers
+  eklenmedi. Tema, config ve tuş ataması ortak sistemdedir; yeni modüller varsayılan kapalıdır.
+  Parçacıklar 96, halkalar 8 ve seçili blok şekli 24 kutuyla sınırlıdır; görünürlük
+  kontrolleri bütçelidir. Eski dünya/oyuncu, menü, bağlantı kaybı ve disable sonrası
+  efektler temizlenir. Hit Particles yalnızca yerel saldırı zamanına yakın gözlenen
+  hedef hasarında çıkar; bu, sunucuda vuruş kabulünün ayrı bir garantisi değildir.
+  View Model yalnızca vanilla el çiziminin kendi push/pop aralığında eşyanın konum,
+  boyut ve açısını değiştirir; menzil, kamera, envanter veya saldırı mekaniğini değiştirmez.
+  El çizimi sözleşmesi eşleşmezse modül güvenli biçimde durur ve ayar panelinde hata gösterir.
+  DLL kapanışında dönüşüm geri alınır; Java bağlantısı native callback tutmaz.
+  Derleme öncesinde `scripts/Build-ViewModelBridge.ps1` ile gömülü iki Java sınıfını
+  yenileyin. Odaklı kontrol: `scripts/Test-ViewModel.py --client-jar <yerel-jar>
+  --target 12111 --asm-classpath <asm-ve-asm-tree>`; Minecraft'ı çalıştırmaz.
+  Oyun içi görsel doğrulama ve yeni DLL derlemesi henüz yapılmadı.
+- Arayüz stabilizasyonu: modül ayarları açılırken ana panelin konumu/boyutu
+  değişmez. Yer varsa ayarlar sağda ayrı açılır; dar ekranda sağ tarafa bindirilir.
+  Features/Other, arama ve HUD sayfaları aynı ana panel konumunu kullanır;
+  kategori değişince başka bir konuma sıçramaz. Sürükleme ekranda sınırlanır,
+  geçersiz fare/odak kaybında durur; küçültülmüş pencere konumu ezmez.
+  Modül adları 17 px, açıklamalar 14 px oldu; başlık/açıklama sarılır ve kart
+  yüksekliği metne göre hesaplanır. Küçük ekranda sol oyuncu önizlemesi ana
+  paneli itmek yerine yalnızca yeterli alan varsa gösterilir.
+  Spotify HUD en son kullanıcı ZIP'inden gelen `assets/icons/spotify-2015-seeklogo.png`
+  dosyasını değiştirmeden, orijinal saydamlığı ve renkleriyle kullanır. Ayrıca
+  siyah zemin çizilmez. Eski SVG, mesh derleyicisi ve eski PNG korunur fakat HUD'da
+  kullanılmaz. Yeni PNG, mevcut mipmap/linear filtreli ortak texture yolundadır.
+  Panel açıldığı karede vanilla tuş durumları/kuyruktaki basışlar temizlenir,
+  hareket girişi nötrlenir ve fare kilidi bırakılır; imleç hemen görünür.
+  Panel açıkken oyun girdileri engellenir. Kapanışta fare yalnızca aynı dünya/
+  oyuncu hâlâ etkin, oyun odakta ve başka Minecraft ekranı açık değilse geri
+  kilitlenir. Fiziksel tuşlara sentetik bırakma gönderilmez; hız/yerçekimi değişmez.
+  Config seçimleri ve ortak seçenek listeleri 12 px yumuşak köşeli popup,
+  içten yuvarlatılmış seçim satırları ve onay işareti kullanır. Çalışma alanında
+  küçük açıklamalar 14 px, kontroller 15 px; config onayı başlığı 19 px,
+  butonları 40 px yüksekliğindedir. HUD boyutları/ölçekleri değişmez.
+  Keybinds filtresi ana menüyle aynı sunum kategorilerini kullanır: Movement,
+  Player ve World, Misc'te birleşir; Friends yönetim sayfası filtreye girmez.
+  Klavyede harf/rakamlar 15 px, diğer tuşlar 12.5 px; dar ekranlarda harfleri
+  küçültmek yerine yalnızca klavye yatay kayar. Tam tuş adları tooltip'te kalır.
+  Lisans girişinde uzun key yapıştırırken oluşan yatay kaydırma hatası giderildi:
+  yer tutucu ayrı çizilir; gizli metnin imleç/kaydırma ölçüsü baştan tutarlıdır.
+  Giriş kartı okunabilir sabit yazı boyutları, anahtar simgesi, hafif tema vurgusu,
+  belirgin key alanı ve öncelikli giriş butonuyla yenilendi. Kapatma ikincil eylemdir;
+  doğrulama durumu ve hatalar okunaklıdır, kısa ekranda kart içeriği kaydırılabilir.
+  Arayüzde ekran dışında kalan modül kartları çizilmez; filtre sonuçları ve
+  kart metin ölçüleri liste/sorgu/genişlik/yazı tipi değişene kadar önbellekte tutulur.
+  Ayarlar sürükleme sırasında otomatik kaydedilmez; son değişiklikten sonra beklenir
+  ve disk hatalarında her karede tekrar denenmez. Taşan seçim listeleri ve lisans
+  kartı, genel gizli scrollbar stilinden bağımsız geçerli kaydırma boyutu kullanır.
+  HUD yönetiminde adlar 17 px, ölçek/eylem yazıları 14–15 px ve düğmeler daha
+  büyük; dar alanda kontroller küçülmek yerine alt satıra geçer. Modül kartlarının
+  üstüne gelince açıklayıcı tooltip açılmaz. Alt+Tab/Win tuşları pencereye iletilir;
+  odak kaybında UI fare yakalamasını bırakır, arka plandaki fare/kısayol basışlarını
+  işlemez. Dönüşte önceden basılı tuşların yeni tıklama/menü açma sayılması engellenir.
+- C++/Java hibrit geçişinde **1.21.11** hedefindeki No Jump Delay, Fast Stop,
+  Fast Place, Sprint, Full Bright, Auto Tool, Fast EXP, Left/Right Clicker ve
+  Inventory Clicker, Chest Stealer, Auto Armor, Elytra Swapper, Pot Refill ve
+  Mouse Tweaks, Bridge Assist, Pearl Macro, Inv Walk ve Glow ESP'nin oyun erişimi Java
+  köprülerine alındı.
+  Mevcut C++ karar motorları, arayüz, config, tuşlar ve auth korunur. Sprint ve
+  Full Bright devre dışı bırakma/renderer kapanışında sahip oldukları durumu
+  oyun thread'inde bırakır; manuel sprint/parlaklık değişiklikleri korunur.
+  Auto Tool'un uygunluk/hız hesabı ve Fast EXP'nin CPS zamanlaması C++'ta korunur.
+  Fast EXP'nin yeni Java yolu tur başına tek vanilla use çağrısı yapar; fazladan
+  SendInput üretmez. İlk beş modülün çalışması kullanıcı tarafından oyunda
+  doğrulandı; kullanıcı Auto Tool/Fast EXP'nin de çalıştığını doğruladı.
+  İlk üç grup sonrasındaki yeni yollar oyun içi test bekliyor.
+  Bridge Assist'in kenar örnekleri ve bırakma kuralları C++'ta korunur;
+  Pearl Macro gecikmeleri korunarak tur başına tek vanilla use çağrısına geçti.
+  Sentetik sağ tuş basma/bırakma üretmez, manuel slot değişimini ezmez.
+  Inv Walk'ın ekran/hareket politikası ve Glow ESP'nin ortak AntiBot filtresi
+  C++'ta kalır. Yazı alanları hareketi durdurur; Glow ESP kapanışta yalnızca
+  kendi değiştirdiği glow değerlerini geri alır, önceden var olan glow'u silmez.
+  Envanter eşya seçimi/gecikmeleri C++'ta korunur; Java her adımda pencere,
+  slot, eşya bileşenleri ve imleci tekrar doğrular. Clicker hesapları, Triggerbot
+  saldırı önceliği ve ortak Game Input taşıması native kalır. Kalan modüller ve diğer
+  sürümler henüz taşınmadı. Kapsam, derleme ve referans bildirimi:
+  [Hibrit geçiş](docs/HYBRID_MIGRATION.md).
 - Ortak kaynak koddan 1.21.1, 1.21.4, 1.21.8, 1.21.11, 26.1, 26.1.1 ve 26.1.2 için ayrı DLL hedefleri
   oluşturuldu. Yeni hedefler Windows derlemesi ve oyun içi doğrulama tamamlanana
   kadar geliştirme hedefidir. Adaptör yapısı, çıktı yolları ve kontrol listesi:
@@ -16,7 +133,7 @@ istemcisi içerir.
   [26.x geçiş durumu](docs/MINECRAFT_26_PORT.md).
 - Auth kaynakları modüllere ayrıldı; koyu temalı yeni yönetim paneli, sayfalı lisans
   listesi, ayrıntı çekmecesi, işlem geçmişi ve sistem durumu hazırlandı. Bu kaynak
-  değişikliği yereldir; canlı servise deploy edilmedi. Mimari, test ve güvenli yayın
+  değişikliği 19 Ekim 2026'da canlıya alındı; lisanslar ve sırlar korundu. Mimari, test ve güvenli yayın
   adımları: [server/README.md](server/README.md).
 - Terminal tarzı native **Onestep Launcher** hazır: key girişi, imzalı sürüm
   kontrolü, lisanslı internetten indirme ve seçilen açık Minecraft'a başlatma.

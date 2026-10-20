@@ -22,6 +22,15 @@
 #include "../src/modules/visual/settings/spotify_hud_settings.hpp"
 #include "../src/modules/visual/settings/nametag_settings.hpp"
 #include "../src/modules/visual/settings/chams_settings.hpp"
+#include "../src/modules/visual/settings/hit_particles_settings.hpp"
+#include "../src/modules/visual/settings/jump_circles_settings.hpp"
+#include "../src/modules/visual/settings/block_highlight_settings.hpp"
+#include "../src/modules/visual/settings/view_model_settings.hpp"
+#include "../src/modules/visual/visual_effects_logic.hpp"
+#include "../src/modules/visual/view_model_presets.hpp"
+#include "../src/modules/visual/cape_design.hpp"
+#include "../src/modules/visual/settings/cape_settings.hpp"
+#include "../src/modules/visual/settings/wings_settings.hpp"
 #include "../src/modules/render/settings/hud_settings.hpp"
 #include "../src/modules/render/settings/arraylist_settings.hpp"
 #include "../src/modules/combat/anchor_config.hpp"
@@ -118,6 +127,95 @@ int main()
     assert(!aura.apply_config_settings(R"({"target_mode":3,"mob_ground_test":true})"));
     assert(aura.export_config_settings() == aura_saved);
     using namespace module_settings;
+    check_contract<hit_particles>({"style","count","lifetime","size","opacity","theme_color","color","glow"});
+    check_contract<jump_circles>({"style","trigger","radius","lifetime","opacity","theme_color","color","glow"});
+    check_contract<block_highlight>({"opacity","fill","fill_opacity","theme_color","color","glow"});
+    check_contract<view_model>({"x","y","z","scale","pitch","yaw","roll","both_hands"});
+    check_contract<cape>({"style","tint_art","length","width","animate","motion","physics","opacity","theme_color","color","glow"});
+    check_contract<wings>({"style","detailed_art","tint_art","size","opacity","animate","speed","physics","theme_color","color","glow"});
+    {
+        view_model custom;
+        custom.x=.321f; custom.roll=27; custom.both_hands=false;
+        assert(view_model_presets::selected(custom)==-1);
+        const auto saved=custom;
+        assert(!view_model_presets::apply(custom,-1) && custom==saved);
+        assert(!view_model_presets::apply(custom,99) && custom==saved);
+        for (int i=0;i<static_cast<int>(view_model_presets::values.size());++i) {
+            assert(view_model_presets::apply(custom,i));
+            assert(view_model_presets::selected(custom)==i && !custom.both_hands);
+            assert(modules::settings::normalize(custom,view_model::schema()));
+            settings_fixture<view_model> preset_owner;
+            preset_owner.settings.update([&](auto& c) { c=custom; return true; });
+            const auto encoded=preset_owner.export_config_settings();
+            assert(encoded.find("preset")==std::string::npos);
+            assert(preset_owner.apply_config_settings(encoded) && preset_owner.settings.read()==custom);
+            custom.y+=.013f;
+            assert(view_model_presets::selected(custom)==-1);
+        }
+        settings_fixture<cape> cloth;
+        for (int style=0;style<10;++style) {
+            assert(cloth.apply_config_settings("{\"style\":"+std::to_string(style)+"}"));
+            assert(cloth.settings.read().style==style);
+            assert(cape_design::strokes(style).size()<=24);
+            for (const auto& segment:cape_design::strokes(style))
+                for (const auto p:{segment.a,segment.b})
+                    assert(p.x>=0 && p.x<=1 && p.y>=0 && p.y<=1);
+            for (int y=0;y<=14;++y) for (int x=0;x<=12;++x) {
+                const auto pattern=cape_design::sample(style,x/12.,y/14.);
+                assert(std::isfinite(pattern.shade) && pattern.shade>=0 && pattern.shade<=1);
+                assert(std::isfinite(pattern.ember) && pattern.ember>=0 && pattern.ember<=1);
+            }
+        }
+        const auto encoded=cloth.export_config_settings();
+        assert(!cloth.apply_config_settings(R"({"style":10})"));
+        assert(cloth.export_config_settings()==encoded);
+    }
+    {
+        visual_effects_logic::jump_detector jumps;
+        assert(jumps.sample(true,false)==0);
+        assert(jumps.sample(false,true)==1);
+        assert(jumps.sample(false,true)==0);
+        assert(jumps.sample(false,false)==0);
+        assert(jumps.sample(true,false)==2);
+        assert(jumps.sample(true,false)==0);
+        jumps.reset(); assert(jumps.sample(false,true)==0);
+        visual_effects_logic::hit_detector hits;
+        assert(!hits.sample(10,42,8,18.f,0)); // Existing hurt state is not a hit.
+        assert(!hits.sample(0,42,0,18.f,.1));
+        assert(hits.pending(.2));
+        assert(hits.sample(0,42,10,16.f,.2));
+        assert(!hits.sample(1,42,9,16.f,.21)); // Same damage, another frame.
+        assert(!hits.sample(0,42,8,16.f,.3));
+        assert(!hits.sample(9,42,10,14.f,.9)); // Expired acknowledgement.
+        assert(!hits.sample(0,43,10,12.f,1)); // Target switch does not inherit pending hit.
+        assert(!hits.sample(1,43,10,12.f,1.1));
+        assert(!hits.sample(2,43,0,std::numeric_limits<float>::quiet_NaN(),1.2));
+        assert(!hits.pending(1.2));
+        // Cooldown reset must be observed before the crosshair is refreshed.
+        hits.reset();
+        assert(!hits.sample(10,42,0,20.f,0));
+        assert(hits.observe_attack(0,.1) && hits.pending(.1));
+        assert(hits.sample(0,42,10,18.f,.11));
+        assert(!hits.sample(0,42,10,18.f,.12));
+        // Network damage observed one frame before the local reset still works.
+        hits.reset();
+        assert(!hits.sample(8,42,0,20.f,0));
+        assert(!hits.sample(9,42,10,18.f,.1));
+        assert(hits.sample(0,42,9,18.f,.12));
+        assert(!hits.sample(1,42,9,18.f,.13));
+        // Delayed acknowledgement, stale damage, and unrelated target damage.
+        hits.reset();
+        assert(!hits.sample(10,42,0,20.f,0));
+        assert(!hits.sample(0,42,0,20.f,.1));
+        assert(hits.sample(8,42,10,18.f,.55));
+        hits.reset();
+        assert(!hits.sample(10,42,0,20.f,0));
+        assert(!hits.sample(11,42,10,18.f,.1));
+        assert(!hits.sample(0,42,8,18.f,.3));
+        assert(!hits.sample(1,43,10,18.f,.31));
+        assert(!hits.pending(.31));
+        assert(!hits.sample(1,43,0,18.f,.2)); // Clock regression invalidates observations.
+    }
     check_contract<notifications>({"position","duration","max_visible","module_changes","operation_results"});
     assert(notifications{}.module_changes && notifications{}.operation_results && notifications{}.max_visible == 3);
     check_contract<anti_bot>({"check_player_list","spawn_grace_ticks","missing_list_ticks"});

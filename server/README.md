@@ -1,8 +1,15 @@
 # OneStep authentication service
 
 Aktif üretim API'si: `https://onestep-auth.gogogamesas.workers.dev`.
-Yönetim paneli `/admin`, sağlık kontrolü `/health` yolundadır. Buradaki yeni
-panel ve kaynak düzenlemesi yereldir; deploy edilene kadar canlı servisi değiştirmez.
+Yönetim paneli `/admin`, sağlık kontrolü `/health` yolundadır.
+20 Ekim 2026 itibarıyla launcher-only v2 üretimdedir; doğrudan DLL aktivasyonu ve
+v1 launcher yolları kapalıdır (410). Güncel Worker sürümü
+`b2daf1f6-1253-44ef-9cc7-d3a814fc7d37`, onaylı DLL sürümü
+`launcher-v2.1-20261020-1.21.11`.
+DB/KV/RateLimiter bağlantıları korunmuştur; v2 şeması eklemeli migration ile
+uygulanmıştır. Bu geçişte mevcut 5 lisans korunmuştur.
+Güncel protokol ve kalan işler: [LAUNCHER_V2.md](../docs/LAUNCHER_V2.md).
+Sürüm ve dosya özetleri `deployment.json` içindedir.
 
 ## Kaynak düzeni
 
@@ -43,25 +50,34 @@ sunucu onayından sonra tamamlanır. Erişimi değiştiren işlemler sonuçları
 onay ister. Oluşturma formunun son düğmesi, seçilen süre ve açıklama ile açık onaydır.
 
 Ham veya şifreli lisans materyali normal listede bulunmaz. Tam anahtar yalnızca
-oluşturma cevabında veya korumalı `reveal-key` isteğinde gelir. Çekmece kapatılınca
-gösterilen anahtar temizlenir. Hash olarak saklanan eski lisansların anahtarı geri
-çıkarılamaz; korumalı endpoint bunun için 409 döndürmeye devam eder.
+oluşturma cevabında bir kez gösterilir. `reveal-key` kaldırılmıştır (410).
+Hash olarak saklanan lisansların anahtarı geri çıkarılamaz.
 
-Admin Bearer anahtarı sekme belleğindedir. localStorage, sessionStorage, cookie veya URL
-ile tutulmaz. Yenileme ve çıkış oturumu bitirir. CSP, aynı origin JS/CSS bağlantıları,
+Yönetim erişimi Cloudflare Access ve bağımsız MFA ile korunur; eski admin Bearer
+anahtarı kabul edilmez. CSP, aynı origin JS/CSS bağlantıları,
 `no-store`, `no-referrer`, native dialog odak yönetimi, Escape ve azaltılmış hareket
 desteği vardır. Değişken metinler DOM'a `textContent` ile yazılır. Mobilde sol menü
 açılır/kapanır ve kapalıyken klavyeyle erişilemez.
+
+## Güvenlik güncellemesi
+
+20 Ekim sertleştirmesi ve launcher-only v2 canlıya alınmıştır.
+Güncel kurulum, Access ön koşulu ve lisansları koruyan geçiş:
+[AUTH_HARDENING.md](AUTH_HARDENING.md). Eski vault yardımcıları artık otomatik
+anahtar çözmez/kopyalamaz. Yeni lisans yalnızca oluşturulurken bir kez gösterilir.
 
 ## API uyumluluğu
 
 Aktif endpointler ve alanları korunur:
 
-- `POST /api/v1/auth`: `activate` ve `heartbeat`.
-- `POST /api/v1/configs/{list,publish,load,delete}`.
+- `POST /api/v2/launcher/{login,manifest,download,ticket}`: launcher audience.
+- `POST /api/v2/runtime/{redeem,renew}`: bağlı oyun oturumu.
+- `POST /api/v1/auth` ve `/api/v1/launcher/*`: kapalı (410).
+- `POST /api/v1/configs/{list,publish,load,delete}`: güncel v2 runtime izni gerekir.
 - `GET /api/v1/admin/list-keys`: parametresiz eski `keys` cevabı korunur.
-- `POST /api/v1/admin/{create-key,reveal-key,reset-hwid,ban-key,delete-key,delete-config}`.
-- `PUT /api/v1/admin/release` ve `POST /api/v1/launcher/{manifest,download,ticket,redeem}`.
+- `POST /api/v1/admin/{create-key,reset-hwid,ban-key,delete-key,delete-config}`.
+- `reveal-key` kaldırıldı (410); `create-key` özel anahtar kabul etmez.
+- `PUT /api/v1/admin/release` ve `POST /api/v1/admin/revoke-release`.
 
 Yeni admin okuma yolları: `GET /api/v1/admin/{overview,activity,status}`.
 Sayfalı liste isteği `list-keys?page=1&page_size=20&status=all&sort=newest&search=` biçimindedir.
@@ -73,18 +89,19 @@ yalnızca sabit bir izin listesinden seçilir. Liste cihaz anahtarı hash'i yeri
 
 Admin API 401 yetkisiz, 405 yanlış yöntem, 400 geçersiz girdi, 404 olmayan kayıt/yol,
 409 çakışma veya gösterilemeyen anahtar, 429 istek sınırı, 500/503 servis hatası döndürür.
-Aktif istemcilerin auth/config hata sözleşmeleri değiştirilmedi. Yasağı kaldırma için
+Eski v1 istemcileri artık desteklenmez. Yasağı kaldırma için
 mevcut `status: active` kullanılır; cihaz bağı henüz yoksa kayıt `unused` olur ve normal
 aktivasyonla bağlanır. Bağlı lisansın cihazı ve bitiş tarihi korunur.
 
 ## Bağlantılar ve sırlar
 
 `wrangler.jsonc` içindeki mevcut `DB` (OneStep D1), `RATE_LIMITER` (SQLite Durable
-Object) ve `RELEASES` (KV) bağlantıları korunur. `ALLOW_DEVICE_CONFIGS=false` kalır.
+Object) ve `RELEASES` (KV) bağlantıları korunur. Cihaz tabanlı lisanssız config
+erişimi kapalıdır. `AUTH_V2_ONLY` ve `AUTH_V2_RELEASES` üretimde `true` olmalıdır.
 `RATE_LIMITER` class adı ve migration etiketi değiştirilmez. Sayaç transaction içinde
 artırılır; aynı milisaniyedeki ve eşzamanlı istekler de sayılır.
 
-Gerekli sırlar: `KEY_PEPPER`, `HWID_PEPPER`, `ADMIN_TOKEN_HASH`,
+Gerekli sırlar: `KEY_PEPPER`, `HWID_PEPPER`,
 `SIGNING_PRIVATE_KEY_PKCS8`, `SIGNING_PUBLIC_KEY_SPKI`. Var olan değerleri koruyun.
 Kurulum ayrıntıları [SECURITY_SETUP.md](SECURITY_SETUP.md) içindedir. Bu refaktör için
 anahtar üretme, pepper değiştirme veya lisans sıfırlama gerekmez.
@@ -97,6 +114,7 @@ Node 24 ve depodaki kilit dosyasıyla:
 cd server
 npm ci
 npm test
+npm run test:bundle    # Minify açık/kapalı gerçek Worker paketinde dashboard başlangıcı
 npm run test:browser   # Chromium; CHROMIUM değişkeniyle yol belirtilebilir
 npm run test:runtime   # Wrangler dry-run + yerel workerd/D1/SQLite DO
 npm run check          # Yalnızca dry-run; deploy yapmaz
@@ -111,6 +129,12 @@ Canlı API veya tarihsel Wolf D1'a bağlanmaz. Browser testi Chromium yoksa bunu
 skip olarak bildirir. MSVC için Developer PowerShell'de aynı Python kontrolleri ve
 `scripts/Build-Release.ps1 -Clean -SkipSign` kullanılabilir. Bu komut DLL üretir;
 üretim API'sini değiştirmez. Launcher: `scripts/Build-Launcher.ps1`.
+
+Dashboard tarayıcı kodu `dashboardApp.toString()` ile üretildiğinden
+`wrangler.jsonc` içindeki `keep_names: false` korunmalıdır. Aksi halde paketleyicinin
+harici isim yardımcısı tarayıcıda tanımsız kalıp giriş ekranını durdurabilir.
+Browser testinde `ONESTEP_WORKER_BUNDLE` değişkenine oluşturulan Worker dosyasının
+tam yolunu vererek kaynak yerine gerçek yayın paketi de doğrulanabilir.
 
 ## Güvenli şema ve manuel yayın
 
@@ -131,5 +155,6 @@ vars değerlerini `--keep-vars` ile korur; secrets yönetimine dokunmaz. Bütün
 Wrangler tarafından tek Worker paketine dahil edilir. Ayrı manuel asset yüklemesi
 gerekmez. Eski Wolf Worker ve veritabanı bu sürecin hedefi değildir.
 
-`wolf-client-v1` signed-session audience'ı ve native `WOLF-HWID-V3|` fingerprint
-önekini değiştirmeyin. Bunlar mevcut lisans/cihaz uyumluluğunun parçasıdır.
+Native `WOLF-HWID-V3|` fingerprint önekini değiştirmeyin; mevcut cihaz bağı buna
+dayanır. V2 audience değerleri birbirinden ayrıdır; tarihsel `wolf-client-v1`
+oturumlarıyla geri dönüş açılmamalıdır.

@@ -1,5 +1,6 @@
 #include "menu_background.hpp"
 #include "../gui/ui_state.hpp"
+#include "../gui/ui_typography.hpp"
 #include <cfloat>
 #include <cstdio>
 
@@ -27,6 +28,7 @@ namespace
     void background_label(ImVec2 at, const char* text, float size = 12.f,
         ImU32 color = background_muted, float width = FLT_MAX)
     {
+        size = gui::typography::readable(size);
         const ImVec4 clip(at.x, at.y, at.x + width, at.y + size + 4);
         ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), size, at,
             ImGui::GetColorU32(ImGui::ColorConvertU32ToFloat4(color)), text, nullptr, 0.f, &clip);
@@ -38,10 +40,10 @@ namespace
         background_label(p, title, 11.f);
         char number[16];
         std::snprintf(number, sizeof(number), "%d%%", static_cast<int>(std::lround(*value * 100)));
-        const auto extent = ImGui::GetFont()->CalcTextSizeA(11.f, FLT_MAX, 0, number);
+        const auto extent = ImGui::GetFont()->CalcTextSizeA(gui::typography::caption, FLT_MAX, 0, number);
         background_label(ImVec2(p.x + width - extent.x, p.y), number, 11.f, background_primary);
         ImGui::Dummy(ImVec2(0, 14));
-        ImGui::SetCursorScreenPos(ImVec2(p.x, p.y + 20));
+        ImGui::SetCursorScreenPos(ImVec2(p.x, p.y + 24));
         ImGui::SetNextItemWidth(width);
         if (ImGui::SliderFloat("##value", value, low, high, "", ImGuiSliderFlags_AlwaysClamp))
             gui::aegis::mark_preferences_dirty();
@@ -59,18 +61,18 @@ void gui::background::render_settings(ImU32 accent)
     auto* draw = ImGui::GetWindowDrawList();
 
     const auto heading = ImGui::GetCursorScreenPos();
-    background_label(ImVec2(heading.x, heading.y + 8), "Menu background", 13.f, background_primary, std::max(1.f, width - 110));
-    ImGui::SetCursorScreenPos(ImVec2(heading.x + width - 104, heading.y));
+    background_label(ImVec2(heading.x, heading.y + 8), "Menu background", gui::typography::control, background_primary, std::max(1.f, width - 132));
+    ImGui::SetCursorScreenPos(ImVec2(heading.x + width - 126, heading.y));
     ImGui::BeginDisabled(choosing);
     const auto button = ImGui::GetCursorScreenPos();
-    if (ImGui::InvisibleButton("##import", ImVec2(104, 30))) begin_import();
+    if (ImGui::InvisibleButton("##import", ImVec2(126, 34))) begin_import();
     const bool hovered = ImGui::IsItemHovered();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
         ImGui::SetTooltip("%s", "PNG / JPG, up to 16 MB");
-    draw->AddRectFilled(button, ImVec2(button.x + 104, button.y + 30), IM_COL32(255, 255, 255, hovered ? 15 : 6), 6.f);
-    draw->AddRect(button, ImVec2(button.x + 104, button.y + 30), IM_COL32(255, 255, 255, hovered ? 30 : 18), 6.f);
-    background_label(ImVec2(button.x + 22, button.y + 9), "Add image", 11.f, background_primary);
-    const auto center = ImVec2(button.x + 12, button.y + 15);
+    draw->AddRectFilled(button, ImVec2(button.x + 126, button.y + 34), IM_COL32(255, 255, 255, hovered ? 15 : 6), 8.f);
+    draw->AddRect(button, ImVec2(button.x + 126, button.y + 34), IM_COL32(255, 255, 255, hovered ? 30 : 18), 8.f);
+    background_label(ImVec2(button.x + 25, button.y + 9), "Add image", gui::typography::caption, background_primary);
+    const auto center = ImVec2(button.x + 13, button.y + 17);
     draw->AddLine(ImVec2(center.x - 3.5f, center.y), ImVec2(center.x + 3.5f, center.y), background_muted, 1.2f);
     draw->AddLine(ImVec2(center.x, center.y - 3.5f), ImVec2(center.x, center.y + 3.5f), background_muted, 1.2f);
     ImGui::EndDisabled();
@@ -134,7 +136,7 @@ void gui::background::render_settings(ImU32 accent)
         }
         draw->AddRectFilled(ImVec2(inside.x, image_max.y), inside_max, IM_COL32(12, 11, 17, 255),
             7.f - border, ImDrawFlags_RoundCornersBottom);
-        background_label(ImVec2(p.x + 10, maximum.y - 19), names[i], 11.5f,
+        background_label(ImVec2(p.x + 10, maximum.y - 22), names[i], gui::typography::caption,
             available ? background_primary : background_muted, size.x - 20);
         if (selected) {
             const ImVec2 c(maximum.x - 14, p.y + 14);

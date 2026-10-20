@@ -31,6 +31,8 @@ jobs:
           python scripts/Test-AuthConfiguration.py
           npm ci --prefix server
           npm test --prefix server
+          npm run test:v2 --prefix server
+          npm run test:v2:runtime --prefix server
           npm run test:runtime --prefix server
       - name: Validate infrastructure and source boundaries
         run: |
@@ -38,6 +40,8 @@ jobs:
           python scripts/Test-AimAssistSources.py
           python scripts/Test-TriggerbotSources.py
           python scripts/Test-JumpResetSources.py
+      - name: Check original hybrid game bridge offline
+        run: python scripts/Test-HybridBridge.py
       - name: Compile and run offline tests
         run: python scripts/Test-Offline.py --jobs 2
       - name: Exercise GrimUI layout and input without Minecraft
@@ -96,6 +100,10 @@ jobs:
             dll: build/minecraft/26.1.2/Onestep.dll
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
       - name: Build Release x64
         shell: pwsh
         run: ./scripts/Build-Release.ps1 -Clean -SkipSign -PlatformToolset v143 -MinecraftVersion '${{ matrix.minecraft }}'
@@ -104,5 +112,29 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.dll }}
+          if-no-files-found: error
+          retention-days: 14
+
+  windows-launcher:
+    needs: offline-tests
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build launcher and native permission checks
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $builder = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
+          & $builder launcher/launcher.vcxproj /m /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /v:minimal /nologo
+          if ($LASTEXITCODE) { throw 'Launcher build failed' }
+          & $builder tests/auth_v2_native.vcxproj /m /p:Configuration=Debug /p:Platform=x64 /p:PlatformToolset=v143 /v:minimal /nologo
+          if ($LASTEXITCODE) { throw 'Native permission test build failed' }
+          & ./build/launcher-v2/tests/auth-v2-test.exe
+          if ($LASTEXITCODE) { throw 'Native permission test failed' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OneStep-Launcher-Windows-x64
+          path: build/launcher/Onestep-Launcher.exe
           if-no-files-found: error
           retention-days: 14

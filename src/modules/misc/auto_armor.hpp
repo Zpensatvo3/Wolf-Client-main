@@ -3,6 +3,7 @@
 #include "../module_support.hpp"
 #include "../core/settings_store.hpp"
 #include "settings/auto_armor_settings.hpp"
+#include "../../platform/adapter/target_version.hpp"
 
 namespace modules
 {
@@ -13,6 +14,9 @@ class auto_armor : public module
 
 		void run(::cache& cache) override;
 		void on_disable(::cache& cache) override;
+        void render_overlay() override;
+        void on_render_shutdown() override;
+        bool render_when_disabled() const override { return mc::target.build_id == 12111; }
 		void render_options() override;
 		float get_options_height() override { return 205.0f; }
 		void visit_config(config_visitor& v) override
@@ -26,5 +30,6 @@ class auto_armor : public module
 		int armor_screen_slot = -1;
 		std::chrono::steady_clock::time_point next_action{};
 		void reset_runtime();
+        std::atomic_bool native_fallback_{false}, reset_requested_{true};
 	};
 }

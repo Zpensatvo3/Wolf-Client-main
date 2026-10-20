@@ -1,6 +1,7 @@
 // The supported OneStep schema is installed explicitly from schema.sql.
 // Request handling validates it without rewriting historical tables or rows.
 const requiredColumns = {
+    auth_request_nonces: ['nonce_hash','exp'],
     license_keys: ['id', 'key_hash', 'key_encrypted', 'hwid_hash', 'hwid_hint',
         'device_key_hash', 'license_epoch', 'expires_at', 'status', 'activated_at', 'created_at'],
     auth_logs: ['id', 'key_hash', 'hwid_hash', 'ip_address', 'status', 'timestamp'],

@@ -1,9 +1,11 @@
 #include "keybinds_page.hpp"
 #include "keybinds_model.hpp"
+#include "keyboard_layout.hpp"
 #include "../configs/keybind_profile.hpp"
 #include "../gui/gui.hpp"
 #include "../gui/ui_state.hpp"
 #include "../gui/control_draw.hpp"
+#include "../gui/popup_controls.hpp"
 #include <cmath>
 
 namespace {
@@ -22,7 +24,7 @@ namespace {
     ImFont* regular() { return gui::ui_font ? gui::ui_font : ImGui::GetFont(); }
     ImFont* bold() { return gui::ui_bold_font ? gui::ui_bold_font : ImGui::GetFont(); }
     void text(ImDrawList* draw, ImVec2 p, float size, ImU32 color, const char* value, bool heavy = false) {
-        draw->AddText(heavy ? bold() : regular(), size, p, color, value);
+        draw->AddText(heavy ? bold() : regular(), gui::typography::readable(size), p, color, value);
     }
     ImU32 tint(float alpha) { auto c = gui::get_dynamic_color().Value; c.w = alpha; return ImGui::GetColorU32(c); }
     std::string title(std::string value) {
@@ -31,8 +33,15 @@ namespace {
         return value;
     }
     void keyboard(float width) {
+        const auto layout = gui::keyboard_layout::measure(width);
+        const float unit = layout.unit, gap = gui::keyboard_layout::gap(unit);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+        ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, 6.f);
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
+        ImGui::SetNextWindowContentSize({layout.width, 0});
+        if (ImGui::BeginChild("##keyboard_layout", {width, layout.height + (layout.scroll ? 10.f : 0.f)}, ImGuiChildFlags_None,
+            ImGuiWindowFlags_HorizontalScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
         const auto top = ImGui::GetCursorScreenPos();
-        const float unit = width / 23.f, gap = std::clamp(unit * .09f, 1.f, 3.f);
         const auto assigned = gui::keybinds_model::counts();
         auto* draw = ImGui::GetWindowDrawList();
         for (std::size_t i = 0; i < std::size(platform::keys::keyboard); ++i) {
@@ -47,24 +56,35 @@ namespace {
             state.hover[i] = approach(state.hover[i], hovered ? 1.f : 0.f);
             state.selection[i] = approach(state.selection[i], selected ? 1.f : 0.f);
             const float highlight = std::max(state.selection[i], state.hover[i] * .4f);
-            draw->AddRectFilled(minimum, maximum, ImGui::GetColorU32(ImVec4(.10f, .095f, .125f, .95f)), 4.f);
+            draw->AddRectFilled(minimum, maximum, ImGui::GetColorU32(ImVec4(.12f, .12f, .15f, 1.f)), 5.f);
             if (assigned[key.code] || highlight > .001f)
                 draw->AddRectFilled(minimum, maximum, tint(.08f + .16f * highlight), 4.f);
             draw->AddRect(minimum, maximum, highlight > .01f ? tint(.35f + highlight * .5f)
-                : ImGui::GetColorU32(ImVec4(1,1,1,.07f)), 4.f, 0, selected ? 1.5f : 1.f);
-            gui::control_draw::centered_label(draw, regular(), std::clamp(unit * .31f, 7.f, 11.f), minimum, maximum,
-                reserved ? ImGui::GetColorU32(ImGuiCol_TextDisabled) : ImGui::GetColorU32(ImGuiCol_Text), key.label, {2,2});
+                : ImGui::GetColorU32(ImVec4(1,1,1,.14f)), 5.f, 0, selected ? 1.5f : 1.f);
+            gui::control_draw::centered_label(draw, gui::keyboard_layout::single_character(key) ? bold() : regular(),
+                gui::keyboard_layout::font_size(key), minimum, maximum,
+                reserved ? IM_COL32(177, 181, 195, 255) : IM_COL32(245, 246, 251, 255), gui::keyboard_layout::legend(key), {2,2});
             if (assigned[key.code]) draw->AddCircleFilled({maximum.x - 4.f, minimum.y + 4.f}, 1.8f, tint(1.f));
             if (hovered) {
-                ImGui::BeginTooltip(); ImGui::TextUnformatted(platform::keys::label(key.code).c_str());
-                if (const auto* reason = platform::keys::reserved_reason(key.code)) ImGui::TextDisabled("%s", reason);
+                ImGui::BeginTooltip();
+              {
+                gui::typography::scoped_font tooltip_font(regular());
+                ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 220.f);
+                ImGui::TextUnformatted(platform::keys::label(key.code).c_str());
+                if (reserved) ImGui::TextDisabled("Reserved key");
                 for (const auto* entry : modules::get_modules())
-                    if (entry->supports_keybind() && entry->get_keybind() == key.code) ImGui::TextUnformatted(title(entry->get_name()).c_str());
+                    if (gui::keybinds_model::visible(entry) && entry->get_keybind() == key.code) ImGui::TextUnformatted(title(entry->get_name()).c_str());
+                ImGui::PopTextWrapPos();
+              }
                 ImGui::EndTooltip();
             }
             ImGui::PopID();
         }
-        ImGui::SetCursorScreenPos(top); ImGui::Dummy({width, unit * 6.5f});
+        ImGui::SetCursorScreenPos(top); ImGui::Dummy({layout.width, layout.height});
+        }
+        ImGui::EndChild();
+        ImGui::PopStyleColor();
+        ImGui::PopStyleVar(2);
     }
     void save_feedback() {
         if (!configs::keybind_profile::flush(true))
@@ -107,40 +127,48 @@ namespace {
         text(draw, top, 14.f, ImGui::GetColorU32(ImGuiCol_Text), selected.c_str(), true);
         std::string assignments;
         for (const auto* entry : modules::get_modules()) {
-            if (!entry || !entry->supports_keybind() || entry->get_keybind() != state.selected) continue;
+            if (!gui::keybinds_model::visible(entry) || entry->get_keybind() != state.selected) continue;
             if (!assignments.empty()) assignments += ", ";
             assignments += title(entry->get_name());
         }
         const float label_width = bold()->CalcTextSizeA(14.f, FLT_MAX, 0, selected.c_str()).x;
         const ImVec4 summary_clip(top.x, top.y, top.x + width, top.y + 22.f);
-        draw->AddText(regular(),12.f,{top.x + label_width + 14.f,top.y + 1.f},
+        draw->AddText(regular(),gui::typography::caption,{top.x + label_width + 14.f,top.y + 1.f},
             ImGui::GetColorU32(ImGuiCol_TextDisabled),assignments.empty() ? "Unassigned" : assignments.c_str(),nullptr,0,&summary_clip);
         const char* reason = platform::keys::reserved_reason(state.selected);
         ImGui::Dummy({width,22});
-        if (ImGui::IsItemHovered() && !assignments.empty()) ImGui::SetTooltip("%s",assignments.c_str());
-        if (reason) {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-            ImGui::PushTextWrapPos(0.f); ImGui::TextUnformatted(reason);
-            ImGui::PopTextWrapPos(); ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered() && !assignments.empty()) {
+            ImGui::BeginTooltip();
+            { gui::typography::scoped_font tooltip_font(regular());
+              ImGui::PushTextWrapPos(ImGui::GetCursorPosX()+220.f);
+              ImGui::TextUnformatted(assignments.c_str()); ImGui::PopTextWrapPos(); }
+            ImGui::EndTooltip();
         }
-        search_field(std::max(60.f, width - 174.f));
-        ImGui::SameLine(0,8); ImGui::SetNextItemWidth(166.f);
+        if (reason) ImGui::TextDisabled("Reserved key - choose another key");
+        const bool narrow = width < 340.f;
+        const float category_width = narrow ? width : 166.f;
+        search_field(narrow ? width : width - 174.f);
+        if (!narrow) ImGui::SameLine(0,8);
+        ImGui::SetNextItemWidth(category_width);
         const auto category_minimum = ImGui::GetCursorScreenPos();
         const bool category_hovered = ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(category_minimum,
-            {category_minimum.x + 166.f,category_minimum.y + ImGui::GetFrameHeight()});
+            {category_minimum.x + category_width,category_minimum.y + ImGui::GetFrameHeight()});
         const auto category_background = ImGui::GetStyleColorVec4(category_hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg);
         // BeginCombo normally gives the arrow a separate button-colored block.
         // Match both pieces even while its popup is open but no longer hovered.
+      {
+        gui::popup_controls::style category_popup_style;
         ImGui::PushStyleColor(ImGuiCol_Button, category_background);
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, category_background);
         const bool category_open = ImGui::BeginCombo("##category", state.category.empty() ? "All categories" : state.category.c_str());
         ImGui::PopStyleColor(2);
         if (category_open) {
-            if (ImGui::Selectable("All categories", state.category.empty())) state.category.clear();
+            if (gui::popup_controls::choice("##all_categories", "All categories", state.category.empty(), regular(), gui::get_dynamic_color().Value)) state.category.clear();
             for (const auto& category : gui::keybinds_model::categories())
-                if (ImGui::Selectable(category.c_str(), state.category == category)) state.category = category;
+                if (gui::popup_controls::choice(category.c_str(), category.c_str(), state.category == category, regular(), gui::get_dynamic_color().Value)) state.category = category;
             ImGui::EndCombo();
         }
+      }
         const auto list = gui::keybinds_model::filtered(state.search, state.category);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0,0));
         const float error_height = configs::keybind_profile::healthy() ? 0.f : ImGui::GetTextLineHeightWithSpacing();
@@ -148,7 +176,7 @@ namespace {
         if (ImGui::BeginChild("##module_selection", {0,list_height}, ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar)) {
             std::string category;
             for (auto* entry : list) {
-                if (category != entry->get_category()) { category = entry->get_category(); ImGui::TextDisabled("%s", category.c_str()); }
+                if (category != gui::keybinds_model::category(*entry)) { category = gui::keybinds_model::category(*entry); ImGui::TextDisabled("%s", category.c_str()); }
                 ImGui::PushID(entry->get_id());
                 const auto p = ImGui::GetCursorScreenPos();
                 const float row_width = ImGui::GetContentRegionAvail().x;
@@ -159,11 +187,11 @@ namespace {
                 gui::list_row_background(p, {p.x + row_width,p.y + 32}, ImGui::IsItemHovered(), assigned);
                 const auto name = title(entry->get_name());
                 const ImVec4 clip(p.x + 10,p.y,p.x + std::max(20.f,row_width - 182.f),p.y+32);
-                row_draw->AddText(regular(),13.f,{p.x+10,p.y+9},ImGui::GetColorU32(ImGuiCol_Text),name.c_str(),nullptr,0,&clip);
+                row_draw->AddText(regular(),gui::typography::control,{p.x+10,p.y+8},ImGui::GetColorU32(ImGuiCol_Text),name.c_str(),nullptr,0,&clip);
                 const auto binding = platform::keys::label(entry->get_keybind());
-                gui::control_draw::centered_label(row_draw,regular(),10.f,{p.x + row_width - 182,p.y},{p.x + row_width - 100,p.y+32},
+                gui::control_draw::centered_label(row_draw,regular(),gui::typography::caption,{p.x + row_width - 182,p.y},{p.x + row_width - 100,p.y+32},
                     ImGui::GetColorU32(ImGuiCol_TextDisabled),binding.c_str(),{3,2});
-                gui::control_draw::centered_label(row_draw,bold(),10.f,{p.x + row_width - 98,p.y},{p.x+row_width-36,p.y+32},
+                gui::control_draw::centered_label(row_draw,bold(),gui::typography::caption,{p.x + row_width - 98,p.y},{p.x+row_width-36,p.y+32},
                     assigned ? tint(1.f) : ImGui::GetColorU32(ImGuiCol_Text),assigned ? "Remove" : "Assign",{2,2});
                 if (clicked) {
                     const bool changed = assigned ? gui::keybinds_model::clear(*entry) : gui::keybinds_model::assign(*entry,state.selected);
@@ -189,6 +217,7 @@ namespace {
 void gui::keybinds_page::reset() { state = {}; }
 void gui::keybinds_page::render()
 {
+    typography::scoped_font workspace_font(regular());
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14,14));
     ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding,10.f);
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding,6.f);

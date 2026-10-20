@@ -3,11 +3,14 @@
 #include "menu_background.hpp"
 #include "profile_model.hpp"
 #include "keybinds_page.hpp"
+#include "dock_layout.hpp"
+#include "module_categories.hpp"
 
 #include "../gui/gui.hpp"
 #include "../gui/module_descriptions.hpp"
 #include "../gui/control_draw.hpp"
 #include "../gui/ui_state.hpp"
+#include "../gui/ui_typography.hpp"
 #include "../modules/core/module.hpp"
 #include "../modules/core/module_registry.hpp"
 #include "../modules/visual/player_esp.hpp"
@@ -50,6 +53,14 @@ namespace
         keybinds
     };
 
+    struct card_metrics
+    {
+        std::string title;
+        float width = -1.f, height = 0.f, title_height = 0.f;
+        ImFont* title_font = nullptr;
+        ImFont* body_font = nullptr;
+    };
+
     struct runtime_state
     {
         page current = page::combat;
@@ -73,7 +84,8 @@ namespace
         int rendered_frame = -1;
         bool positioned = false;
         ImVec2 position{};
-        ImVec2 feature_drag_offset{};
+        ImVec2 drag_grab_offset{};
+        bool dragging_shell = false;
         page list_page = page::combat;
         std::string list_query;
         int list_frame = -1;
@@ -83,6 +95,11 @@ namespace
         std::unordered_map<ImGuiID, float> card_selected_animation;
         std::unordered_map<ImGuiID, float> card_enabled_animation;
         std::unordered_map<modules::module*, float> options_content_height;
+        std::vector<modules::module*> catalogue, page_modules, search_modules;
+        std::unordered_map<modules::module*, card_metrics> card_layouts;
+        page cached_page = page::combat;
+        bool page_cached = false, search_cached = false;
+        std::string cached_search;
         float page_fade = 1.0f;
     } state;
 
@@ -195,14 +212,13 @@ namespace
     bool belongs_to_page(const modules::module* module, page target)
     {
         if (!module) return false;
-        const char* category = module->get_category();
-        if (target == page::combat) return std::strcmp(category, "Combat") == 0;
-        if (target == page::vape) return std::strcmp(category, "Vape") == 0;
-        if (target == page::misc) return std::strcmp(category, "Movement") == 0 ||
-            std::strcmp(category, "Player") == 0 || std::strcmp(category, "World") == 0 || std::strcmp(category, "Misc") == 0;
-        if (target == page::visuals) return std::strcmp(category, "Visual") == 0;
-        if (target == page::client) return std::strcmp(category, "Client") == 0;
-        if (target == page::hud) return std::strcmp(category, "Render") == 0;
+        const auto category = gui::module_categories::display(module->get_category());
+        if (target == page::combat) return category == "Combat";
+        if (target == page::vape) return category == "Vape";
+        if (target == page::misc) return category == "Misc";
+        if (target == page::visuals) return category == "Visuals";
+        if (target == page::client) return category == "Client";
+        if (target == page::hud) return category == "Hud";
         return false;
     }
 
@@ -244,13 +260,28 @@ namespace
         return true;
     }
 
-    std::vector<modules::module*> search_results()
+    void refresh_catalogue()
     {
-        std::vector<modules::module*> result;
-        if (state.search[0])
-            for (auto* module : modules::get_modules())
-                if (matches(module, state.search)) result.push_back(module);
-        return result;
+        const auto& registry = modules::get_modules();
+        if (state.catalogue == registry) return;
+        state.catalogue = registry;
+        state.card_layouts.clear();
+        state.page_cached = state.search_cached = false;
+    }
+
+    const std::vector<modules::module*>& search_results()
+    {
+        refresh_catalogue();
+        if (!state.search_cached || state.cached_search != state.search)
+        {
+            state.search_modules.clear();
+            if (state.search[0])
+                for (auto* module : state.catalogue)
+                    if (module && matches(module, state.search)) state.search_modules.push_back(module);
+            state.cached_search = state.search;
+            state.search_cached = true;
+        }
+        return state.search_modules;
     }
 
     void clear_search()
@@ -318,7 +349,7 @@ namespace
 
     void draw_text(ImDrawList* draw, ImFont* font, float size, const ImVec2& position, ImU32 color, const char* value)
     {
-        draw->AddText(font ? font : ImGui::GetFont(), size, position, color, value ? value : "");
+        draw->AddText(font ? font : ImGui::GetFont(), gui::typography::readable(size), position, color, value ? value : "");
     }
 
     void icon(ImDrawList* draw, const char* glyph, const ImVec2& center, ImU32 color, float size = 16.0f)
@@ -388,12 +419,61 @@ namespace
         return clicked;
     }
 
+    constexpr float module_title_size = 17.f, module_description_size = gui::typography::caption;
+    const card_metrics& measure_card(modules::module* module, float width)
+    {
+        auto* title_font = gui::ui_bold_font ? gui::ui_bold_font : ImGui::GetFont();
+        auto* body_font = gui::ui_font ? gui::ui_font : ImGui::GetFont();
+        auto& measured = state.card_layouts[module];
+        if (measured.width != width || measured.title_font != title_font || measured.body_font != body_font)
+        {
+            const float wrap = std::max(1.f, width - 24.f);
+            measured.title = title_case(module->get_name());
+            measured.width = width;
+            measured.title_font = title_font;
+            measured.body_font = body_font;
+            measured.title_height = title_font->CalcTextSizeA(module_title_size, FLT_MAX, wrap, measured.title.c_str()).y;
+            const float body_height = body_font->CalcTextSizeA(module_description_size, FLT_MAX, wrap, description(module->get_name())).y;
+            measured.height = std::ceil(std::max(76.f, 12.f + measured.title_height + 6.f + body_height + 12.f));
+        }
+        return measured;
+    }
+
+    void flowing_card_border(ImDrawList* draw, ImVec2 minimum, ImVec2 maximum, float opacity)
+    {
+        // Recolor one anti-aliased rounded stroke: no segment seams or per-card allocations.
+        const int first = draw->VtxBuffer.Size;
+        draw->AddRect(minimum, maximum, alpha(accent, opacity), 8.f, 0, 1.35f);
+        const float width = maximum.x - minimum.x, height = maximum.y - minimum.y;
+        const float perimeter = std::max(1.f, 2.f * (width + height));
+        const double phase = gui::aegis::get_preferences().reduce_motion ? 0. : ImGui::GetTime() * .22;
+        for (int index = first; index < draw->VtxBuffer.Size; ++index)
+        {
+            auto& vertex = draw->VtxBuffer[index];
+            const float x = std::clamp(vertex.pos.x - minimum.x, 0.f, width);
+            const float y = std::clamp(vertex.pos.y - minimum.y, 0.f, height);
+            const float edge = std::min({x, y, width - x, height - y});
+            const float distance = edge == y ? x : edge == width - x ? width + y
+                : edge == height - y ? 2.f * width + height - x : perimeter - y;
+            const float wave = .5f + .5f * static_cast<float>(std::cos(6.28318530718 * (distance / perimeter - phase)));
+            const ImU32 color = blend(alpha(accent, 1.f), blend(accent_hover, IM_COL32_WHITE, .65f), wave * wave);
+            vertex.col = (color & ~IM_COL32_A_MASK) | (vertex.col & IM_COL32_A_MASK);
+        }
+    }
+
     void render_card(modules::module* module, float width, float height, bool search_selected = false)
     {
         if (!module) return;
-        ImGui::PushID(module->get_id());
         const ImVec2 minimum = ImGui::GetCursorScreenPos();
         const ImVec2 maximum(minimum.x + width, minimum.y + height);
+        if (!ImGui::IsRectVisible(minimum, maximum))
+        {
+            // Keep the full scroll extent/keyboard reveal target, but do not
+            // tessellate rounded cards and text outside the child's clip rect.
+            ImGui::Dummy(ImVec2(width, height));
+            return;
+        }
+        ImGui::PushID(module->get_id());
         const bool clicked = ImGui::InvisibleButton("##module_card", ImVec2(width, height));
         const ImGuiID id = ImGui::GetItemID();
         const bool hovered = ImGui::IsItemHovered();
@@ -412,32 +492,38 @@ namespace
         draw->AddRectFilled(minimum, maximum,
             blend(IM_COL32(29, 28, 33, 235), IM_COL32(36, 34, 41, 245), hover), 8.f);
         if (sel_anim > .001f)
-            draw->AddRect(minimum, maximum, alpha(accent, .36f * sel_anim), 8.f);
+            flowing_card_border(draw, minimum, maximum, .85f * sel_anim);
 
-        const std::string title = title_case(module->get_name());
-        const float title_y = minimum.y + 13.f;
+        const auto& measured = measure_card(module, width);
+        const float title_y = minimum.y + 12.f;
+        const float wrap = std::max(1.f, width - 24.f);
         const ImU32 title_col = blend(primary, accent_hover, en_anim);
         const ImVec4 title_clip(minimum.x + 12.f, minimum.y, maximum.x - 12.f, maximum.y);
-        draw->AddText(gui::ui_bold_font ? gui::ui_bold_font : ImGui::GetFont(), 14.f,
-            ImVec2(minimum.x + 12.f, title_y), title_col, title.c_str(), nullptr, 0.f, &title_clip);
+        draw->AddText(measured.title_font, module_title_size,
+            ImVec2(minimum.x + 12.f, title_y), title_col, measured.title.c_str(), nullptr, wrap, &title_clip);
 
-        const ImVec4 clip(minimum.x + 12.f, title_y + 20.f, maximum.x - 12.f, maximum.y - 7.f);
-        draw->AddText(gui::ui_font ? gui::ui_font : ImGui::GetFont(), 11.f,
-            ImVec2(minimum.x + 12.f, title_y + 21.f), muted, description(module->get_name()), nullptr, 0.f, &clip);
+        const float description_y = title_y + measured.title_height + 6.f;
+        const ImVec4 clip(minimum.x + 12.f, description_y, maximum.x - 12.f, maximum.y - 8.f);
+        draw->AddText(gui::ui_font ? gui::ui_font : ImGui::GetFont(), module_description_size,
+            ImVec2(minimum.x + 12.f, description_y), IM_COL32(177, 172, 188, 255), description(module->get_name()), nullptr, wrap, &clip);
 
         if (clicked) activate_module(module, true);
-        if (hovered) ImGui::SetTooltip("%s", std::strcmp(module->get_id(), "panic") == 0 ? "Unload client" :
-            has_settings_panel(module) ? "Module settings" : module->enabled ? "Disable module" : "Enable module");
         ImGui::PopID();
     }
 
-    std::vector<modules::module*> visible_modules()
+    const std::vector<modules::module*>& visible_modules()
     {
         if (state.search[0]) return search_results();
-        std::vector<modules::module*> result;
-        for (auto* module : modules::get_modules())
-            if (belongs_to_page(module, state.current)) result.push_back(module);
-        return result;
+        refresh_catalogue();
+        if (!state.page_cached || state.cached_page != state.current)
+        {
+            state.page_modules.clear();
+            for (auto* module : state.catalogue)
+                if (belongs_to_page(module, state.current)) state.page_modules.push_back(module);
+            state.cached_page = state.current;
+            state.page_cached = true;
+        }
+        return state.page_modules;
     }
 
     void render_grid(const ImVec2& minimum, const ImVec2& size)
@@ -455,20 +541,27 @@ namespace
         if (ImGui::BeginChild("##grim_module_grid", size, ImGuiChildFlags_AlwaysUseWindowPadding, ImGuiWindowFlags_NoScrollbar))
         {
             const float width = ImGui::GetContentRegionAvail().x;
-            const auto visible = visible_modules();
+            const auto& visible = visible_modules();
             const ImVec2 list_top = ImGui::GetCursorScreenPos();
-            constexpr float card_height = 62.f, row_pitch = 70.f, gap = 8.f;
+            constexpr float gap = 8.f;
             const int columns = width >= 560.f ? 2 : 1;
             const float card_width = (width - gap * (columns - 1)) / columns;
-            for (std::size_t index = 0; index < visible.size(); ++index)
+            float row_y = list_top.y;
+            for (std::size_t row = 0; row < visible.size(); row += columns)
             {
-                const auto row = index / columns, column = index % columns;
-                ImGui::SetCursorScreenPos(ImVec2(list_top.x + column * (card_width + gap), list_top.y + row * row_pitch));
-                render_card(visible[index], card_width, card_height,
-                    state.search[0] && static_cast<int>(index) == state.search_selection);
-                if (state.search[0] && static_cast<int>(index) == state.search_selection &&
-                    (ImGui::IsKeyPressed(ImGuiKey_DownArrow) || ImGui::IsKeyPressed(ImGuiKey_UpArrow)))
-                    ImGui::SetScrollHereY(.5f);
+                float height = 76.f;
+                for (int column = 0; column < columns && row + column < visible.size(); ++column)
+                    height = std::max(height, measure_card(visible[row + column], card_width).height);
+                for (int column = 0; column < columns && row + column < visible.size(); ++column) {
+                    const auto index = row + column;
+                    ImGui::SetCursorScreenPos(ImVec2(list_top.x + column * (card_width + gap), row_y));
+                    render_card(visible[index], card_width, height,
+                        state.search[0] && static_cast<int>(index) == state.search_selection);
+                    if (state.search[0] && static_cast<int>(index) == state.search_selection &&
+                        (ImGui::IsKeyPressed(ImGuiKey_DownArrow) || ImGui::IsKeyPressed(ImGuiKey_UpArrow)))
+                        ImGui::SetScrollHereY(.5f);
+                }
+                row_y += height + gap;
             }
             if (visible.empty())
             {
@@ -660,10 +753,11 @@ namespace
             const ImVec2 top = ImGui::GetCursorScreenPos();
             draw_text(ImGui::GetWindowDrawList(), gui::ui_font, 13.f,
                 ImVec2(top.x + 10.f, top.y + 8.f), ImGui::GetColorU32(ImGuiCol_Text), "Keybind");
-            ImGui::SetCursorScreenPos(ImVec2(top.x + width - 82.f, top.y));
+            const float binding_width = std::clamp(width - 120.f, 88.f, 132.f);
+            ImGui::SetCursorScreenPos(ImVec2(top.x + width - 10.f - binding_width, top.y));
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(1, 1, 1, .045f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1, 1, 1, .085f));
-            module->key_bind_selector();
+            module->key_bind_selector(binding_width);
             ImGui::PopStyleColor(2);
             ImGui::GetWindowDrawList()->AddLine(ImVec2(top.x + 10.f, top.y + 34.f),
                 ImVec2(top.x + width - 10.f, top.y + 34.f), IM_COL32(255, 255, 255, 12));
@@ -684,7 +778,7 @@ namespace
         ImGui::PopStyleVar(4);
     }
 
-    void render_module_settings(const ImVec2& position, float maximum_height)
+    void render_module_settings(const ImVec2& position, float maximum_height, float width)
     {
         auto* module = state.settings_module;
         if (!module || state.settings_animation < .005f) return;
@@ -694,7 +788,6 @@ namespace
         const auto* viewport = ImGui::GetMainViewport();
         const float limit = std::max(120.f, std::min(maximum_height, viewport->WorkPos.y + viewport->WorkSize.y - position.y - 12.f));
         const float height = 58.f + (std::clamp(content_height + 72.f, 120.f, limit) - 58.f) * eased;
-        constexpr float width = 304.f;
         ImGui::SetNextWindowPos(position, ImGuiCond_Always);
         ImGui::SetNextWindowSize(ImVec2(width, height), ImGuiCond_Always);
         ImGui::SetNextWindowBgAlpha(0.f);
@@ -703,6 +796,9 @@ namespace
         ImGui::Begin("##grim_settings_panel", nullptr, ImGuiWindowFlags_NoDecoration |
             ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar |
             ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoFocusOnAppearing);
+        // A right-side overlay must stay above the grid, but never above an open popup.
+        if (!ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel))
+            ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
         auto* draw = ImGui::GetWindowDrawList();
         draw->AddRectFilled(position, ImVec2(position.x + width, position.y + height), alpha(IM_COL32(16, 15, 21, 248), eased), 12.f);
         draw->AddRect(position, ImVec2(position.x + width, position.y + height), alpha(IM_COL32(255, 255, 255, 20), eased), 12.f);
@@ -859,7 +955,7 @@ namespace
         if (settings.names)
         {
             const char* player_name = "Player";
-            const ImVec2 extent = (gui::ui_bold_font ? gui::ui_bold_font : ImGui::GetFont())->CalcTextSizeA(13.0f, FLT_MAX, 0.0f, player_name);
+            const ImVec2 extent = (gui::ui_bold_font ? gui::ui_bold_font : ImGui::GetFont())->CalcTextSizeA(gui::typography::caption, FLT_MAX, 0.0f, player_name);
             draw_text(draw, gui::ui_bold_font, 13.0f, ImVec2(position.x + 130.0f - extent.x * 0.5f, position.y + 72.0f), primary, player_name);
         }
         if (settings.distance)
@@ -868,7 +964,7 @@ namespace
         {
             const char* hint = "Drag to rotate";
             ImFont* hint_font = gui::ui_bold_font ? gui::ui_bold_font : ImGui::GetFont();
-            const ImVec2 extent = hint_font->CalcTextSizeA(10.5f, FLT_MAX, 0.0f, hint);
+            const ImVec2 extent = hint_font->CalcTextSizeA(gui::typography::caption, FLT_MAX, 0.0f, hint);
             draw->AddRectFilled(ImVec2(position.x + 130.0f - extent.x * 0.5f - 7.0f, position.y + 315.0f),
                 ImVec2(position.x + 130.0f + extent.x * 0.5f + 7.0f, position.y + 337.0f), IM_COL32(4, 4, 7, 188), 6.0f);
             draw_text(draw, hint_font, 10.5f,
@@ -905,7 +1001,13 @@ void gui::grim::reset_runtime_state()
 
 void gui::grim::render(const ImGuiViewport* viewport, const page_callbacks& callbacks)
 {
-    if (!viewport) return;
+    // A minimized window has no useful layout area. Do not clamp the saved
+    // anchor into a zero-sized viewport and strand it at the edge on return.
+    if (!viewport || viewport->WorkSize.x < 1.f || viewport->WorkSize.y < 1.f) {
+        state.dragging_shell = false;
+        return;
+    }
+    if (state.rendered_frame != ImGui::GetFrameCount() - 1) state.dragging_shell = false;
     const bool escape_pressed = ImGui::IsKeyPressed(ImGuiKey_Escape, false);
     const bool search_was_active = state.search_active || state.search[0];
     constexpr auto popup_flags = ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel;
@@ -942,7 +1044,6 @@ void gui::grim::render(const ImGuiViewport* viewport, const page_callbacks& call
     constexpr float sidebar_width = 204.f;
     constexpr float preview_gap = 16.f;
     constexpr float preview_width = 260.f;
-    constexpr float settings_width = 304.f, settings_gap = 16.f;
     if (!module_page) {
         state.settings_module = nullptr;
         state.settings_animation = 0.f;
@@ -952,31 +1053,22 @@ void gui::grim::render(const ImGuiViewport* viewport, const page_callbacks& call
         state.settings_animation = approach(state.settings_animation, requested ? 1.f : 0.f, 12.f);
         if (!requested && state.settings_animation < .005f) state.settings_module = nullptr;
     }
-    const bool preview_requested = module_page && player_preview_requested();
-    const float left_extra = preview_requested ? preview_width + preview_gap : 0.f;
-    const float right_extra = module_page && state.settings_module ? settings_width + settings_gap : 0.f;
-    const ImVec2 main_size(std::min(960.f, std::max(400.f, viewport->WorkSize.x - 16.f - left_extra - right_extra)),
-        std::min(620.f, std::max(300.f, viewport->WorkSize.y - 16.f)));
-    const float group_width = left_extra + main_size.x + right_extra;
+    const dock_layout::box work{viewport->WorkPos.x, viewport->WorkPos.y, viewport->WorkSize.x, viewport->WorkSize.y};
+    const auto anchored = dock_layout::main_panel(work);
+    const ImVec2 main_size(anchored.width, anchored.height);
     if (!state.positioned)
     {
-        state.position = ImVec2(viewport->WorkPos.x + (viewport->WorkSize.x - main_size.x) * .5f,
-            viewport->WorkPos.y + (viewport->WorkSize.y - main_size.y) * .5f);
+        state.position = ImVec2(anchored.x, anchored.y);
         state.positioned = true;
     }
-    const float minimum_x = viewport->WorkPos.x + 8.f + left_extra;
-    const float maximum_x = std::max(minimum_x, viewport->WorkPos.x + viewport->WorkSize.x - main_size.x - right_extra - 8.f);
-    const float minimum_y = viewport->WorkPos.y + 8.f;
-    const float maximum_y = std::max(minimum_y, viewport->WorkPos.y + viewport->WorkSize.y - main_size.y - 8.f);
-    const ImVec2 centered(viewport->WorkPos.x + (viewport->WorkSize.x - group_width) * .5f + left_extra,
-        viewport->WorkPos.y + (viewport->WorkSize.y - main_size.y) * .5f);
-    ImVec2 menu_position = module_page
-        ? ImVec2(centered.x + state.feature_drag_offset.x, centered.y + state.feature_drag_offset.y) : state.position;
-    menu_position.x = std::clamp(menu_position.x, minimum_x, maximum_x);
-    menu_position.y = std::clamp(menu_position.y, minimum_y, maximum_y);
-    // Features follows the viewport center (including auxiliary panels), while
-    // retaining an explicit user drag offset and the independent Other position.
-    if (!module_page) state.position = menu_position;
+    // All navigation/search modes share the same bounded, absolute anchor.
+    // Drawers and the optional player preview never participate in positioning.
+    const auto main_box = dock_layout::positioned_main(work, state.position.x, state.position.y);
+    const ImVec2 menu_position(main_box.x, main_box.y);
+    state.position = menu_position;
+    const auto settings_box = dock_layout::settings_panel(work, main_box);
+    const bool preview_requested = module_page && player_preview_requested() && dock_layout::preview_fits(work, main_box, preview_width);
+    const float left_extra = preview_requested ? preview_width + preview_gap : 0.f;
     const ImVec2 root_position(menu_position.x - left_extra, menu_position.y);
     ImGui::SetNextWindowPos(root_position, ImGuiCond_Always);
     // The settings panel is its own input window. Extending this invisible
@@ -986,7 +1078,7 @@ void gui::grim::render(const ImGuiViewport* viewport, const page_callbacks& call
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     if (ImGui::Begin("##ThedoriusGrimUI", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings |
-        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoMove))
+        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus))
     {
         const ImVec2 root_origin = ImGui::GetWindowPos();
         const ImVec2 origin(root_origin.x + left_extra, root_origin.y);
@@ -1012,9 +1104,19 @@ void gui::grim::render(const ImGuiViewport* viewport, const page_callbacks& call
 
         ImGui::SetCursorScreenPos(ImVec2(origin.x + 8.0f, origin.y + 7.0f));
         ImGui::InvisibleButton("##drag_shell", ImVec2(sidebar_width - 16.0f, 47.0f));
-        if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
-            auto& offset = module_page ? state.feature_drag_offset : state.position;
-            offset = ImVec2(offset.x + ImGui::GetIO().MouseDelta.x, offset.y + ImGui::GetIO().MouseDelta.y);
+        const bool valid_pointer = !ImGui::GetIO().AppFocusLost && ImGui::IsMousePosValid();
+        if (ImGui::IsItemActivated() && valid_pointer) {
+            const auto mouse = ImGui::GetMousePos();
+            state.drag_grab_offset = ImVec2(mouse.x - menu_position.x, mouse.y - menu_position.y);
+            state.dragging_shell = true;
+        }
+        if (!ImGui::IsItemActive() || !valid_pointer || !ImGui::IsMouseDown(ImGuiMouseButton_Left))
+            state.dragging_shell = false;
+        if (state.dragging_shell && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+            const auto mouse = ImGui::GetMousePos();
+            const auto placed = dock_layout::positioned_main(work,
+                mouse.x - state.drag_grab_offset.x, mouse.y - state.drag_grab_offset.y);
+            state.position = ImVec2(placed.x, placed.y);
         }
 
         if (const ImTextureID helmet = gui::get_icon_texture(gui::icon_asset::helmet))
@@ -1110,7 +1212,7 @@ void gui::grim::render(const ImGuiViewport* viewport, const page_callbacks& call
 
         if (module_page && (searching || (state.current != page::friends && state.current != page::configs &&
             state.current != page::themes && state.current != page::hud && state.current != page::keybinds)))
-            render_module_settings(ImVec2(origin.x + main_size.x + settings_gap, origin.y), main_size.y);
+            render_module_settings(ImVec2(settings_box.x, settings_box.y), main_size.y, settings_box.width);
     }
     ImGui::End();
     ImGui::PopStyleVar(2);

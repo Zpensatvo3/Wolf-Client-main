@@ -1,40 +1,56 @@
-name: Publish verified Onestep DLL
-
+name: Prepare verified OneStep release
 on:
   workflow_dispatch:
-
+    inputs:
+      build_run_id:
+        description: Successful Build Onestep run ID from this repository
+        required: true
+      artifact_name:
+        description: DLL artifact name from that run
+        required: true
+        default: Onestep-1.21.11-Windows-x64
+      dll_sha256:
+        description: SHA256 of the exact tested final DLL
+        required: true
 permissions:
-  contents: write
+  contents: read
   actions: read
-
 jobs:
-  publish:
+  prepare:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Download the verified Windows build
-        uses: actions/download-artifact@v4
-        with:
-          name: Onestep-Windows-x64
-          path: verified
-          repository: Zpensatvo3/Wolf-Client-main
-          run-id: 38767338328
-          github-token: ${{ github.token }}
-      - name: Verify and publish the exact tested binary
+      - name: Validate selected successful build
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ inputs.build_run_id }}
         run: |
-          echo "fa0bf59e2f6a82211b7a4dd766fdc6113c7453b307f7731d57a908787d22ee29  verified/Onestep.dll" | sha256sum --check
-          file verified/Onestep.dll
-          tag=onestep-20261015-9a1d7d4
-          if gh release view "$tag" >/dev/null 2>&1; then
-            # Resume a draft from a previously interrupted upload, without replacing assets.
-            gh release upload "$tag" verified/Onestep.dll
-            gh release edit "$tag" --draft=false --latest
-          else
-            gh release create "$tag" verified/Onestep.dll \
-              --target 9a1d7d437d2745c39d8c6ba1279ec4b6ce661f0e \
-              --title "Onestep — Windows x64" \
-              --notes "Plain JSON configs without a version label; legacy configs remain readable. Includes the infrastructure migration and previous cleanup. All 17 offline tests and the Windows MSVC Release x64 build passed. DLL is unsigned; in-game testing has not been performed. Source commit: 9a1d7d437d2745c39d8c6ba1279ec4b6ce661f0e. SHA-256: fa0bf59e2f6a82211b7a4dd766fdc6113c7453b307f7731d57a908787d22ee29. Build: https://github.com/Zpensatvo3/Wolf-Client-main/actions/runs/38767338328"
-          fi
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]]
+          gh api "repos/$GH_REPO/actions/runs/$RUN_ID" > "$RUNNER_TEMP/run.json"
+          jq -e --arg repo "$GH_REPO" '.conclusion == "success" and .event != "pull_request" and .head_repository.full_name == $repo and .path == ".github/workflows/build.yml"' "$RUNNER_TEMP/run.json"
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: verified
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.build_run_id }}
+          github-token: ${{ github.token }}
+      - name: Verify exact file and prepare binary-only package
+        env:
+          EXPECTED: ${{ inputs.dll_sha256 }}
+        run: |
+          [[ "$EXPECTED" =~ ^[a-fA-F0-9]{64}$ ]]
+          [[ "$(find verified -type f | wc -l)" -eq 1 ]]
+          [[ -f verified/Onestep.dll && ! -L verified/Onestep.dll ]]
+          printf '%s  %s\n' "$EXPECTED" verified/Onestep.dll | sha256sum --check
+          mkdir package
+          cp verified/Onestep.dll package/Onestep.dll
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Verified-OneStep-DLL
+          path: package/Onestep.dll
+          if-no-files-found: error
+          retention-days: 7
+      - name: Publication instructions
+        run: echo "Upload this verified DLL through the MFA-protected OneStep admin panel. This workflow does not publish an unauthenticated DLL download or deploy server credentials."

@@ -12,7 +12,9 @@ namespace gui
 	{
 		helmet,
 		background,
-		spotify
+		spotify,
+        wing_dragon, wing_angel, wing_butterfly, cape_phoenix, cape_astral,
+        count
 	};
 
 	inline bool draw = false;

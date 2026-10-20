@@ -522,6 +522,27 @@
     <ClCompile Include="src\services\game\client_context.cpp">
       <Filter>Source Files\src\services\game</Filter>
     </ClCompile>
+    <ClCompile Include="src\services\game\menu_input.cpp">
+      <Filter>Source Files\src\services\game</Filter>
+    </ClCompile>
+    <ClCompile Include="src\services\game\hybrid_bridge.cpp">
+      <Filter>Source Files\src\services\game</Filter>
+    </ClCompile>
+    <ClCompile Include="src\services\game\utility_bridge.cpp">
+      <Filter>Source Files\src\services\game</Filter>
+    </ClCompile>
+    <ClCompile Include="src\services\game\item_bridge.cpp">
+      <Filter>Source Files\src\services\game</Filter>
+    </ClCompile>
+    <ClCompile Include="src\services\game\inventory_bridge.cpp">
+      <Filter>Source Files\src\services\game</Filter>
+    </ClCompile>
+    <ClCompile Include="src\services\game\world_bridge.cpp">
+      <Filter>Source Files\src\services\game</Filter>
+    </ClCompile>
+    <ClCompile Include="src\services\game\client_bridge.cpp">
+      <Filter>Source Files\src\services\game</Filter>
+    </ClCompile>
     <ClCompile Include="src\services\game\inventory_service.cpp">
       <Filter>Source Files\src\services\game</Filter>
     </ClCompile>
@@ -1667,6 +1688,12 @@
     <ClInclude Include="src\gui\control_draw.hpp">
       <Filter>Header Files\src\gui</Filter>
     </ClInclude>
+    <ClInclude Include="src\gui\ui_typography.hpp">
+      <Filter>Header Files\src\gui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\gui\popup_controls.hpp">
+      <Filter>Header Files\src\gui</Filter>
+    </ClInclude>
     <ClInclude Include="src\services\game\attack_coordinator.hpp">
       <Filter>Header Files\src\services\game</Filter>
     </ClInclude>
@@ -1713,6 +1740,27 @@
       <Filter>Header Files\src\modules\render\settings</Filter>
     </ClInclude>
     <ClInclude Include="src\ui\settings_renderer.hpp">
+      <Filter>Header Files\src\ui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ui\dock_layout.hpp">
+      <Filter>Header Files\src\ui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ui\module_categories.hpp">
+      <Filter>Header Files\src\ui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ui\keyboard_layout.hpp">
+      <Filter>Header Files\src\ui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ui\block_picker.hpp">
+      <Filter>Header Files\src\ui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ui\item_icon.hpp">
+      <Filter>Header Files\src\ui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ui\spotify_vector.hpp">
+      <Filter>Header Files\src\ui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ui\spotify_vector_data.hpp">
       <Filter>Header Files\src\ui</Filter>
     </ClInclude>
     <ClInclude Include="src\sdk\minecraft\common\*.hpp">
@@ -1823,6 +1871,12 @@
     </None>
     <None Include="src\modules\settings_manifest.json">
       <Filter>Header Files\src\modules</Filter>
+    </None>
+    <None Include="assets\icons\spotify-2015-seeklogo.png">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="assets\icons\spotify.svg">
+      <Filter>Source Files</Filter>
     </None>
     <None Include="src\sdk\minecraft\common\manifest.json">
       <Filter>Header Files\src\sdk\minecraft\common</Filter>

@@ -2,7 +2,7 @@
 export function dashboardApp(messages) {
     'use strict';
     const $ = id => document.getElementById(id);
-    let locale = 'tr', token = '', generation = 0, page = 'overview', busy = false;
+    let locale = 'tr', authenticated = false, generation = 0, page = 'overview', busy = false;
     let licenses = [], stats = null, recent = [], activity = [], system = null;
     let licensePage = 1, activityPage = 1, licenseTotal = 0, activityTotal = 0;
     let selected = null, confirmResolve = null, searchTimer;
@@ -36,23 +36,25 @@ export function dashboardApp(messages) {
         $('connection').dataset.state = value;
         $('connection').textContent = t(value === 'ok' ? 'online' : value === 'error' ? 'offline' : 'checking');
     }
-    async function api(route, body) {
+    async function api(route, body, upload) {
         const current = generation, controller = new AbortController();
         controllers.add(controller);
-        const timeout = setTimeout(() => controller.abort(), 15000);
+        const timeout = setTimeout(() => controller.abort(), upload ? 120000 : 15000);
         try {
             const response = await fetch('/api/v1/admin/' + route, {
-                method: body === undefined ? 'GET' : 'POST', cache: 'no-store', credentials: 'omit',
-                headers: { Authorization: 'Bearer ' + token, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
-                body: body === undefined ? undefined : JSON.stringify(body), signal: controller.signal
+                method: upload ? 'PUT' : body === undefined ? 'GET' : 'POST', cache: 'no-store', credentials: 'same-origin', redirect: 'manual',
+                headers: upload ? {'Content-Type':'application/octet-stream','X-Release-Version':upload.version,'X-Release-Sha256':upload.sha256}
+                    : body === undefined ? {} : { 'Content-Type': 'application/json' },
+                body: upload ? body : body === undefined ? undefined : JSON.stringify(body), signal: controller.signal
             });
+            if (response.type === 'opaqueredirect' || [0, 301, 302, 303, 307, 308, 401, 403].includes(response.status)) {
+                resetSession(); $('login-error').textContent = t('unauthorized'); $('login-error').hidden = false;
+                throw new Error(t('unauthorized'));
+            }
             const data = await response.json();
             if (current !== generation) throw new Error(t('unauthorized'));
             if (!response.ok || data.success === false) {
                 const key = ({ 400: 'invalid', 401: 'unauthorized', 404: 'notFound', 409: route === 'reveal-key' ? 'revealUnavailable' : 'conflict', 429: 'rateLimited', 500: 'unavailable', 503: 'unavailable' })[response.status] || 'apiFailure';
-                if (response.status === 401 && !$('app').hidden) {
-                    logout(); $('login-error').textContent = t('unauthorized'); $('login-error').hidden = false;
-                }
                 throw new Error(t(key));
             }
             connection('ok');
@@ -73,7 +75,7 @@ export function dashboardApp(messages) {
         buttons.forEach(([button]) => { button.disabled = true; });
         document.body.setAttribute('aria-busy', 'true');
         try { await task(); }
-        catch (error) { if (token) toast(error.message || t('error'), true); }
+        catch (error) { if (authenticated) toast(error.message || t('error'), true); }
         finally {
             busy = false;
             buttons.forEach(([button, disabled]) => { if (button.isConnected) button.disabled = disabled; });
@@ -94,14 +96,13 @@ export function dashboardApp(messages) {
         $('sidebar').inert = window.matchMedia('(max-width:760px)').matches && !open;
         if (open) $('mobile-close').focus();
     }
-    function logout() {
+    function resetSession() {
         generation++;
-        token = '';
+        authenticated = false;
         controllers.forEach(controller => controller.abort());
         clearTimeout(searchTimer);
         licenses = []; activity = []; recent = []; stats = null; system = null; selected = null;
         licenseTotal = activityTotal = 0; licensePage = activityPage = 1;
-        $('admin-token').value = ''; $('custom-key').value = '';
         $('search').value = ''; $('status-filter').value = 'all'; $('sort').value = 'newest';
         for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close();
         clearRevealed();
@@ -110,7 +111,11 @@ export function dashboardApp(messages) {
         $('app').hidden = true; $('login').hidden = false;
         $('page-error').hidden = true; $('last-updated').textContent = '—';
         mobile(false);
-        $('admin-token').focus();
+        $('sign-in').focus();
+    }
+    function logout() {
+        resetSession();
+        window.location.assign('/cdn-cgi/access/logout');
     }
     function translate() {
         $('toasts').replaceChildren();
@@ -236,9 +241,9 @@ export function dashboardApp(messages) {
             } else if (page === 'system') {
                 skeleton('system-cards'); system = await api('status'); renderSystem();
             }
-            if (current === generation && token) $('last-updated').textContent = t('checked') + ' · ' + date(new Date().toISOString());
+            if (current === generation && authenticated) $('last-updated').textContent = t('checked') + ' · ' + date(new Date().toISOString());
         } catch (error) {
-            if (current === generation && token) {
+            if (current === generation && authenticated) {
                 document.querySelectorAll('.skeleton').forEach(node => node.remove());
                 $('page-error').textContent = error.message || t('loadError'); $('page-error').hidden = false;
             }
@@ -246,7 +251,7 @@ export function dashboardApp(messages) {
         }
     }
     async function navigate(next) {
-        if (busy || !token) return;
+        if (busy || !authenticated) return;
         clearTimeout(searchTimer);
         displayPage(next);
         await run(loadView);
@@ -263,7 +268,7 @@ export function dashboardApp(messages) {
             const item = el('div'); item.append(el('dt', '', t(label)), el('dd', label === 'fingerprint' ? 'mono' : '', value)); dl.append(item);
         }
         $('detail-content').append(dl); $('detail-actions').replaceChildren();
-        for (const action of ['reveal', 'reset', row.status === 'banned' ? 'unban' : 'ban', 'delete']) {
+        for (const action of ['reset', row.status === 'banned' ? 'unban' : 'ban', 'delete']) {
             const button = el('button', action === 'delete' || action === 'ban' ? 'danger' : '', t(action));
             button.dataset.action = action; button.addEventListener('click', () => licenseAction(action)); $('detail-actions').append(button);
         }
@@ -288,46 +293,54 @@ export function dashboardApp(messages) {
         const row = selected, current = generation;
         if (!row || !await confirm(action) || current !== generation) return;
         await run(async () => {
-            const routes = { reveal: 'reveal-key', reset: 'reset-hwid', ban: 'ban-key', unban: 'ban-key', delete: 'delete-key' };
-            const data = await api(routes[action], { id: row.id, ...(['ban', 'unban'].includes(action) ? { status: action === 'ban' ? 'banned' : 'active' } : {}) });
-            if (action === 'reveal') {
-                $('revealed-value').textContent = data.key; $('revealed-key').hidden = false;
-                $('copy-revealed').focus();
-            } else {
-                $('detail-dialog').close(); selected = null; await loadView();
-            }
+            const routes = { reset: 'reset-hwid', ban: 'ban-key', unban: 'ban-key', delete: 'delete-key' };
+            if (!routes[action]) return;
+            await api(routes[action], { id: row.id, ...(['ban', 'unban'].includes(action) ? { status: action === 'ban' ? 'banned' : 'active' } : {}) });
+            $('detail-dialog').close(); selected = null; await loadView();
             toast(t('success'));
         });
-        if (action === 'reveal' && token && $('detail-dialog').open && !$('revealed-key').hidden)
-            $('copy-revealed').focus();
     }
     $('login-form').addEventListener('submit', event => {
         event.preventDefault();
-        if (busy) return;
-        const value = $('admin-token').value.trim(); $('admin-token').value = '';
-        if (value.length < 32 || value.length > 512) { $('login-error').textContent = t('tokenRequired'); $('login-error').hidden = false; return; }
-        run(async () => {
-            generation++; token = value; $('login-error').hidden = true;
-            $('sign-in').textContent = t('verifying');
-            try {
-                const data = await api('overview'); stats = data.stats; recent = data.activity;
-                $('login').hidden = true; $('app').hidden = false; displayPage('overview'); renderOverview();
-                $('last-updated').textContent = t('checked') + ' · ' + date(data.as_of);
-            } catch (error) {
-                token = ''; $('login-error').textContent = error.message || t('loginError'); $('login-error').hidden = false;
-            } finally { $('sign-in').textContent = t('signIn'); }
-        });
+        if (!busy) window.location.assign('/admin');
     });
+    async function startSession() {
+        generation++; $('login-error').hidden = true;
+        $('sign-in').textContent = t('verifying');
+        try {
+            const data = await api('overview'); stats = data.stats; recent = data.activity;
+            authenticated = true;
+            $('login').hidden = true; $('app').hidden = false; displayPage('overview'); renderOverview();
+            $('last-updated').textContent = t('checked') + ' · ' + date(data.as_of);
+        } catch (error) {
+            authenticated = false;
+            $('login-error').textContent = error.message || t('loginError'); $('login-error').hidden = false;
+        } finally { $('sign-in').textContent = t('signIn'); }
+    }
     $('create-form').addEventListener('submit', event => {
         event.preventDefault();
         run(async () => {
-            const data = await api('create-key', { key: $('custom-key').value.trim(), days: $('duration').value });
-            $('custom-key').value = ''; $('create-dialog').close(); await loadView();
+            const data = await api('create-key', { days: $('duration').value });
+            $('create-dialog').close(); await loadView();
             selected = null; clearRevealed(); $('detail-actions').replaceChildren();
             $('detail-title').textContent = t('licenseCreated') + ' #' + data.id;
             $('detail-content').replaceChildren(el('p', 'muted small', date(data.expires_at, true)));
             $('revealed-value').textContent = data.key; $('revealed-key').hidden = false; $('detail-dialog').showModal();
             toast(t('licenseCreated'));
+        });
+    });
+    $('release-form').addEventListener('submit', event => {
+        event.preventDefault();
+        run(async () => {
+            const file=$('release-file').files[0], version=$('release-version').value.trim();
+            if (!file || !/\.dll$/i.test(file.name) || file.size<4096 || file.size>24*1024*1024 ||
+                !/^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$/.test(version)) throw new Error(t('invalid'));
+            const sha256=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await file.arrayBuffer())),
+                byte=>byte.toString(16).padStart(2,'0')).join('');
+            const result=await api('release',file,{version,sha256});
+            if (result.sha256!==sha256 || result.bytes!==file.size) throw new Error(t('apiFailure'));
+            $('release-file').value=''; $('release-version').value='';
+            await loadView(); toast(t('success'));
         });
     });
     $('logout').addEventListener('click', logout); $('settings-logout').addEventListener('click', logout);
@@ -341,15 +354,21 @@ export function dashboardApp(messages) {
             $(node.dataset.close).close();
         }
     }));
-    $('detail-dialog').addEventListener('close', () => { selected = null; clearRevealed(); $('detail-content').replaceChildren(); $('detail-actions').replaceChildren(); });
-    $('create-dialog').addEventListener('close', () => { $('custom-key').value = ''; });
+    $('detail-dialog').addEventListener('close', () => {
+        // A queued close event may arrive after this dialog has been reopened.
+        if ($('detail-dialog').open) return;
+        selected = null; clearRevealed(); $('detail-content').replaceChildren(); $('detail-actions').replaceChildren();
+    });
     document.querySelectorAll('dialog').forEach(dialog => dialog.addEventListener('cancel', event => { if (busy) event.preventDefault(); }));
     $('confirm-cancel').addEventListener('click', () => resolveConfirm(false));
     $('confirm-accept').addEventListener('click', () => resolveConfirm(true));
-    $('confirm-dialog').addEventListener('close', () => { if (confirmResolve) { const resolve = confirmResolve; confirmResolve = null; resolve(false); } });
+    $('confirm-dialog').addEventListener('close', () => {
+        if ($('confirm-dialog').open) return;
+        if (confirmResolve) { const resolve = confirmResolve; confirmResolve = null; resolve(false); }
+    });
     $('copy-revealed').addEventListener('click', () => copy($('revealed-value').textContent));
     $('search').addEventListener('input', () => {
-        clearTimeout(searchTimer); searchTimer = setTimeout(() => { if (!busy && token && page === 'licenses') { licensePage = 1; run(loadView); } }, 450);
+        clearTimeout(searchTimer); searchTimer = setTimeout(() => { if (!busy && authenticated && page === 'licenses') { licensePage = 1; run(loadView); } }, 450);
     });
     for (const id of ['status-filter', 'sort']) $(id).addEventListener('change', () => { licensePage = 1; run(loadView); });
     for (const prefix of ['licenses', 'activity']) for (const [direction, step] of [['prev', -1], ['next', 1]]) {
@@ -373,6 +392,6 @@ export function dashboardApp(messages) {
         }
     }, true);
     window.matchMedia('(max-width:760px)').addEventListener('change', () => mobile(false));
-    window.addEventListener('pagehide', logout);
-    mobile(false); $('admin-token').focus();
+    window.addEventListener('pagehide', resetSession);
+    mobile(false); run(startSession);
 }

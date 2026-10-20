@@ -11,11 +11,20 @@ import tempfile
 ROOT = Path(__file__).resolve().parent.parent
 TESTS = {
     "key_codes": ["tests/key_codes_test.cpp"],
+    "keybinds_presentation": ["tests/keybinds_presentation_test.cpp"],
     "profile_model": ["tests/profile_model_test.cpp"],
     "menu_background": ["tests/menu_background_test.cpp"],
+    "dock_layout": ["tests/dock_layout_test.cpp"],
+    "menu_input_policy": ["tests/menu_input_policy_test.cpp"],
+    "popup_controls": ["tests/popup_controls_test.cpp", "include/imgui/imgui.cpp", "include/imgui/imgui_draw.cpp",
+                       "include/imgui/imgui_widgets.cpp", "include/imgui/imgui_tables.cpp"],
+    "spotify_vector": ["tests/spotify_vector_test.cpp", "include/imgui/imgui.cpp", "include/imgui/imgui_draw.cpp",
+                       "include/imgui/imgui_widgets.cpp", "include/imgui/imgui_tables.cpp"],
     "menu_background_renderer": ["tests/menu_background_renderer_test.cpp", "src/ui/menu_background.cpp",
                                  "include/imgui/imgui.cpp", "include/imgui/imgui_draw.cpp", "include/imgui/imgui_widgets.cpp", "include/imgui/imgui_tables.cpp"],
     "auth_policy": ["tests/auth_policy_test.cpp"],
+    "auth_screen_input": ["tests/auth_screen_input_test.cpp", "include/imgui/imgui.cpp", "include/imgui/imgui_draw.cpp",
+                          "include/imgui/imgui_widgets.cpp", "include/imgui/imgui_tables.cpp"],
     "module_runtime": ["tests/module_runtime_test.cpp"],
     "vape_adapter": ["tests/vape_adapter_test.cpp"],
     "aimassist_math": ["tests/aimassist_math_test.cpp"],
@@ -27,6 +36,10 @@ TESTS = {
     "jump_reset_engine": ["tests/jump_reset_engine_test.cpp"],
     "no_jump_delay": ["tests/no_jump_delay_test.cpp"],
     "fast_stop_engine": ["tests/fast_stop_engine_test.cpp"],
+    "auto_tool_scoring": ["tests/auto_tool_scoring_test.cpp"],
+    "gear_policy": ["tests/gear_policy_test.cpp"],
+    "mouse_tweaks_logic": ["tests/mouse_tweaks_logic_test.cpp"],
+    "bridge_assist_logic": ["tests/bridge_assist_logic_test.cpp"],
     "inv_walk_engine": ["tests/inv_walk_engine_test.cpp"],
     "pot_refill_engine": ["tests/pot_refill_engine_test.cpp"],
     "anti_bot_engine": ["tests/anti_bot_engine_test.cpp"],
@@ -34,6 +47,7 @@ TESTS = {
     "notification_renderer": ["tests/notification_renderer_test.cpp", "src/ui/notification_renderer.cpp",
                               "include/imgui/imgui.cpp", "include/imgui/imgui_draw.cpp", "include/imgui/imgui_widgets.cpp", "include/imgui/imgui_tables.cpp"],
     "item_esp_geometry": ["tests/item_esp_geometry_test.cpp"],
+    "cosmetic_physics": ["tests/cosmetic_physics_test.cpp"],
     "config_fields": ["tests/config_fields_test.cpp", "src/modules/core/config_fields.cpp"],
     "aimassist_config": ["tests/aimassist_config_test.cpp", "src/modules/core/config_fields.cpp"],
     "jump_reset_config": ["tests/jump_reset_config_test.cpp", "src/modules/core/config_fields.cpp"],
@@ -79,8 +93,10 @@ def main():
                          "26.1": 26100, "26.1.1": 26101, "26.1.2": 26102}[args.minecraft_version]
             target_define = f"ONESTEP_MINECRAFT_VERSION={target_id}"
             command += [f"/D{target_define}"] if msvc else [f"-D{target_define}"]
-            if name in ("settings_renderer", "notification_renderer", "menu_background", "menu_background_renderer"):
+            if name in ("settings_renderer", "notification_renderer", "menu_background", "menu_background_renderer", "spotify_vector", "popup_controls", "auth_screen_input"):
                 command += [f"/I{ROOT / 'include'}"] if msvc else ["-I", str(ROOT / "include")]
+            if name == "auth_screen_input" and os.name != "nt":
+                command += ["-I", str(ROOT / "tests/support")]
             if name in ("sdk_mappings", "minecraft_version"):
                 platform = "win32" if os.name == "nt" else "linux"
                 includes = [ROOT / "include/jni", ROOT / "include/jni" / platform]

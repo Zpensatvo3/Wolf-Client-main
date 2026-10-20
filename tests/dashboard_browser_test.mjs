@@ -5,8 +5,10 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { harness } from './helpers/auth-harness.mjs';
-import worker from '../server/worker.js';
+const { default: worker } = await import(process.env.ONESTEP_WORKER_BUNDLE
+    ? pathToFileURL(process.env.ONESTEP_WORKER_BUNDLE).href : '../server/worker.js');
 import { sha256 } from '../server/core/crypto.mjs';
 
 const chromium = process.env.CHROMIUM || '/usr/bin/chromium';
@@ -63,6 +65,9 @@ test('Chromium: login, real API pages, filters, confirmations, key clearing, XSS
     let client, failBan = false;
     const server = createServer(async (incoming, outgoing) => {
         try {
+            if (incoming.url==='/cdn-cgi/access/logout') {
+                outgoing.writeHead(200,{'Content-Type':'text/html'}); outgoing.end('<body data-logged-out="true"></body>'); return;
+            }
             const chunks = []; for await (const chunk of incoming) chunks.push(chunk);
             requests.push({ method: incoming.method, path: incoming.url.split('?')[0] });
             if (failBan && incoming.url === '/api/v1/admin/ban-key') {
@@ -70,7 +75,7 @@ test('Chromium: login, real API pages, filters, confirmations, key clearing, XSS
             }
             const body = chunks.length ? Buffer.concat(chunks) : undefined;
             const request = new Request('http://127.0.0.1:' + server.address().port + incoming.url,
-                { method: incoming.method, headers: incoming.headers, body });
+                { method: incoming.method, headers: {...incoming.headers,...h.access.header}, body });
             const response = await worker.fetch(request, h.env, h.ctx); await h.drain();
             outgoing.writeHead(response.status, Object.fromEntries(response.headers)); outgoing.end(Buffer.from(await response.arrayBuffer()));
         } catch (_) { outgoing.writeHead(500); outgoing.end(); }
@@ -78,7 +83,7 @@ test('Chromium: login, real API pages, filters, confirmations, key clearing, XSS
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     try {
         for (let n = 0; n < 26; n++) h.env.DB.sqlite.prepare("INSERT INTO license_keys(key_hash,status) VALUES(?,'unused')").run(await sha256('browser-fixture-' + n));
-        const license = await (await h.request('/api/v1/admin/create-key', { key: 'LOCAL-BROWSER-LICENSE' }, { admin: true })).json();
+        const license = await (await h.request('/api/v1/admin/create-key', {}, { admin: true })).json();
         h.env.DB.sqlite.prepare("INSERT INTO admin_audit_logs(admin_id,action,reason) VALUES('dashboard','TEST',?)")
             .run('<img src=x onerror="window.xssExecuted=true">');
         client = await browser(directory);
@@ -87,15 +92,10 @@ test('Chromium: login, real API pages, filters, confirmations, key clearing, XSS
         const value = (selector, text) => ev(`document.querySelector(${JSON.stringify(selector)}).value=${JSON.stringify(text)};void 0`);
         await command('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
         await command('Page.navigate', { url: 'http://127.0.0.1:' + server.address().port + '/admin' });
-        await wait('!!document.getElementById("login-form")');
-        await value('#admin-token', 'x'.repeat(40)); await click('#sign-in');
-        await wait('!document.getElementById("login-error").hidden && !document.body.hasAttribute("aria-busy")');
-        assert.equal(await ev('document.getElementById("app").hidden'), true);
-        await value('#admin-token', h.admin); await click('#sign-in');
-        await wait('!document.getElementById("app").hidden && !document.body.hasAttribute("aria-busy")');
+        await wait('!!document.getElementById("app") && !document.getElementById("app").hidden && !document.body.hasAttribute("aria-busy")');
         assert.equal(await ev('document.getElementById("stat-total").textContent'), '27');
         assert.equal(await ev('localStorage.length + sessionStorage.length'), 0);
-        assert.equal(await ev('document.getElementById("admin-token").value.length'), 0);
+        assert.equal(await ev('document.getElementById("admin-token")'), null);
         const shot = await command('Page.captureScreenshot', { format: 'png' }); writeFileSync(join(directory, 'desktop.png'), Buffer.from(shot.data, 'base64'));
         await click('[data-page="licenses"]'); await wait('document.querySelectorAll("#licenses-body tr").length===20 && !document.body.hasAttribute("aria-busy")');
         await click('#licenses-next'); await wait('document.querySelectorAll("#licenses-body tr").length===7 && !document.body.hasAttribute("aria-busy")');
@@ -103,16 +103,9 @@ test('Chromium: login, real API pages, filters, confirmations, key clearing, XSS
         await value('#search', keyHash); await ev('document.getElementById("search").dispatchEvent(new Event("input"))');
         await wait('document.querySelectorAll("#licenses-body tr").length===1 && !document.body.hasAttribute("aria-busy")');
         await click('.license-ref'); await wait('document.getElementById("detail-dialog").open');
-        await click('[data-action="reveal"]'); await wait('document.getElementById("confirm-dialog").open');
-        await command('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
-        await command('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
-        await wait('!document.getElementById("confirm-dialog").open');
+        assert.equal(await ev('!!document.querySelector("[data-action=reveal]")'),false);
         assert.equal(requests.filter(r => r.path.endsWith('/reveal-key')).length, 0);
-        await click('[data-action="reveal"]'); await click('#confirm-accept');
-        await wait('!document.getElementById("revealed-key").hidden && !document.body.hasAttribute("aria-busy")');
-        assert.equal(requests.filter(r => r.path.endsWith('/reveal-key')).length, 1);
-        assert.equal(await ev('document.activeElement.id'), 'copy-revealed');
-        assert.equal(await ev('document.getElementById("detail-dialog").open && !!document.querySelector("[data-action=ban]")'), true, 'Reveal must preserve the license detail actions');
+        assert.equal(await ev('document.getElementById("revealed-key").hidden'),true);
         failBan = true;
         await click('[data-action="ban"]'); await click('#confirm-accept');
         assert.equal(h.env.DB.sqlite.prepare('SELECT status FROM license_keys WHERE id=?').get(license.id).status, 'unused');
@@ -141,7 +134,7 @@ test('Chromium: login, real API pages, filters, confirmations, key clearing, XSS
         await click('#create-form button[type="submit"]');
         await wait('document.getElementById("detail-dialog").open && !document.body.hasAttribute("aria-busy")');
         assert.equal(h.env.DB.sqlite.prepare('SELECT COUNT(*) AS n FROM license_keys').get().n, 27);
-        assert.equal(await ev('/^ONESTEP-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(document.getElementById("revealed-value").textContent)'), true);
+        assert.equal(await ev('/^ONESTEP-(?:[A-F0-9]{8}-){3}[A-F0-9]{8}$/.test(document.getElementById("revealed-value").textContent)'), true);
         await click('[data-close="detail-dialog"]'); await wait('!document.getElementById("detail-dialog").open');
         assert.equal(await ev('document.getElementById("revealed-value").textContent.length'), 0);
         await click('[data-page="activity"]'); await wait('!document.body.hasAttribute("aria-busy") && !!document.querySelector("#activity-body tr")');
@@ -161,8 +154,7 @@ test('Chromium: login, real API pages, filters, confirmations, key clearing, XSS
         await command('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
         await wait('document.getElementById("mobile-menu").getAttribute("aria-expanded")==="false"');
         const mobileShot = await command('Page.captureScreenshot', { format: 'png' }); writeFileSync(join(directory, 'mobile.png'), Buffer.from(mobileShot.data, 'base64'));
-        await ev('document.getElementById("logout").click()'); await wait('document.getElementById("app").hidden');
-        assert.equal(await ev('document.getElementById("licenses-body").children.length'), 0);
+        await ev('document.getElementById("logout").click()'); await wait('document.body.dataset.loggedOut==="true"');
         assert.equal(await ev('localStorage.length + sessionStorage.length'), 0);
         console.log('Dashboard screenshots:', join(directory, 'desktop.png'), join(directory, 'mobile.png'));
     } finally {

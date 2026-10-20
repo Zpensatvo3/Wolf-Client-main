@@ -3,6 +3,7 @@
 #include "../../gui/gui.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../../services/game/client_context.hpp"
+#include "../../services/game/client_bridge.hpp"
 #include "../../services/input/input_service.hpp"
 #include "../ui_redirect.hpp"
 #include <optional>
@@ -155,7 +156,7 @@ void modules::inv_walk::cancel_on_client_thread()
     reset_requested.store(true);
     if (!platform::jni_context::bind_current_thread()) return;
     jni::frame frame{64};
-    try { release_owned(false); }
+    try { release_owned(false); services::game::client_bridge::release_walk(false); }
     catch (...) { platform::jni_context::clear_exception(); }
     platform::jni_context::clear_exception();
 }
@@ -168,13 +169,28 @@ void modules::inv_walk::render_overlay()
     jni::frame frame{160};
     try
     {
-        if (reset_requested.exchange(false) && !release_owned(false)) return;
+        if (reset_requested.exchange(false)) {
+            if (!release_owned(false) || !services::game::client_bridge::release_walk(false)) { reset_requested.store(true); return; }
+        }
         const HWND window = gui::get_window();
         inv_walk_engine::observation state;
         state.enabled = enabled;
         state.focused = window && GetForegroundWindow() == window;
         state.client_blocked = gui::draw || gui::loader_visible || gui::should_unload;
-        if (!state.enabled || !state.focused || state.client_blocked) { release_owned(false); return; }
+        if (!state.enabled || !state.focused || state.client_blocked) { release_owned(false); services::game::client_bridge::release_walk(false); return; }
+        namespace bridge = services::game::client_bridge;
+        bridge::walk_snapshot observed;
+        const auto backend = bridge::capture_walk(observed);
+        if (backend != services::game::hybrid::result::native_fallback) {
+            if (backend != services::game::hybrid::result::ready) { bridge::release_walk(false); return; }
+            state.live = observed.alive; state.typing = observed.typing;
+            state.screen = static_cast<inv_walk_engine::screen_kind>(observed.screen);
+            const auto config = settings_.read();
+            const auto mode = inv_walk_engine::choose_mode(config, state);
+            if (mode != inv_walk_engine::mode::inventory) { bridge::release_walk(mode == inv_walk_engine::mode::vanilla); return; }
+            if (!bridge::apply_walk(observed, inv_walk_engine::desired_keys(config, observed.physical))) bridge::release_walk(false);
+            return;
+        }
         services::game::client_context context;
         if (!services::game::capture_client_context(context, true, false)) { release_owned(false); return; }
         if (world_ && (!world_.is_same_object(context.world) || !player_.is_same_object(context.player)))
@@ -218,7 +234,7 @@ void modules::inv_walk::render_overlay()
         if (platform::jni_context::clear_exception()) { release_owned(false); return; }
         for (unsigned index = 0; index < keys.size(); ++index) update_key(index, keys[index], desired[index]);
     }
-    catch (...) { platform::jni_context::clear_exception(); release_owned(false); }
+    catch (...) { platform::jni_context::clear_exception(); release_owned(false); services::game::client_bridge::release_walk(false); }
 }
 
 void modules::inv_walk::render_options()

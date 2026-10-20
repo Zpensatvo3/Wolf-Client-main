@@ -302,11 +302,12 @@ namespace
 	void draw_spotify_logo(ImDrawList* draw, const ImVec2& center, float mark_radius)
 	{
 		if (!draw) return;
-		const ImTextureID icon = gui::get_icon_texture(gui::icon_asset::spotify);
-		if (!icon) return;
 		const ImVec2 minimum(std::round(center.x - mark_radius), std::round(center.y - mark_radius));
 		const float diameter = std::round(mark_radius * 2.f);
-		draw->AddImage(icon, minimum, ImVec2(minimum.x + diameter, minimum.y + diameter));
+        // Use the supplied PNG with its original alpha and colors. No vector
+        // approximation, black backing disc or generated cutout fill.
+        if (const auto texture = gui::get_icon_texture(gui::icon_asset::spotify))
+            draw->AddImage(texture, minimum, ImVec2(minimum.x + diameter, minimum.y + diameter));
 	}
 
 	void draw_card(ImDrawList* draw, float x, float y, float size_scale,

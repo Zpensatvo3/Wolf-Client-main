@@ -12,6 +12,7 @@ class auto_tool : public module
 		auto_tool() : module("auto tool", "World") {}
 
 		void run(::cache& cache) override;
+        void render_overlay() override;
 		void render_options() override;
 		float get_options_height() override { return 120.0f; }
 		void visit_config(config_visitor& v) override
@@ -20,5 +21,6 @@ class auto_tool : public module
 	private:
 		modules::settings::store<module_settings::auto_tool> settings_;
 		int last_selected_slot = -1;
+        std::atomic_bool native_fallback_{false};
 	};
 }

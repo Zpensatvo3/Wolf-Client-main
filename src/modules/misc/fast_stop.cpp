@@ -3,12 +3,14 @@
 #include "../../gui/gui.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../../services/game/overlay_context.hpp"
+#include "../../services/game/hybrid_bridge.hpp"
 #include "../ui_redirect.hpp"
 
 struct modules::fast_stop::runtime
 {
     fast_stop_logic::engine engine;
     services::game::overlay_session session;
+    bool using_java = false;
     void reset() { engine.reset(); session.reset(); }
 };
 
@@ -43,6 +45,39 @@ void modules::fast_stop::render_overlay()
     }
     try
     {
+        namespace hybrid = services::game::hybrid;
+        hybrid::snapshot snapshot;
+        const auto backend = hybrid::capture(hybrid::feature::fast_stop, snapshot);
+        const bool using_java = backend != hybrid::result::native_fallback;
+        if (state.using_java != using_java) state.reset();
+        state.using_java = using_java;
+        if (using_java)
+        {
+            if (backend != hybrid::result::ready) { state.reset(); return; }
+            const maps::ClientWorld world{snapshot.world, false};
+            const maps::ClientPlayerEntity player{snapshot.player, false};
+            if (state.session.observe({world, player})) state.engine.reset();
+            fast_stop_logic::observation observed;
+            observed.active = enabled;
+            observed.focused = focused;
+            observed.alive = snapshot.flag(1);
+            observed.grounded = snapshot.flag(2);
+            observed.in_water = snapshot.flag(4);
+            observed.in_lava = snapshot.flag(8);
+            observed.climbing = snapshot.flag(16);
+            observed.gliding = snapshot.flag(32);
+            observed.riding = snapshot.flag(64);
+            observed.flying = snapshot.flag(128);
+            observed.jumping = snapshot.flag(256);
+            observed.directional_pressed = snapshot.flag(512);
+            observed.hurt_time = static_cast<int>(snapshot.data[4]);
+            observed.forward = static_cast<float>(snapshot.data[5]);
+            observed.sideways = static_cast<float>(snapshot.data[6]);
+            observed.motion = {snapshot.data[7], snapshot.data[8], snapshot.data[9]};
+            if (state.engine.update(observed) && !hybrid::apply(hybrid::feature::fast_stop, snapshot))
+                state.reset();
+            return;
+        }
         services::game::client_context context;
         if (!services::game::capture_client_context(context, true, false) || context.screen)
         { state.reset(); return; }

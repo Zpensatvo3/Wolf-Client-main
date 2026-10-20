@@ -8,9 +8,13 @@
 #include <charconv>
 #include <stdexcept>
 #include <array>
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
 
 namespace {
-    struct http { HINTERNET value{}; ~http() { if (value) WinHttpCloseHandle(value); } };
+    struct http { std::atomic<HINTERNET> value{}; ~http() { if(auto h=value.exchange(nullptr)) WinHttpCloseHandle(h); } };
     struct file_handle { HANDLE value = INVALID_HANDLE_VALUE; ~file_handle() { if (value != INVALID_HANDLE_VALUE) CloseHandle(value); } };
     void require(bool ok, const char* message) { if (!ok) throw std::runtime_error(message); }
 }
@@ -29,18 +33,19 @@ std::string launcher::narrow(const std::wstring& value) {
     return result;
 }
 launcher::release launcher::manifest() {
-    const auto response = auth::post_authenticated_json("/api/v1/launcher/manifest", "");
+    const auto response = auth::post_authenticated_json("/api/v2/launcher/manifest", "\"minecraft_target\":\"1.21.11\"");
     require(response.success, response.message.c_str());
-    const auto payload = auth::decode_service_payload(response.body, "onestep-release-v1");
+    const auto payload = auth::decode_service_payload(response.body, "onestep-release-v2");
     require(!payload.empty(), "Güncelleme imzası doğrulanamadı.");
     release result;
     result.version = auth::service_field(payload, "version");
     result.sha256 = auth::service_field(payload, "sha256");
+    result.minecraft_target = auth::service_field(payload, "minecraft_target");
     const auto bytes = auth::service_field(payload, "bytes");
     const auto parsed = std::from_chars(bytes.data(), bytes.data() + bytes.size(), result.bytes);
     require(parsed.ec == std::errc{} && parsed.ptr == bytes.data() + bytes.size() &&
         result.bytes >= 4096 && result.bytes <= 24 * 1024 * 1024 && auth::launch::hex64(result.sha256) &&
-        !result.version.empty() && result.version.size() <= 64, "Güncelleme bilgileri geçersiz.");
+        !result.version.empty() && result.version.size() <= 64 && result.minecraft_target == "1.21.11", "Güncelleme bilgileri geçersiz.");
     return result;
 }
 void launcher::download(release& item, std::atomic_bool& cancel, const progress& report) {
@@ -57,17 +62,25 @@ void launcher::download(release& item, std::atomic_bool& cancel, const progress&
         http session{WinHttpOpen(L"Onestep-Launcher/1.0", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
             WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0)};
         require(session.value != nullptr, "İnternet bağlantısı başlatılamadı.");
-        WinHttpSetTimeouts(session.value, 5000, 5000, 15000, 15000);
+        WinHttpSetTimeouts(session.value, 5000, 5000, 5000, 5000);
         const auto domain = wide(auth::config::server_domain);
         http connection{WinHttpConnect(session.value, domain.c_str(), INTERNET_DEFAULT_HTTPS_PORT, 0)};
         require(connection.value != nullptr, "Sunucuya bağlanılamadı.");
-        http request{WinHttpOpenRequest(connection.value, L"POST", L"/api/v1/launcher/download", nullptr,
+        http request{WinHttpOpenRequest(connection.value, L"POST", L"/api/v2/launcher/download", nullptr,
             WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE)};
         require(request.value != nullptr, "İndirme başlatılamadı.");
+        struct deadline_guard {
+            http& request;std::mutex mutex;std::condition_variable cv;bool done=false;std::thread timer;
+            deadline_guard(http& h):request(h),timer([this]{std::unique_lock lock(mutex);
+                if(!cv.wait_for(lock,std::chrono::seconds(5),[this]{return done;}))
+                    if(auto handle=request.value.exchange(nullptr))WinHttpCloseHandle(handle);}){}
+            ~deadline_guard(){{std::lock_guard lock(mutex);done=true;}cv.notify_all();timer.join();}
+        } deadline(request);
         DWORD redirect = WINHTTP_OPTION_REDIRECT_POLICY_NEVER;
         require(WinHttpSetOption(request.value, WINHTTP_OPTION_REDIRECT_POLICY, &redirect, sizeof(redirect)) != FALSE,
             "Güvenli bağlantı kurulamadı.");
-        auto body = auth::make_launcher_request("\"release_sha256\":\"" + item.sha256 + "\"");
+        auto body = auth::make_launcher_request("/api/v2/launcher/download", "\"release_sha256\":\"" + item.sha256 +
+            "\",\"release_version\":\"" + item.version + "\",\"minecraft_target\":\"" + item.minecraft_target + "\"");
         require(!body.empty(), "Oturum sona erdi. Tekrar giriş yap.");
         BOOL sent = WinHttpSendRequest(request.value, L"Content-Type: application/json\r\nCache-Control: no-store\r\n",
             DWORD(-1), body.data(), DWORD(body.size()), DWORD(body.size()), 0);
@@ -97,6 +110,7 @@ void launcher::download(release& item, std::atomic_bool& cancel, const progress&
         require(MoveFileExW(temporary.c_str(), item.path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != FALSE,
             "Güncelleme yerleştirilemedi. Client zaten açık olabilir.");
     } catch (...) {
+        auth::controlled_shutdown();
         std::error_code ignored; std::filesystem::remove(temporary, ignored); throw;
     }
 }

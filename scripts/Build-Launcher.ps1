@@ -13,7 +13,7 @@ if ($Publish -and -not $Version) { throw 'Yayin icin benzersiz bir Version belir
 if (-not (Test-Path -LiteralPath (Join-Path $launcherRoot 'server\AuthDeployment.props'))) { throw 'Auth deployment ayarlari eksik.' }
 $clientOutput = Join-Path $launcherRoot 'build\launcher-client\'
 $clientObjects = Join-Path $launcherRoot 'build\etc\launcher-client\'
-& $msbuild (Join-Path $launcherRoot 'custom-base.vcxproj') /m /t:Build /p:Configuration=Release /p:Platform=x64 /p:AuthRequired=true "/p:OutDir=$clientOutput" "/p:IntDir=$clientObjects" /v:minimal /nologo
+& $msbuild (Join-Path $launcherRoot 'custom-base.vcxproj') /m /t:Build /p:Configuration=Release /p:Platform=x64 /p:MinecraftVersion=1.21.11 /p:AuthRequired=true "/p:OutDir=$clientOutput" "/p:IntDir=$clientObjects" /v:minimal /nologo
 if ($LASTEXITCODE -ne 0) { throw 'Launcher DLL derlemesi basarisiz.' }
 & $msbuild (Join-Path $launcherRoot 'launcher\launcher.vcxproj') /m /t:Build /p:Configuration=Release /p:Platform=x64 /v:minimal /nologo
 if ($LASTEXITCODE -ne 0) { throw 'Launcher EXE derlemesi basarisiz.' }

@@ -19,7 +19,6 @@ namespace auth::client
     // and read snapshots. One owned worker serializes all login attempts.
     void initialize();
     void shutdown();
-    bool submit_license(std::string_view key);
     view_state snapshot();
     bool access_allowed();
     bool login_required();

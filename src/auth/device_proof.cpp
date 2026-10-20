@@ -105,6 +105,18 @@ __declspec(noinline) auth::device::proof auth::device::sign_request(std::string_
     SecureZeroMemory(credential_hash.data(), credential_hash.size());
     if (!digest(message, request_hash)) { result.message = "Device request hashing failed."; return result; }
 
+    SecureZeroMemory(request_hash.data(), request_hash.size());
+    return sign_message(message);
+}
+
+auth::device::proof auth::device::sign_message(std::string_view message)
+{
+    proof result;
+    std::array<unsigned char,32> request_hash{};
+    if (message.empty() || message.size()>32768 || !digest(message,request_hash)) {
+        result.message="Invalid device proof message."; return result;
+    }
+    struct wipe_hash { std::array<unsigned char,32>& h; ~wipe_hash(){SecureZeroMemory(h.data(),h.size());} } wipe{request_hash};
     std::lock_guard lock(key_mutex);
     const wchar_t* providers[] = { MS_PLATFORM_CRYPTO_PROVIDER, MS_KEY_STORAGE_PROVIDER };
     // Open both providers before creating anything. A previously selected

@@ -3,6 +3,7 @@
 #include "../../platform/jni/jni_context.hpp"
 #include "../../services/input/input_service.hpp"
 #include "../../services/game/client_context.hpp"
+#include "../../services/game/item_bridge.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -108,9 +109,13 @@ void modules::right_clicker::render_overlay()
 	{
 		jni::frame frame{ 48 };
 		services::game::client_context context;
-		if (!services::game::capture_client_context(context, true, false) || context.screen ||
+        services::game::items::click_snapshot observed;
+        const auto backend = services::game::items::capture_click(true, settings_snapshot.only_blocks, observed);
+        const bool using_java = backend != services::game::hybrid::result::native_fallback;
+		if ((using_java && backend != services::game::hybrid::result::ready) || (!using_java &&
+            (!services::game::capture_client_context(context, true, false) || context.screen ||
 			context.player.isAlive.call() != JNI_TRUE || context.player.isUsingItem.call() == JNI_TRUE ||
-			platform::jni_context::clear_exception() || (settings_snapshot.only_blocks && !is_holding_block(context.player)))
+			platform::jni_context::clear_exception() || (settings_snapshot.only_blocks && !is_holding_block(context.player)))))
 		{
 			platform::jni_context::clear_exception();
 			was_held = false;
@@ -132,12 +137,15 @@ void modules::right_clicker::render_overlay()
 		if (!enabled || reset_timing.load() ||
 			!services::input::physical_button_down(services::input::mouse_button::right)) return;
 
-		if (!context.instance.itemUseCooldown.is_valid()) return;
-		context.instance.itemUseCooldown.set(0);
-		if (platform::jni_context::clear_exception()) return;
+        if (!using_java) {
+            if (!context.instance.itemUseCooldown.is_valid()) return;
+            context.instance.itemUseCooldown.set(0);
+            if (platform::jni_context::clear_exception()) return;
+        }
 
 		bool clicked = false;
-		if (settings_snapshot.glfw_input)
+        if (using_java) clicked = services::game::items::click(observed, settings_snapshot.glfw_input);
+		else if (settings_snapshot.glfw_input)
 		{
 			clicked = services::input::game_mouse_click(services::input::mouse_button::right);
 		}
@@ -156,9 +164,16 @@ void modules::right_clicker::render_overlay()
 			return;
 		}
 
-		if (settings_snapshot.jitter_camera && context.player)
+		if (settings_snapshot.jitter_camera && (using_java || context.player))
 		{
-			apply_jitter_camera(context.player, settings_snapshot.jitter_amount, gen);
+            if (using_java) {
+                const float amount = settings_snapshot.jitter_amount;
+                if (amount > 0) {
+                    std::uniform_real_distribution<float> dist(-amount, amount);
+                    const float yaw_delta = dist(gen), pitch_delta = dist(gen);
+                    services::game::items::jitter(observed, yaw_delta, pitch_delta);
+                }
+            } else apply_jitter_camera(context.player, settings_snapshot.jitter_amount, gen);
 		}
 
 		schedule_next_click(now);

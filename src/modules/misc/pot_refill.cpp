@@ -13,6 +13,7 @@
 #include "../../mappings.hpp"
 #include "pot_refill_engine.hpp"
 #include "../../services/game/overlay_context.hpp"
+#include "../../services/game/inventory_bridge.hpp"
 #include "../../services/input/input_service.hpp"
 #include "../../services/notifications/notification_service.hpp"
 #include <vector>
@@ -152,6 +153,7 @@ void modules::pot_refill::render_overlay()
 	auto& state = *runtime_;
 	const auto reset = [&] {
 		state.reset();
+        services::game::inventory_bridge::cancel(services::game::inventory_bridge::feature::refill);
 		live_status = live_health_potions = live_empty_hotbar = 0;
 	};
 	if (reset_requested.exchange(false, std::memory_order_acq_rel) ||
@@ -172,9 +174,63 @@ void modules::pot_refill::render_overlay()
 		// Keep explicitly labelled last-scan diagnostics visible in the menu,
 		// but discard every pending game action while the menu has focus.
 		state.reset();
+        services::game::inventory_bridge::cancel(services::game::inventory_bridge::feature::refill);
 		live_status = 9;
 		return;
 	}
+
+    namespace bridge = services::game::inventory_bridge;
+    bridge::container_snapshot observed;
+    const auto backend = bridge::capture_container(bridge::feature::refill, observed);
+    if (backend != services::game::hybrid::result::native_fallback) {
+        if (backend != services::game::hybrid::result::ready) { reset(); return; }
+        const steady_clock::time_point now = steady_clock::now();
+        maps::ClientWorld world(observed.world, false);
+        maps::ClientPlayerEntity player(observed.player, false);
+        maps::Screen screen(observed.screen, false);
+        maps::ScreenHandler handler(observed.handler, false);
+        const bool same_session = state.session.matches({world, player}) && state.screen.is_same_object(screen) &&
+            state.handler.is_same_object(handler) && state.sync_id == observed.sync_id;
+        if (!same_session || platform::jni_context::clear_exception()) {
+            reset(); state.session.observe({world, player}); state.screen = screen; state.handler = handler;
+            state.sync_id = observed.sync_id;
+            state.engine.arm(now, pot_refill_logic::delay(settings_snapshot, gen));
+        }
+        if (!observed.cursor_empty || services::input::physical_button_down(services::input::mouse_button::left) ||
+            services::input::physical_button_down(services::input::mouse_button::right)) {
+            reset(); live_status = 2; return;
+        }
+        live_empty_hotbar = live_health_potions = 0;
+        std::vector<pot_refill_logic::slot> slots;
+        for (const auto& slot : observed.slots) {
+            if (!slot.enabled || slot.index < 0 || slot.index >= 36) continue;
+            if (slot.index < 9 && slot.empty) ++live_empty_hotbar;
+            if (slot.index >= 9 && slot.healing) ++live_health_potions;
+            slots.push_back({slot.index, slot.id, slot.empty, slot.healing, slot.count});
+        }
+        if (state.engine.pending()) {
+            const auto result = state.engine.observe(now, observed.confirmed);
+            if (result == pot_refill_logic::observation::completed) {
+                bridge::cancel(bridge::feature::refill);
+                state.engine.arm(now, pot_refill_logic::delay(settings_snapshot, gen)); live_status = 6;
+            } else if (result == pot_refill_logic::observation::timed_out) {
+                bridge::cancel(bridge::feature::refill); live_status = 7;
+                services::notifications::operation_result("PotRefill stopped: reopen inventory to retry.", false);
+            } else live_status = 8;
+            return;
+        }
+        if (state.engine.blocked()) { live_status = 7; return; }
+        if (!live_empty_hotbar) { live_status = 3; return; }
+        if (!live_health_potions) { live_status = 4; return; }
+        if (!state.engine.ready(now)) return;
+        const auto action = pot_refill_logic::select(slots, settings_snapshot.slot_order, gen);
+        if (!action) { live_status = 1; return; }
+        if (!state.engine.submitted(*action, now)) return;
+        if (!bridge::container_act(observed, 0, action->source_screen_id, action->target_screen_id)) {
+            state.engine.stop(); bridge::cancel(bridge::feature::refill); live_status = 5;
+        } else live_status = 8;
+        return;
+    }
 
 	services::game::client_context context;
 	if (!services::game::capture_client_context(context) || !context.screen ||
@@ -342,6 +398,12 @@ void modules::pot_refill::render_overlay()
 void modules::pot_refill::on_disable(::cache&)
 {
 	reset_requested.store(true, std::memory_order_release);
+}
+
+void modules::pot_refill::on_render_shutdown()
+{
+    runtime_->reset();
+    services::game::inventory_bridge::cancel(services::game::inventory_bridge::feature::refill);
 }
 
 void modules::pot_refill::render_options()

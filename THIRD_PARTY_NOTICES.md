@@ -55,6 +55,14 @@ ve aynı dosya içinde açıklanır.
 
 ## Kaynak kütüphaneleri
 
+Spotify HUD logosu, kullanıcının sağladığı
+`spotify-2015-vector-logo-seeklogo.zip` paketindeki `spotify-2015-seeklogo.png`
+dosyasından alınmıştır. `assets/icons/spotify-2015-seeklogo.png` orijinal dosyanın
+birebir kopyasıdır; yeniden çizilmedi veya renklendirilmedi. Önceki kullanıcı
+asset'i `assets/icons/spotify.svg` ve mekanik mesh derleyicisi arşiv amaçlı korunur.
+Spotify markası ve logosu ilgili hak sahibine aittir;
+kullanıcı dosyası için ayrıca bir açık kaynak lisansı varsayılmamıştır.
+
 - Dear ImGui: https://github.com/ocornut/imgui — MIT.
 - MinHook: https://github.com/TsudaKageyu/minhook — BSD 2-Clause;
   telif ve koşullar `include/minhook/MinHook.h` içinde bulunur.
@@ -63,3 +71,11 @@ ve aynı dosya içinde açıklanır.
 
 Bu özet tam lisans metinlerinin yerine geçmez. Dağıtım sırasında kullanılan
 bağımlılıkların lisans ve telif bildirimleri de korunmalıdır.
+
+## Hibrit mimari için incelenen yerel referans
+
+Kullanıcının sağladığı `6vb8h8/VapeV4.21-main` recovery/decompile projesi,
+native/Java sorumluluk ayrımı ve yaşam döngüsü fikri için incelendi. Kod,
+algoritma veya asset kopyalanmadı; yeni GameBridge özgün OneStep uygulamasıdır.
+Referansın CC0 bildirimi üçüncü taraf haklarını kapsamaz. İncelenen dosyalar,
+yararlanılan noktalar ve sınırlar: [Hibrit geçiş](docs/HYBRID_MIGRATION.md).

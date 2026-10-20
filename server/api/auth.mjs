@@ -1,15 +1,23 @@
-import { jsonResponse, readJson } from '../core/http.mjs';
+import { jsonResponse as response, readJson } from '../core/http.mjs';
 import { requiredSecret, sha256, constantTimeEqual } from '../core/crypto.mjs';
 import { AUTH_AUDIENCE, verifySessionToken, signPayload } from '../auth/sessions.mjs';
 import { verifyDeviceProof } from '../device-proof.mjs';
 import { licenseExpiryMs, sessionExpiryMs } from '../session-policy.mjs';
 import { ensureDatabaseSchema } from '../database/schema.mjs';
 import { enforceRateLimit } from '../core/rate-limit.mjs';
+import { consumeAuthNonce } from '../auth/nonces.mjs';
 const HEX_64 = /^[a-f0-9]{64}$/i;
 const NONCE = /^[a-f0-9]{32}$/i;
 const KEY_CODE = /^[A-Za-z0-9-]{8,128}$/;
 
-export async function handleAuth(request, env, ctx) {
+// Unknown, bound-to-another-device, banned and expired licenses must not form
+// an enumeration oracle. Detailed operation events stay in operator logs.
+function jsonResponse(body,status=200) {
+    return status===401 || status===403
+        ? response({success:false,message:'Authentication failed.'},403) : response(body,status);
+}
+
+export async function handleAuth(request, env, ctx, options = {}) {
     const url = new URL(request.url);
     if (url.pathname === "/api/v1/auth" && request.method === "POST") {
         try {
@@ -87,11 +95,9 @@ export async function handleAuth(request, env, ctx) {
                 return jsonResponse({ success: false, message: "Invalid License Key" }, 401);
             }
 
-            let deviceKeyHash = "";
-            if (body.device_key || body.device_signature) {
-                try { deviceKeyHash = await verifyDeviceProof(body); }
-                catch (_) { return jsonResponse({ success: false, message: "Device verification failed." }, 403); }
-            }
+            let deviceKeyHash;
+            try { deviceKeyHash = await (options.verifyProof || verifyDeviceProof)(body); }
+            catch (_) { return jsonResponse({ success: false, message: "Authentication failed." }, 403); }
             if (license.device_key_hash && !constantTimeEqual(license.device_key_hash, deviceKeyHash)) {
                 return jsonResponse({ success: false, message: "License belongs to another device key. Reset HWID to change devices." }, 403);
             }
@@ -141,10 +147,9 @@ export async function handleAuth(request, env, ctx) {
                 }
             }
 
-            const currentBoundHwid =
-                String(license.hwid_hash || license.hwid || "");
-            const hwidMatches =
-                currentBoundHwid === hwidHash || currentBoundHwid === hwid;
+            // Raw legacy fingerprints are never accepted as an authentication binding.
+            const currentBoundHwid = String(license.hwid_hash || "");
+            const hwidMatches = constantTimeEqual(currentBoundHwid, hwidHash);
 
             if (requestType === "heartbeat") {
                 // Heartbeats are never allowed to activate or re-bind a license.
@@ -175,7 +180,13 @@ export async function handleAuth(request, env, ctx) {
                         message: "HWID Mismatch! Key bound to another device.",
                     }, 403);
                 }
-            } else {
+            }
+
+            if (!await consumeAuthNonce(env,keyHash,deviceKeyHash,requestType,nonce,now)) {
+                return jsonResponse({ success:false, message:"Authentication request already used." },409);
+            }
+
+            if (requestType === "activate") {
                 // Initial activation or normal re-login.
                 if (status === "active") {
                     if (!currentBoundHwid || !hwidMatches) {
@@ -194,22 +205,9 @@ export async function handleAuth(request, env, ctx) {
                         }
 
                         // Reactivate only if the same HWID is still bound at write time.
-                        let reactivateResult;
-                        try {
-                            reactivateResult = await env.DB.prepare(
-                                "UPDATE license_keys SET status = 'active' WHERE id = ? AND status = 'unused' AND (hwid_hash = ? OR hwid = ?)"
-                            ).bind(license.id, hwidHash, hwid).run();
-                        } catch (error) {
-                            try {
-                                reactivateResult = await env.DB.prepare(
-                                    "UPDATE license_keys SET status = 'active' WHERE id = ? AND status = 'unused' AND hwid_hash = ?"
-                                ).bind(license.id, hwidHash).run();
-                            } catch (_) {
-                                reactivateResult = await env.DB.prepare(
-                                    "UPDATE license_keys SET status = 'active' WHERE id = ? AND status = 'unused' AND hwid = ?"
-                                ).bind(license.id, hwid).run();
-                            }
-                        }
+                        const reactivateResult = await env.DB.prepare(
+                            "UPDATE license_keys SET status = 'active' WHERE id = ? AND status = 'unused' AND hwid_hash = ?"
+                        ).bind(license.id, hwidHash).run();
 
                         if (!reactivateResult ||
                             !reactivateResult.meta ||
@@ -222,22 +220,9 @@ export async function handleAuth(request, env, ctx) {
                     } else {
                         // First activation is one conditional write. Two machines cannot
                         // both win the initial HWID bind.
-                        let bindResult;
-                        try {
-                            bindResult = await env.DB.prepare(
-                                "UPDATE license_keys SET hwid_hash = ?, hwid_hint = ?, status = 'active', activated_at = COALESCE(activated_at, CURRENT_TIMESTAMP) WHERE id = ? AND status = 'unused' AND (hwid_hash IS NULL OR hwid_hash = '') AND (hwid IS NULL OR hwid = '')"
-                            ).bind(hwidHash, hwidHint, license.id).run();
-                        } catch (error) {
-                            try {
-                                bindResult = await env.DB.prepare(
-                                    "UPDATE license_keys SET hwid_hash = ?, hwid_hint = ?, status = 'active', activated_at = COALESCE(activated_at, CURRENT_TIMESTAMP) WHERE id = ? AND status = 'unused' AND (hwid_hash IS NULL OR hwid_hash = '')"
-                                ).bind(hwidHash, hwidHint, license.id).run();
-                            } catch (_) {
-                                bindResult = await env.DB.prepare(
-                                    "UPDATE license_keys SET hwid = ?, status = 'active' WHERE id = ? AND status = 'unused' AND (hwid IS NULL OR hwid = '')"
-                                ).bind(hwid, license.id).run();
-                            }
-                        }
+                        const bindResult = await env.DB.prepare(
+                            "UPDATE license_keys SET hwid_hash = ?, hwid_hint = ?, status = 'active', activated_at = COALESCE(activated_at, CURRENT_TIMESTAMP) WHERE id = ? AND status = 'unused' AND (hwid_hash IS NULL OR hwid_hash = '')"
+                        ).bind(hwidHash, hwidHint, license.id).run();
 
                         if (!bindResult ||
                             !bindResult.meta ||
@@ -256,9 +241,7 @@ export async function handleAuth(request, env, ctx) {
                 }
             }
 
-            // Upgrade a legacy raw binding only after it has matched the
-            // current device. The stored value remains a peppered hash;
-            // the UI receives only the compact display hint.
+            // Update a display hint only after the hashed binding has matched.
             if (hwidMatches &&
                 (String(license.hwid_hash || "") !== hwidHash ||
                     String(license.hwid_hint || "") !== hwidHint)) {
@@ -327,7 +310,7 @@ export async function handleAuth(request, env, ctx) {
                 hwid_hash: hwidHash,
                 device_key_hash: deviceKeyHash || undefined,
                 nonce_hash: nonceHash,
-                aud: AUTH_AUDIENCE,
+                aud: options.audience || AUTH_AUDIENCE,
                 license_epoch: currentEpoch,
                 iat: issuedAt,
                 exp: sessionExpiresAt,
@@ -347,7 +330,7 @@ export async function handleAuth(request, env, ctx) {
                 );
             } catch (_) { }
 
-            return jsonResponse(await signPayload(payload, env));
+            return jsonResponse(await signPayload({ ...payload, ...(options.responseClaims || {}) }, env));
         } catch (error) {
             // The native client receives only a generic failure. Keep the
             // operator-visible cause in Worker logs without leaking it.

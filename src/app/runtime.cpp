@@ -13,6 +13,12 @@
 #include "../platform/jni/jvm_session.hpp"
 #include "../platform/input/key_codes.hpp"
 #include "../services/input/input_service.hpp"
+#include "../services/game/hybrid_bridge.hpp"
+#include "../services/game/utility_bridge.hpp"
+#include "../services/game/item_bridge.hpp"
+#include "../services/game/inventory_bridge.hpp"
+#include "../services/game/world_bridge.hpp"
+#include "../services/game/client_bridge.hpp"
 #include "../utils/version_manager.hpp"
 #include <Windows.h>
 #include <chrono>
@@ -42,11 +48,18 @@ namespace
         ~runtime_services()
         {
             gui::should_unload.store(true, std::memory_order_release);
+            services::input::cancel_automatic_inputs();
             if (configs_started) configs::shutdown();
             auth::client::shutdown();
             loader_ui::closing();
             gui::draw = false;
             if (renderer_started) gui::shutdown();
+            services::game::client_bridge::shutdown();
+            services::game::world_bridge::shutdown();
+            services::game::inventory_bridge::shutdown();
+            services::game::items::shutdown();
+            services::game::utility::shutdown();
+            services::game::hybrid::shutdown();
             if (modules_started) modules::shutdown(game);
         }
     };

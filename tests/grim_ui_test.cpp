@@ -7,8 +7,13 @@
 #include "../src/ui/keybinds_model.hpp"
 #include "../src/configs/keybind_profile.hpp"
 #include "../src/modules/core/public_config.hpp"
+#include "../src/modules/render/arraylist.hpp"
+#include "../src/modules/visual/spotify_hud.hpp"
+#include "../src/modules/visual/target_hud.hpp"
 #include "support/imgui_capture.hpp"
 #include <cassert>
+#include <csignal>
+#include <cstdlib>
 #include <iostream>
 #include <memory>
 
@@ -52,6 +57,12 @@ namespace modules {
     }
     std::uintptr_t player_esp::local_skin_texture_id() { return 0; }
     void player_esp::refresh_local_skin_texture() {}
+    bool arraylist::draw_overlay(ImDrawList*, float, float, bool, overlay_bounds*) { return false; }
+    spotify_hud::bounds spotify_hud::get_bounds(float, float) const { return {}; }
+    void spotify_hud::render_hud_preview(ImDrawList*, float, float) {}
+    target_hud::bounds target_hud::get_bounds(float, float) const { return {}; }
+    void target_hud::render_hud_preview(ImDrawList*, float, float) {}
+    void target_hud::set_placement(float, float, float) {}
 }
 namespace friends { std::string local_player_name() { return "Player"; } }
 namespace auth::client { view_state snapshot() { return {phase::authorized, "", "lifetime", true}; } }
@@ -67,14 +78,11 @@ namespace gui {
 namespace gui::aegis {
     preferences& get_preferences() { return ::preferences; }
     void mark_preferences_dirty() {}
+    void flush_preferences(bool, bool) {}
 }
 namespace gui::background {
     void update() {}
     bool render(ImDrawList*, ImVec2, ImVec2, const options&) { return false; }
-}
-namespace gui::hud_editor {
-    void render_page() { ImGui::TextUnformatted("HUD fixture"); }
-    void render(const ImGuiViewport*) {}
 }
 
 namespace {
@@ -134,6 +142,11 @@ namespace {
 }
 int main(int argc, char** argv)
 {
+    std::signal(SIGABRT, [](int) {
+        if (GImGui && GImGui->CurrentWindow)
+            std::cerr << "Active UI window on assertion: " << GImGui->CurrentWindow->Name << '\n';
+        std::_Exit(EXIT_FAILURE);
+    });
     const std::string capture_dir = argc > 1 ? argv[1] : "";
     if (!capture_dir.empty()) {
         std::ifstream source(capture_dir + "/helmet.rgba", std::ios::binary);
@@ -205,6 +218,19 @@ int main(int argc, char** argv)
     assert(!gui::keybinds_model::assign(no_options,0xa1));
     auto groups = gui::keybinds_model::categories();
     assert(std::find(groups.begin(),groups.end(),"Custom group") != groups.end());
+    {
+        modules::module movement("movement fixture", "Movement"), player("player fixture", "Player"),
+            world("world fixture", "World"), friends_page("friends fixture", "Friends");
+        const auto previous_size = entries.size();
+        entries.insert(entries.end(), {&movement, &player, &world, &friends_page});
+        const auto normalized = gui::keybinds_model::categories();
+        assert(std::count(normalized.begin(), normalized.end(), "Misc") == 1);
+        for (const auto legacy : {"Friends", "Movement", "Player", "World"})
+            assert(std::find(normalized.begin(), normalized.end(), legacy) == normalized.end());
+        assert(gui::keybinds_model::filtered("fixture", "Misc").size() == 3);
+        assert(gui::keybinds_model::filtered("friends fixture", "").empty());
+        entries.resize(previous_size);
+    }
     assert(configs::keybind_profile::flush(true));
     entries.pop_back(); entries.pop_back();
     // A failing path must be reported, not counted as a successful save.
@@ -240,9 +266,67 @@ int main(int argc, char** argv)
     assert(visible_modules() == entries);
     const float initial_width = grid()->Size.x;
     assert(initial_width > 700.f);
-    assert(grid()->ContentSize.y < 450.f); // Eleven cards occupy six rows, not eleven.
+    assert(grid()->ContentSize.y < 600.f); // Readable, wrapped cards still occupy six rows, not eleven.
     capture(capture_dir, "combat-grid");
+    {
+        auto* shell_window = ImGui::FindWindowByName("##ThedoriusGrimUI");
+        const auto initial_position = shell_window->Pos;
+        const ImVec2 grab(initial_position.x + 80.f, initial_position.y + 26.f);
+        io.AddMousePosEvent(grab.x, grab.y); frame(2);
+        io.AddMouseButtonEvent(0, true); frame();
+        io.AddMousePosEvent(grab.x + 72.f, grab.y + 40.f); frame(3);
+        io.AddMouseButtonEvent(0, false); frame(3);
+        const auto dragged = shell_window->Pos;
+        assert(std::abs(dragged.x - initial_position.x - 72.f) < 1.f);
+        assert(std::abs(dragged.y - initial_position.y - 40.f) < 1.f);
+        for (const auto target : {page::friends, page::combat, page::configs, page::misc,
+            page::themes, page::vape, page::hud, page::client, page::keybinds, page::combat}) {
+            state.current = target; frame(3);
+            assert(shell_window->Pos.x == dragged.x && shell_window->Pos.y == dragged.y);
+        }
+        state.current = page::configs; frame(3);
+        std::strcpy(state.search, "aim"); frame(3);
+        assert(shell_window->Pos.x == dragged.x && shell_window->Pos.y == dragged.y);
+        clear_search(); frame(3);
+        assert(shell_window->Pos.x == dragged.x && shell_window->Pos.y == dragged.y);
+        io.DisplaySize = {0,0}; frame(2); // Minimized frames must not overwrite the anchor.
+        assert(state.position.x == dragged.x && state.position.y == dragged.y);
+        io.DisplaySize = {1600,900}; frame(3);
+        assert(shell_window->Pos.x == dragged.x && shell_window->Pos.y == dragged.y);
+        state.position = initial_position; state.current = page::combat; frame(3);
+    }
+    {
+        // A long list must retain its scroll extent without tessellating every
+        // offscreen card. Only local fixtures are added; no game work is run.
+        const auto original_size = entries.size();
+        const int initial_vertices = grid()->DrawList->VtxBuffer.Size;
+        std::vector<std::unique_ptr<fixture_module>> offscreen;
+        for (int i = 0; i < 160; ++i) {
+            const auto id = "offscreen_fixture_" + std::to_string(i);
+            offscreen.push_back(std::make_unique<fixture_module>("offscreen fixture", "Combat", id.c_str()));
+            entries.push_back(offscreen.back().get());
+        }
+        frame(3);
+        assert(visible_modules().size() == entries.size());
+        assert(grid()->ScrollMax.y > 5000.f);
+        assert(grid()->DrawList->VtxBuffer.Size < initial_vertices * 2);
+        const auto layouts = state.card_layouts.size();
+        frame(3);
+        assert(state.card_layouts.size() == layouts);
+        ImGui::SetScrollY(grid(), grid()->ScrollMax.y); frame(3);
+        assert(grid()->Scroll.y > 5000.f && grid()->DrawList->VtxBuffer.Size > 0);
+        assert(grid()->DrawList->VtxBuffer.Size < initial_vertices * 2);
+        std::strcpy(state.search, "offscreen");
+        assert(search_results().size() == 160);
+        entries.resize(original_size);
+        assert(search_results().empty()); // Registry changes invalidate cached results.
+        clear_search(); frame(3);
+        assert(visible_modules() == entries && grid()->Scroll.y == 0.f);
+    }
     auto top = grid()->Pos;
+    io.AddMousePosEvent(top.x + 35.f, top.y + 28.f); frame(3);
+    for (const auto* window : GImGui->Windows)
+        assert(!window->Active || !(window->Flags & ImGuiWindowFlags_Tooltip));
     // Second column selects the second module, not the row below it.
     click({top.x + initial_width * .5f + 35.f, top.y + 28.f});
     assert(state.selected == entries[1]); frame(2);
@@ -317,6 +401,16 @@ int main(int argc, char** argv)
     state.current = page::configs; state.selected = nullptr; frame(3);
     assert(configs_rendered && !panel->Active);
     state.current = page::friends; frame(3); assert(friends_rendered);
+    state.current = page::hud; frame(3);
+    capture(capture_dir, "hud-controls");
+    auto* hud_surface = active_window("##hud_surface");
+    assert(hud_surface->ContentSize.y > 300.f); // Larger rows/buttons, not tiny 10px controls.
+    io.DisplaySize = {900,700}; frame(3);
+    hud_surface = active_window("##hud_surface");
+    assert(hud_surface->Pos.x + hud_surface->Size.x <= io.DisplaySize.x);
+    capture(capture_dir, "hud-controls-narrow");
+    io.DisplaySize = {1600,900}; frame(3);
+    state.current = page::friends; frame(3);
     // Navigate via the actual Other > Keybinds sidebar button.
     root = ImGui::FindWindowByName("##ThedoriusGrimUI");
     click({root->Pos.x + 70.f,root->Pos.y + 488.f});
@@ -385,10 +479,12 @@ int main(int argc, char** argv)
     entries[0]->set_keybind(0); frame(2);
     state.current = page::combat; state.selected = entries[0]; frame(3);
     // An offset or a smaller viewport must still leave the right panel visible.
-    state.feature_drag_offset = {10000.f,10000.f}; io.DisplaySize = {1280,720}; frame(4);
+    state.position = {10000.f,10000.f}; io.DisplaySize = {1280,720}; frame(4);
     assert(panel->Pos.x + panel->Size.x <= 1280.f && panel->Pos.y + panel->Size.y <= 720.f);
     capture(capture_dir, "combat-1280");
-    io.DisplaySize = {1600,900}; state.feature_drag_offset = {}; frame(3);
+    io.DisplaySize = {1600,900};
+    const auto recentered = gui::dock_layout::main_panel({0,0,1600,900});
+    state.position = {recentered.x, recentered.y}; frame(3);
     ::preferences.reduce_motion = false;
     state.selected = nullptr; frame(60);
     assert(!panel->Active && !state.settings_module);
@@ -409,7 +505,37 @@ int main(int argc, char** argv)
     assert(gui::should_unload && !gui::draw && !panic.enabled && !has_settings_panel(&panic));
     entries.pop_back();
     gui::grim::reset_runtime_state(); gui::reset_widget_runtime_state();
-    assert(!state.selected && !state.settings_module && state.options_content_height.empty());
+    assert(!state.selected && !state.settings_module && state.options_content_height.empty() && state.card_layouts.empty());
+    {
+        // Fixed shortcuts share the same bounded badge; long values stack, not shrink.
+        auto controls_frame = [&] {
+            ImGui::NewFrame(); ImGui::SetNextWindowPos({20,20}); ImGui::SetNextWindowSize({296,240});
+            ImGui::Begin("Control regression fixture",nullptr,ImGuiWindowFlags_NoSavedSettings);
+            fixed.key_bind_selector(132.f);
+            assert(ImGui::GetItemRectSize().x==132.f);
+            const char* normal[]={"Normal"}; int choice=0;
+            gui::option_combo("Mode",&choice,normal,1);
+            assert(ImGui::GetItemRectSize().y==36.f);
+            const char* long_value[]={"Work without inventory switching"};
+            gui::option_combo("Mode",&choice,long_value,1);
+            assert(ImGui::GetItemRectSize().y==60.f);
+            ImGui::End(); ImGui::Render();
+        };
+        controls_frame(); controls_frame();
+        auto border_colors = [&](bool reduce_motion) {
+            ::preferences.reduce_motion=reduce_motion;
+            ImGui::NewFrame(); ImGui::SetNextWindowPos({20,20}); ImGui::SetNextWindowSize({320,180});
+            ImGui::Begin("Flowing border fixture",nullptr,ImGuiWindowFlags_NoSavedSettings);
+            auto* draw=ImGui::GetWindowDrawList(); const int first=draw->VtxBuffer.Size;
+            flowing_card_border(draw,{40,60},{300,140},.85f);
+            std::vector<ImU32> colors;
+            for (int index=first; index<draw->VtxBuffer.Size; ++index) colors.push_back(draw->VtxBuffer[index].col);
+            ImGui::Dummy({260,80}); ImGui::End(); ImGui::Render(); return colors;
+        };
+        const auto first=border_colors(false), next=border_colors(false);
+        assert(!first.empty() && first!=next);
+        const auto still=border_colors(true); assert(still==border_colors(true));
+    }
     ImGui::DestroyContext();
     std::cout << "PASS: real GrimUI cards/settings, Other > Keybinds navigation, keyboard assignment/move/remove/shared keys, dynamic categories/search, plain modules, reserved keys, profile restart/corruption/I/O failure, public config roundtrip, viewport bounds, Escape and reset\n";
 }

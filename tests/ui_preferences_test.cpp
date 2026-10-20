@@ -7,6 +7,25 @@ int main()
 {
     int failures = 0;
     auto check = [&](bool ok, const char* message) { if (!ok) { std::cerr << message << '\n'; ++failures; } };
+    // Fake time only: do not read/write the user's preferences or sleep.
+    save_schedule save;
+    const auto start = save_schedule::clock::time_point{};
+    using namespace std::chrono_literals;
+    check(!save.ready(start, true, false), "clean state must not save even on force");
+    save.changed(start);
+    check(!save.ready(start + 649ms, false, false), "save must debounce edits");
+    save.changed(start + 600ms);
+    check(!save.ready(start + 1s, false, false), "continuous edits must restart debounce");
+    check(save.ready(start + 1250ms, false, false), "idle changes must eventually save");
+    check(!save.ready(start + 1250ms, false, true), "active dragging must not write to disk");
+    save.attempted(start + 1250ms);
+    check(!save.ready(start + 1260ms, false, false), "failed save must not retry next frame");
+    check(save.ready(start + 3250ms, false, false), "failed save must retry after backoff");
+    check(save.ready(start + 1260ms, true, true), "explicit save/shutdown must bypass delay");
+    save.saved();
+    check(!save.ready(start + 10s, false, false), "successful save must stop retries");
+    save.changed(start + 1400ms);
+    check(save.ready(start + 2050ms, false, false), "successful save must clear the retry backoff");
     float value = 12.f;
     int index = 3;
     check(!read_number("{\"x\":nan}", "x", value) && value == 12.f, "NaN must not mutate preferences");

@@ -73,6 +73,7 @@ The checked-in Java class resources must be rebuilt when bridge sources change:
 ```powershell
 .\scripts\Build-NameProtectBridge.ps1 -AsmClasspath 'C:\libs\asm.jar;C:\libs\asm-tree.jar'
 .\scripts\Build-SkyBridge.ps1 -AsmClasspath 'C:\libs\asm.jar;C:\libs\asm-tree.jar'
+.\scripts\Build-ViewModelBridge.ps1 -AsmClasspath 'C:\libs\asm.jar;C:\libs\asm-tree.jar'
 ```
 
 These use Java 17 bytecode and the ASM already supplied by Fabric. Minecraft's

@@ -11,6 +11,8 @@ namespace gui::surface_style
         style.ScrollbarSize = 0.f;
         style.CurveTessellationTol = .15f;
         style.CircleTessellationMaxError = .08f;
+        style.PopupRounding = 12.f;
+        style.PopupBorderSize = 1.f;
     }
 
 }

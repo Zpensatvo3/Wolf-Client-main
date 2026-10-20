@@ -2,6 +2,7 @@
 #include "config.hpp"
 #include "session_policy.hpp"
 #include "device_proof.hpp"
+#include "launcher_protocol.hpp"
 
 #include <Windows.h>
 #include <bcrypt.h>
@@ -19,6 +20,7 @@
 #include <iomanip>
 #include <limits>
 #include <mutex>
+#include <memory>
 #include <optional>
 #include <random>
 #include <sstream>
@@ -36,23 +38,7 @@
 namespace
 {
 	constexpr std::size_t kMaxResponseBytes = 1024 * 1024;
-	// A temporary Cloudflare/ISP failure must never make a valid licence look
-	// invalid. Keep an unexpired session alive during bounded retries. TLS
-	// server rejections, epoch changes and signed session expiry close access.
-	constexpr auto kHeartbeatRetryInitial = std::chrono::seconds(12);
-	constexpr auto kHeartbeatRetryMaximum = std::chrono::seconds(90);
 	constexpr char kAuthPublicKeySpkiBase64[] = ONESTEP_AUTH_PUBLIC_KEY_SPKI_BASE64;
-
-	std::atomic<bool> g_authenticated{ false };
-	std::atomic<ULONGLONG> g_session_deadline{ 0 };
-	std::atomic<int> g_active_epoch{ 1 };
-
-	std::mutex g_token_mutex;
-	std::string g_session_token;
-	std::mutex g_hwid_mutex;
-	std::string g_session_hwid;
-	std::mutex g_service_domain_mutex;
-	std::string g_service_domain;
 
 	std::atomic<bool> g_heartbeat_running{ false };
 	std::mutex g_heartbeat_owner_mutex;
@@ -60,19 +46,6 @@ namespace
 	std::mutex g_heartbeat_mutex;
 	std::condition_variable g_heartbeat_cv;
 	std::thread::id g_heartbeat_thread_id{};
-
-	enum class failure_class
-	{
-		none,
-		transient,
-		hard
-	};
-
-	struct auth_attempt
-	{
-		auth::auth_result result;
-		failure_class failure = failure_class::hard;
-	};
 
 	class winhttp_handle
 	{
@@ -98,25 +71,21 @@ namespace
 			return *this;
 		}
 
-		HINTERNET get() const noexcept { return value_; }
-		explicit operator bool() const noexcept { return value_ != nullptr; }
+		HINTERNET get() const noexcept { return value_.load(); }
+		explicit operator bool() const noexcept { return value_.load() != nullptr; }
 
 		HINTERNET release() noexcept
 		{
-			HINTERNET old = value_;
-			value_ = nullptr;
-			return old;
+			return value_.exchange(nullptr);
 		}
 
 		void reset(HINTERNET replacement = nullptr) noexcept
 		{
-			if (value_)
-				WinHttpCloseHandle(value_);
-			value_ = replacement;
+			if (auto old = value_.exchange(replacement)) WinHttpCloseHandle(old);
 		}
 
 	private:
-		HINTERNET value_ = nullptr;
+		std::atomic<HINTERNET> value_{nullptr};
 	};
 
 	long long unix_time_ms()
@@ -641,6 +610,7 @@ namespace
 		const std::string& endpoint,
 		std::string request_body)
 	{
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
 		auth::service_result result;
 		if (!auth::policy::valid_domain(server_domain) || endpoint.empty() || endpoint.front() != '/')
 		{
@@ -660,7 +630,7 @@ namespace
 			return result;
 		}
 
-		WinHttpSetTimeouts(session.get(), 5000, 5000, 10000, 15000);
+		WinHttpSetTimeouts(session.get(), 5000, 5000, 5000, 5000);
 		BOOL ipv6_fast_fallback = TRUE;
 		WinHttpSetOption(session.get(), WINHTTP_OPTION_IPV6_FAST_FALLBACK,
 			&ipv6_fast_fallback, sizeof(ipv6_fast_fallback));
@@ -697,6 +667,13 @@ namespace
 			return result;
 		}
 
+        struct timeout_guard {
+            winhttp_handle& request; std::mutex mutex; std::condition_variable cv; bool done=false; std::thread timer;
+            timeout_guard(winhttp_handle& h,std::chrono::steady_clock::time_point limit):request(h),
+                timer([this,limit]{std::unique_lock lock(mutex); if(!cv.wait_until(lock,limit,[this]{return done;})) request.reset();}){}
+            ~timeout_guard(){ {std::lock_guard lock(mutex);done=true;} cv.notify_all();timer.join(); }
+        } timeout(request,deadline);
+
 		constexpr wchar_t headers[] =
 			L"Content-Type: application/json; charset=utf-8\r\n"
 			L"Accept: application/json\r\n"
@@ -729,313 +706,12 @@ namespace
 			result.message = parse_json_value(result.body, "message")
 				.value_or(status_fallback_message(static_cast<DWORD>(result.status_code)));
 		}
+		if (std::chrono::steady_clock::now() >= deadline) {
+            result.success=false;result.message="Request timed out.";secure_clear(result.body);
+        }
 		return result;
 	}
 
-	auth_attempt authenticate_impl(
-		const std::string& key_code,
-		const std::string& server_domain,
-		bool commit_session, const std::string& release_sha256 = "")
-	{
-		auth_attempt attempt;
-		auth::auth_result& result = attempt.result;
-
-		if ((commit_session && !auth::policy::valid_license(key_code)) || key_code.empty())
-		{
-			result.message = "Enter a valid license key.";
-			attempt.failure = failure_class::hard;
-			return attempt;
-		}
-		if (!auth::policy::valid_domain(server_domain) || !auth::config::public_key[0])
-		{
-			result.message = "Authentication is not configured for this build.";
-			return attempt;
-		}
-
-		if (commit_session)
-		{
-			result.hwid = auth::generate_hwid();
-		}
-		else
-		{
-			// A heartbeat must use the exact fingerprint accepted during login.
-			// Recomputing it on a different worker thread previously allowed
-			// core-local CPUID values to change the fingerprint mid-session.
-			std::lock_guard<std::mutex> lock(g_hwid_mutex);
-			result.hwid = g_session_hwid;
-		}
-		if (result.hwid.empty())
-		{
-			result.message = "Failed to generate a secure device fingerprint.";
-			attempt.failure = failure_class::hard;
-			return attempt;
-		}
-
-		const std::string nonce = auth::generate_nonce();
-		if (nonce.empty())
-		{
-			result.message = "Failed to generate a secure nonce.";
-			attempt.failure = failure_class::hard;
-			return attempt;
-		}
-
-		const std::string nonce_hash = sha256_hex(nonce);
-		if (nonce_hash.empty())
-		{
-			result.message = "Failed to hash the authentication nonce.";
-			attempt.failure = failure_class::hard;
-			return attempt;
-		}
-
-		winhttp_handle session(WinHttpOpen(
-			L"OneStep-Client/2.1",
-			WINHTTP_ACCESS_TYPE_NO_PROXY,
-			WINHTTP_NO_PROXY_NAME,
-			WINHTTP_NO_PROXY_BYPASS,
-			0));
-		if (!session)
-		{
-			result.message = "Failed to initialize WinHTTP session.";
-			attempt.failure = failure_class::transient;
-			return attempt;
-		}
-
-		if (!WinHttpSetTimeouts(session.get(), 5000, 5000, 10000, 15000))
-		{
-			result.message = "Failed to configure network timeouts.";
-			attempt.failure = failure_class::transient;
-			return attempt;
-		}
-
-		// Cloudflare publishes both IPv6 and IPv4 records. Some Windows setups
-		// resolve IPv6 successfully even though the actual IPv6 route is unusable.
-		// WinHTTP's fast fallback moves to IPv4 after a short failed IPv6 attempt.
-		BOOL ipv6_fast_fallback = TRUE;
-		WinHttpSetOption(
-			session.get(),
-			WINHTTP_OPTION_IPV6_FAST_FALLBACK,
-			&ipv6_fast_fallback,
-			sizeof(ipv6_fast_fallback));
-
-		const std::wstring wide_domain = utf8_to_wide(server_domain);
-		if (wide_domain.empty())
-		{
-			result.message = "Invalid auth server domain.";
-			attempt.failure = failure_class::hard;
-			return attempt;
-		}
-
-		winhttp_handle connection(WinHttpConnect(
-			session.get(),
-			wide_domain.c_str(),
-			INTERNET_DEFAULT_HTTPS_PORT,
-			0));
-		if (!connection)
-		{
-			result.message = "Failed to connect to auth server.";
-			attempt.failure = failure_class::transient;
-			return attempt;
-		}
-
-		winhttp_handle request(WinHttpOpenRequest(
-			connection.get(),
-			L"POST",
-			release_sha256.empty() ? L"/api/v1/auth" : L"/api/v1/launcher/redeem",
-			nullptr,
-			WINHTTP_NO_REFERER,
-			WINHTTP_DEFAULT_ACCEPT_TYPES,
-			WINHTTP_FLAG_SECURE));
-		if (!request)
-		{
-			result.message = "Failed to create HTTP request.";
-			attempt.failure = failure_class::transient;
-			return attempt;
-		}
-		// Never forward a license or session token to a redirected host.
-		DWORD redirect_policy = WINHTTP_OPTION_REDIRECT_POLICY_NEVER;
-		if (!WinHttpSetOption(request.get(), WINHTTP_OPTION_REDIRECT_POLICY,
-			&redirect_policy, sizeof(redirect_policy)))
-		{
-			result.message = "Failed to secure authentication connection.";
-			return attempt;
-		}
-
-		const std::string request_type =
-			!release_sha256.empty() ? "redeem" : commit_session ? "activate" : "heartbeat";
-		const long long request_timestamp = unix_time_ms();
-		const auto device_proof = auth::device::sign_request(request_type, result.hwid,
-			nonce, request_timestamp, key_code);
-		if (!device_proof.success)
-		{
-			result.message = device_proof.message;
-			return attempt;
-		}
-
-		std::string request_body = commit_session
-			? std::string(release_sha256.empty() ? "{\"key\":\"" : "{\"ticket\":\"") + json_escape(key_code) +
-				"\",\"hwid\":\"" + json_escape(result.hwid) +
-				"\",\"nonce\":\"" + json_escape(nonce) +
-				"\",\"timestamp\":" + std::to_string(request_timestamp) +
-				",\"request_type\":\"" + request_type + "\""
-			: "{\"session_token\":\"" + json_escape(key_code) +
-				"\",\"hwid\":\"" + json_escape(result.hwid) +
-				"\",\"nonce\":\"" + json_escape(nonce) +
-				"\",\"timestamp\":" + std::to_string(request_timestamp) +
-				",\"request_type\":\"heartbeat\"";
-		request_body += ",\"device_key\":\"" + device_proof.public_key +
-			"\",\"device_signature\":\"" + device_proof.signature + "\"}";
-        if (!release_sha256.empty()) {
-            request_body.pop_back();
-            request_body += ",\"pid\":" + std::to_string(GetCurrentProcessId()) +
-                ",\"release_sha256\":\"" + json_escape(release_sha256) + "\"}";
-        }
-
-		constexpr wchar_t headers[] =
-			L"Content-Type: application/json; charset=utf-8\r\n"
-			L"Accept: application/json\r\n"
-			L"Cache-Control: no-store\r\n";
-
-		BOOL success = WinHttpSendRequest(
-			request.get(),
-			headers,
-			static_cast<DWORD>(-1L),
-			const_cast<char*>(request_body.data()),
-			static_cast<DWORD>(request_body.size()),
-			static_cast<DWORD>(request_body.size()),
-			0);
-		DWORD network_error = success ? ERROR_SUCCESS : GetLastError();
-		secure_clear(request_body);
-		if (success)
-		{
-			success = WinHttpReceiveResponse(request.get(), nullptr);
-			if (!success)
-				network_error = GetLastError();
-		}
-
-		if (!success)
-		{
-			result.message = "WinHTTP error " + std::to_string(network_error) + ".";
-			attempt.failure = failure_class::transient;
-			return attempt;
-		}
-
-		const DWORD status_code = query_http_status(request.get());
-		std::string response_text;
-		if (!read_response_body(request.get(), response_text))
-		{
-			result.message = "Failed to read auth server response.";
-			attempt.failure = failure_class::transient;
-			return attempt;
-		}
-
-		const std::string server_message =
-			parse_json_value(response_text, "message").value_or("");
-
-		if (status_code < 200 || status_code >= 300)
-		{
-			result.message = server_message.empty()
-				? status_fallback_message(status_code)
-				: server_message;
-
-			attempt.failure =
-				(status_code == 408 || status_code == 429 || status_code >= 500 || status_code == 0)
-				? failure_class::transient
-				: failure_class::hard;
-			return attempt;
-		}
-
-		const std::string encoded_payload =
-			parse_json_value(response_text, "payload").value_or("");
-		const std::string signature =
-			parse_json_value(response_text, "signature").value_or("");
-		std::vector<UCHAR> payload_bytes;
-		if (encoded_payload.empty() || signature.empty() ||
-			!base64url_decode(encoded_payload, payload_bytes))
-		{
-			result.message = "Auth response did not contain a valid signed payload.";
-			attempt.failure = failure_class::hard;
-			return attempt;
-		}
-
-		const std::string signed_payload(
-			reinterpret_cast<const char*>(payload_bytes.data()), payload_bytes.size());
-		SecureZeroMemory(payload_bytes.data(), payload_bytes.size());
-		if (!verify_signed_payload(signed_payload, signature))
-		{
-			result.message = "Auth response signature verification failed.";
-			attempt.failure = failure_class::hard;
-			return attempt;
-		}
-
-		if (!parse_json_bool(signed_payload, "success", false))
-		{
-			result.message = "Authentication Failed.";
-			attempt.failure = failure_class::hard;
-			return attempt;
-		}
-
-		const std::string response_nonce_hash =
-			parse_json_value(signed_payload, "nonce_hash").value_or("");
-		const auto epoch = parse_integer<int>(
-			parse_json_value(signed_payload, "license_epoch"));
-		const auto expiration = parse_integer<long long>(
-			parse_json_value(signed_payload, "exp"));
-		const auto issued = parse_integer<long long>(
-			parse_json_value(signed_payload, "iat"));
-
-		if (parse_json_value(signed_payload, "aud").value_or("") != "wolf-client-v1")
-		{
-			result.message = "Auth response has an invalid audience.";
-			attempt.failure = failure_class::hard;
-			return attempt;
-		}
-
-		if (!constant_time_equal(response_nonce_hash, nonce_hash))
-		{
-			result.message = "Auth response nonce validation failed.";
-			attempt.failure = failure_class::hard;
-			return attempt;
-		}
-        if (!release_sha256.empty() &&
-            (parse_json_value(signed_payload, "release_sha256").value_or("") != release_sha256 ||
-             parse_integer<DWORD>(parse_json_value(signed_payload, "pid")).value_or(0) != GetCurrentProcessId())) {
-            result.message = "Launch permission does not match this process or release.";
-            return attempt;
-        }
-		if (!constant_time_equal(parse_json_value(signed_payload, "device_key_hash").value_or(""),
-			sha256_hex(device_proof.public_key)))
-		{
-			result.message = "Auth response did not match this device key.";
-			return attempt;
-		}
-
-		if (!epoch || *epoch <= 0)
-		{
-			result.message = "Auth response contained an invalid license epoch.";
-			attempt.failure = failure_class::hard;
-			return attempt;
-		}
-
-		if (!expiration || !issued || !auth::policy::valid_times(*issued, *expiration, unix_time_ms()))
-		{
-			result.message = "Auth session has an invalid or expired lifetime. Check your system clock.";
-			attempt.failure = failure_class::hard;
-			return attempt;
-		}
-
-		result.success = true;
-		result.message = "Authentication Successful!";
-		result.license_epoch = *epoch;
-		result.exp = *expiration;
-		result.expires_at = parse_json_value(signed_payload, "expires_at").value_or("lifetime");
-		result.session_token = encoded_payload + "." + signature;
-
-		if (commit_session)
-			auth::set_authenticated(true, result.session_token, result.license_epoch, result.exp);
-
-		attempt.failure = failure_class::none;
-		return attempt;
-	}
 }
 
 namespace auth
@@ -1109,332 +785,6 @@ namespace auth
 		return bytes_to_hex(random_bytes.data(), random_bytes.size());
 	}
 
-	bool is_authenticated()
-	{
-		return g_authenticated.load(std::memory_order_acquire) &&
-			policy::before_deadline(GetTickCount64(), g_session_deadline.load(std::memory_order_acquire));
-	}
-
-	int get_active_epoch()
-	{
-		return g_active_epoch.load(std::memory_order_acquire);
-	}
-
-	void set_authenticated(bool status, const std::string& token, int epoch, long long expires_at_ms)
-	{
-		const long long now = unix_time_ms();
-		const long long remaining = expires_at_ms > now ? expires_at_ms - now : 0;
-		status = status && !token.empty() && epoch > 0 && remaining > 0 &&
-			remaining <= policy::maximum_session_ms + policy::clock_skew_ms;
-		{
-			std::lock_guard<std::mutex> lock(g_token_mutex);
-			secure_clear(g_session_token);
-			if (status)
-				g_session_token = token;
-		}
-
-		if (status)
-			g_active_epoch.store(epoch, std::memory_order_release);
-		g_session_deadline.store(status ? GetTickCount64() + remaining : 0, std::memory_order_release);
-		g_authenticated.store(status, std::memory_order_release);
-	}
-
-	void stop_heartbeat_monitor()
-	{
-		bool called_from_heartbeat = false;
-		{
-			std::lock_guard<std::mutex> lock(g_heartbeat_mutex);
-			called_from_heartbeat =
-				std::this_thread::get_id() == g_heartbeat_thread_id;
-		}
-		if (called_from_heartbeat)
-		{
-			g_heartbeat_running.store(false, std::memory_order_release);
-			g_heartbeat_cv.notify_all();
-			return;
-		}
-
-		std::lock_guard owner(g_heartbeat_owner_mutex);
-		g_heartbeat_running.store(false, std::memory_order_release);
-		g_heartbeat_cv.notify_all();
-		// Join the actual thread, including its epilogue, before DLL unload.
-		if (g_heartbeat_thread.joinable()) g_heartbeat_thread.join();
-	}
-
-	void controlled_shutdown()
-	{
-		g_authenticated.store(false, std::memory_order_release);
-		g_session_deadline.store(0, std::memory_order_release);
-		stop_heartbeat_monitor();
-		// An in-flight heartbeat may have completed while stop waited for it.
-		g_authenticated.store(false, std::memory_order_release);
-		g_session_deadline.store(0, std::memory_order_release);
-
-		std::lock_guard<std::mutex> lock(g_token_mutex);
-		secure_clear(g_session_token);
-		std::lock_guard<std::mutex> domain_lock(g_service_domain_mutex);
-		secure_clear(g_service_domain);
-		std::lock_guard<std::mutex> hwid_lock(g_hwid_mutex);
-		secure_clear(g_session_hwid);
-	}
-
-	__declspec(noinline) auth_result authenticate(
-		const std::string& key_code,
-		const std::string& server_domain)
-	{
-		auth_attempt attempt = authenticate_impl(key_code, server_domain, true);
-		if (!attempt.result.success)
-			controlled_shutdown();
-		else
-		{
-			{
-				std::lock_guard<std::mutex> hwid_lock(g_hwid_mutex);
-				g_session_hwid = attempt.result.hwid;
-			}
-			std::lock_guard<std::mutex> lock(g_service_domain_mutex);
-			g_service_domain = server_domain;
-		}
-		return std::move(attempt.result);
-	}
-
-	void configure_config_service(const std::string& server_domain)
-	{
-		const std::string device_id = generate_hwid();
-		if (device_id.empty())
-			return;
-
-		{
-			std::lock_guard<std::mutex> hwid_lock(g_hwid_mutex);
-			g_session_hwid = device_id;
-		}
-		{
-			std::lock_guard<std::mutex> domain_lock(g_service_domain_mutex);
-			g_service_domain = server_domain;
-		}
-	}
-
-	service_result post_authenticated_json(
-		const std::string& path,
-		const std::string& json_fields)
-	{
-        if (path.starts_with("/api/v1/launcher/")) {
-            auto body = make_launcher_request(json_fields);
-            if (body.empty()) return { false, 0, "", "Your session has ended. Sign in again." };
-            std::string domain;
-            { std::lock_guard lock(g_service_domain_mutex); domain = g_service_domain; }
-            return post_json_to_worker(domain, path, std::move(body));
-        }
-		service_result result;
-		std::string session_token;
-		std::string server_domain;
-		std::string device_id;
-		{
-			std::lock_guard<std::mutex> token_lock(g_token_mutex);
-			if (is_authenticated()) session_token = g_session_token;
-		}
-		{
-			std::lock_guard<std::mutex> domain_lock(g_service_domain_mutex);
-			server_domain = g_service_domain;
-		}
-		{
-			std::lock_guard<std::mutex> hwid_lock(g_hwid_mutex);
-			device_id = g_session_hwid;
-		}
-		if (server_domain.empty() || device_id.empty())
-		{
-			secure_clear(session_token);
-			result.message = "Config session is unavailable.";
-			return result;
-		}
-		if (config::required && session_token.empty())
-		{
-			result.message = "Your session has ended. Please sign in again.";
-			return result;
-		}
-
-		std::string body = "{\"device_id\":\"" + json_escape(device_id) + "\"";
-		secure_clear(device_id);
-		if (!session_token.empty())
-			body += ",\"session_token\":\"" + json_escape(session_token) + "\"";
-		secure_clear(session_token);
-		if (!json_fields.empty())
-			body += "," + json_fields;
-		body += "}";
-		return post_json_to_worker(server_domain, path, std::move(body));
-	}
-
-    std::string service_field(const std::string& json, const std::string& key) {
-        return parse_json_value(json, key).value_or("");
-    }
-
-    std::string decode_service_payload(const std::string& envelope, const std::string& audience) {
-        if (envelope.size() > 32768) return {};
-        std::vector<UCHAR> bytes;
-        if (!base64url_decode(service_field(envelope, "payload"), bytes)) return {};
-        const std::string payload(reinterpret_cast<const char*>(bytes.data()), bytes.size());
-        if (!verify_signed_payload(payload, service_field(envelope, "signature")) ||
-            service_field(payload, "aud") != audience) return {};
-        const auto issued = parse_integer<long long>(parse_json_value(payload, "iat"));
-        const auto expiry = parse_integer<long long>(parse_json_value(payload, "exp"));
-        if (!issued || !expiry || !policy::valid_times(*issued, *expiry, unix_time_ms())) return {};
-        return payload;
-    }
-
-    std::string make_launcher_request(const std::string& fields) {
-        std::string token, hwid;
-        { std::lock_guard lock(g_token_mutex); if (is_authenticated()) token = g_session_token; }
-        { std::lock_guard lock(g_hwid_mutex); hwid = g_session_hwid; }
-        if (token.empty() || hwid.empty()) { secure_clear(token); return {}; }
-        const auto nonce = generate_nonce();
-        const auto now = unix_time_ms();
-        const auto proof = device::sign_request("heartbeat", hwid, nonce, now, token);
-        if (!proof.success) { secure_clear(token); return {}; }
-        std::string body = "{\"session_token\":\"" + json_escape(token) + "\",\"hwid\":\"" + hwid +
-            "\",\"nonce\":\"" + nonce + "\",\"timestamp\":" + std::to_string(now) +
-            ",\"request_type\":\"heartbeat\",\"device_key\":\"" + proof.public_key +
-            "\",\"device_signature\":\"" + proof.signature + "\"";
-        secure_clear(token);
-        if (!fields.empty()) body += "," + fields;
-        return body + "}";
-    }
-
-    auth_result redeem_launcher_ticket(const std::string& ticket, const std::string& domain,
-        const std::string& release_sha256) {
-        if (release_sha256.size() != 64 || release_sha256.find_first_not_of("0123456789abcdef") != std::string::npos)
-            return { false, "Could not verify the client file." };
-        auto attempt = authenticate_impl(ticket, domain, true, release_sha256);
-        if (!attempt.result.success) controlled_shutdown();
-        else {
-            { std::lock_guard lock(g_hwid_mutex); g_session_hwid = attempt.result.hwid; }
-            { std::lock_guard lock(g_service_domain_mutex); g_service_domain = domain; }
-        }
-        return std::move(attempt.result);
-    }
-
-	void start_heartbeat_monitor(const std::string& server_url)
-	{
-		std::unique_lock owner(g_heartbeat_owner_mutex);
-		if (g_heartbeat_running.load(std::memory_order_acquire)) return;
-		if (g_heartbeat_thread.joinable()) g_heartbeat_thread.join();
-		g_heartbeat_running.store(true, std::memory_order_release);
-
-		{
-			std::lock_guard<std::mutex> lock(g_heartbeat_mutex);
-			g_heartbeat_thread_id = {};
-		}
-
-		try
-		{
-			g_heartbeat_thread = std::thread([server_url]() {
-				{
-					std::lock_guard<std::mutex> lock(g_heartbeat_mutex);
-					g_heartbeat_thread_id = std::this_thread::get_id();
-				}
-
-				std::array<UCHAR, 4> seed_bytes{};
-				BCryptGenRandom(
-					nullptr,
-					seed_bytes.data(),
-					static_cast<ULONG>(seed_bytes.size()),
-					BCRYPT_USE_SYSTEM_PREFERRED_RNG);
-
-				const std::uint32_t seed =
-					(static_cast<std::uint32_t>(seed_bytes[0]) << 24) |
-					(static_cast<std::uint32_t>(seed_bytes[1]) << 16) |
-					(static_cast<std::uint32_t>(seed_bytes[2]) << 8) |
-					static_cast<std::uint32_t>(seed_bytes[3]);
-
-				std::mt19937 jitter_generator(seed);
-				std::uniform_int_distribution<int> jitter_seconds(55, 75);
-				int consecutive_transient_failures = 0;
-
-				while (g_heartbeat_running.load(std::memory_order_acquire))
-				{
-					const auto regular_delay = std::chrono::seconds(jitter_seconds(jitter_generator));
-					const auto retry_delay = consecutive_transient_failures == 0
-						? regular_delay
-						: (std::min)(
-							kHeartbeatRetryInitial * (1 << (std::min)(consecutive_transient_failures - 1, 3)),
-							kHeartbeatRetryMaximum);
-
-					std::unique_lock<std::mutex> wait_lock(g_heartbeat_mutex);
-					const bool stopping = g_heartbeat_cv.wait_for(
-						wait_lock,
-						retry_delay,
-						[] {
-							return !g_heartbeat_running.load(std::memory_order_acquire);
-						});
-					wait_lock.unlock();
-
-					if (stopping || !is_authenticated())
-						break;
-
-					const int expected_epoch =
-						g_active_epoch.load(std::memory_order_acquire);
-					std::string session_token;
-					{
-						std::lock_guard<std::mutex> token_lock(g_token_mutex);
-						session_token = g_session_token;
-					}
-					auth_attempt heartbeat =
-						authenticate_impl(session_token, server_url, false);
-					secure_clear(session_token);
-
-					if (heartbeat.result.success)
-					{
-						consecutive_transient_failures = 0;
-
-						// Compare with the epoch captured before the request. The old code
-						// updated g_active_epoch inside authenticate() first, making this
-						// comparison meaningless and allowing epoch changes to slip through.
-						if (heartbeat.result.license_epoch != expected_epoch)
-						{
-							controlled_shutdown();
-							break;
-						}
-						if (!g_heartbeat_running.load(std::memory_order_acquire))
-						{
-							secure_clear(heartbeat.result.session_token);
-							break;
-						}
-
-						set_authenticated(
-							true,
-							heartbeat.result.session_token,
-							expected_epoch,
-							heartbeat.result.exp);
-						secure_clear(heartbeat.result.session_token);
-						continue;
-					}
-
-					if (heartbeat.failure == failure_class::hard)
-					{
-						controlled_shutdown();
-						break;
-					}
-
-					// Retry only while the previously verified session is unexpired.
-					++consecutive_transient_failures;
-				}
-
-				{
-					std::lock_guard<std::mutex> lock(g_heartbeat_mutex);
-					g_heartbeat_thread_id = {};
-					g_heartbeat_running.store(false, std::memory_order_release);
-				}
-				g_heartbeat_cv.notify_all();
-			});
-		}
-		catch (const std::system_error&)
-		{
-			{
-				std::lock_guard<std::mutex> lock(g_heartbeat_mutex);
-				g_heartbeat_running.store(false, std::memory_order_release);
-				g_heartbeat_thread_id = {};
-			}
-			g_heartbeat_cv.notify_all();
-			owner.unlock();
-			controlled_shutdown();
-		}
-	}
 }
+
+#include "protocol_v2.inl"

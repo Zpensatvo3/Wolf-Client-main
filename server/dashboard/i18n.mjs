@@ -49,3 +49,25 @@ export const messages = {
         close: 'Close', reveal: 'Reveal key', reset: 'Reset device binding', ban: 'Ban license', unban: 'Unban license', delete: 'Delete license', cancel: 'Cancel', confirm: 'Confirm', confirmTitle: 'Do you want to continue?', revealWarning: 'The full license key will be shown in this tab and the action will be audited.', resetWarning: 'The HWID and device key bindings will be cleared. Existing sessions will be revoked and the license can be activated again. This also removes an existing ban.', banWarning: 'Access will be blocked and existing sessions will be revoked.', unbanWarning: 'Access will be restored. The device binding and expiration remain. Previous sessions will be revoked.', deleteWarning: 'The license will be permanently deleted and its sessions revoked. This cannot be undone. Audit history and public configs remain.', createWarning: 'A new access license will be created with the selected duration, starting immediately.', customKey: 'Custom key (optional)', customHelp: 'Leave blank to generate a secure key. Use 8–128 letters, digits, or hyphens.', duration: 'License duration', oneDay: '1 day', sevenDays: '7 days', thirtyDays: '30 days', create: 'Create', licenseCreated: 'License created', keyHelp: 'Store this key securely. You can reveal it again in license details.', working: 'Working…', success: 'Action completed.', error: 'Action failed.', loadError: 'Could not load data. Try refreshing.', offline: 'Could not verify', online: 'Connection ready', unchecked: 'Not checked yet', checking: 'Checking', database: 'License database', authConfig: 'Auth configuration', rateLimit: 'Rate limiter', releases: 'Release storage', release: 'Current release', noRelease: 'No verified release published yet', configured: 'Configured', missing: 'Not configured', checked: 'Last checked', language: 'Interface language', languageHelp: 'Applies to this tab.', session: 'Administrator session', sessionHelp: 'Your key is never saved to disk. Refreshing the tab or signing out ends the session.', apiFailure: 'The server could not complete the request.', unauthorized: 'The administrator key is invalid or the session ended.', rateLimited: 'Request limit reached. Try again in a minute.', unavailable: 'The service is currently unavailable.', network: 'Connection failed or the request timed out.', notFound: 'Record not found. Refresh the list.', conflict: 'This action cannot be applied to the current record.', invalid: 'Check the request fields.', revealUnavailable: 'This older license was stored as a hash only and cannot be revealed.', CREATE_KEY: 'License created', REVEAL_KEY: 'Key revealed', RESET_HWID: 'Device binding reset', SET_STATUS: 'Status changed', DELETE_KEY: 'License deleted'
     }
 };
+
+// Security policy overrides shared by the initial document and browser rendering.
+Object.assign(messages.tr, {
+    keyHelp:'Bu anahtar yalnızca şimdi gösterilir. Güvenli bir parola yöneticisine kaydedin; yeniden gösterilemez.',
+    createWarning:'128 bit rastgele anahtar oluşturulur ve yalnızca bir kez gösterilir. Süre hemen başlar.',
+    loginText:'İzin verilen Cloudflare hesabınız ve ikinci doğrulamayla devam edin. Ayrı yönetici anahtarı gerekmez.',
+    signIn:'Cloudflare ile devam et', tokenHelp:'Yönetici erişimi yalnızca doğrulanmış Cloudflare oturumuyla açılır.',
+    sessionHelp:'Oturum Cloudflare Access tarafından yönetilir. Çıkış yapmak Access oturumunu kapatır.',
+    unauthorized:'Cloudflare oturumu sona erdi veya bu hesaba izin verilmiyor.',
+    publishRelease:'DLL yayınla', releaseVersion:'Sürüm adı',
+    releaseHelp:'Doğrulanmış Access oturumuyla DLL yükleyin. En fazla 24 MiB. Dosya özeti otomatik doğrulanır.'
+});
+Object.assign(messages.en, {
+    keyHelp:'This key is shown only once. Save it in a secure password manager; it cannot be recovered.',
+    createWarning:'A random 128-bit key is generated and shown only once. The duration starts immediately.',
+    loginText:'Continue with your permitted Cloudflare account and second factor. No separate administrator key is needed.',
+    signIn:'Continue with Cloudflare', tokenHelp:'Administrator access requires a verified Cloudflare session.',
+    sessionHelp:'Cloudflare Access manages your session. Signing out ends the Access session.',
+    unauthorized:'Your Cloudflare session expired or this account is not permitted.',
+    publishRelease:'Publish DLL', releaseVersion:'Version name',
+    releaseHelp:'Upload a DLL using your verified Access session. Maximum 24 MiB. The file hash is checked automatically.'
+});
