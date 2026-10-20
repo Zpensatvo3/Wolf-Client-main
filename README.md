@@ -35,11 +35,15 @@ Visual Studio solution/proje adı `OneStep.slnx` / `OneStep.vcxproj`'dir.
 Proje adı değişikliği DLL/launcher çıktı adlarını veya sürüm yollarını değiştirmez.
 
 ```powershell
+./scripts/Build-Dev.ps1
 ./scripts/Build-Release.ps1 -MinecraftVersion 1.21.11 -SkipSign
 ./scripts/Build-Release.ps1 -AllMinecraftVersions -SkipSign
 ./scripts/Build-Launcher.ps1
 ```
 
+`Build-Dev.ps1` yalnızca 1.21.11 için imzasız Release DLL üretir. Eski DLL'i
+yedekleyip yeniden linkler; ara derleme dosyalarını koruduğu için yalnızca
+değişen kaynaklar derlenir. Release optimizasyonlarını değiştirmez.
 `-Clean` temiz derleme içindir; `-SkipSign` imzasız geliştirme çıktısı üretir.
 Varsayılan DLL `build/Onestep.dll`, ek hedefler
 `build/minecraft/<sürüm>/Onestep.dll` yolundadır.
