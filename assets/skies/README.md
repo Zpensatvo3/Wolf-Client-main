@@ -1,8 +1,12 @@
-# Stylized panoramas
+# Sky artwork and panorama indices
 
 Generated for this project using the built-in image generation tool. These PNGs
 are original outputs copied without retouching or resizing. The older JPEGs are
-separate CC0 Poly Haven assets; see THIRD_PARTY_NOTICES.md.
+separate CC0 Poly Haven assets; see the
+[third-party notices](../../THIRD_PARTY_NOTICES.md#gökyüzü-panoramaları).
+
+Runtime behavior is documented in [module notes](../../docs/MODULES.md#nameprotect-ve-sky);
+version-specific render contracts are in the [SDK audit](../../docs/MINECRAFT_26_PORT.md).
 
 The renderer samples the upper sky, blends the horizontal wrap seam and zenith,
 and uses explicit periodic texture gradients to avoid blurry seam lines. The

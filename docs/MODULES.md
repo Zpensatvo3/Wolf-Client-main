@@ -1,0 +1,165 @@
+# Modül ve config notları
+
+Bu belge README'deki tekrarlanan özellik kayıtlarını tek yerde toplar.
+Tam kayıt listesi ve stable ID'ler için kaynak otoritesi
+`src/modules/module_catalog.cpp` ile `src/modules/settings_manifest.json`'dır.
+Mevcut katalog 61 modül içerir; bu sayı oyun içi kabul testi sayısı değildir.
+Arayüz gruplaması [UI rehberinde](GRIM_UI_LAYOUT.md), Java I/O kapsamı
+[hibrit geçiş belgesinde](HYBRID_MIGRATION.md) açıklanır.
+
+## Ayarlar ve config sözleşmesi
+
+- `core/setting_schema.hpp` bool, tamsayı, sayısal değer, aralık, renk, metin
+  listesi ve seyrek enum seçeneklerini tanımlar; `ui/settings_renderer.hpp`
+  aynı alanları mevcut kontrollerle çizer.
+- Combat/utility/visual ayarları kilitli snapshot depolarını kullanır. Vape/Chams
+  mevcut kilitlerini, Jump Reset revision/iptal sahipliğini, Aim/Trigger/Anchor
+  kendi runtime sınırlarını korur. HUD/ArrayList tercihleri render katmanındadır.
+- Friends Manager, Click GUI, Panic, Full Bright, No Jump Delay ve Fast Stop'un
+  modüle özel config alanı yoktur. Arkadaş listesi ve UI tercihleri ayrı sahiptedir.
+- Yeni public config kökü `modules`; her kayıt `id`, `enabled`, `keybind`,
+  `settings` taşır. Eski sürüm etiketi okunur, yeni çıktıya yazılmaz.
+- Sınırlar: 96 KB, en fazla 128 modül, JSON derinliği 32. Tam belge önce
+  doğrulanır; yanlış tür, yinelenen alan/ID, bozuk JSON, geçersiz enum/tuş
+  reddedilir. Kaldırılmış modüller atlanır, gizli alanlar korunur.
+- Beklenmeyen uygulama hatasında eski ayarlar geri yüklenmeye çalışılır;
+  enabled/keybind en son yayınlanır. Bu, worker'lara karşı modüller arası
+  tek bir atomik transaction değildir.
+- UI/import sınırları her zaman aynı olmak zorunda değildir. Eski Auto Tool
+  alanları, Radar'ın geniş ekran konumları ve özel Block ESP/Spotify/Jump Reset
+  panelleri korunur. Numpad Enter'ın genişletilmiş kodu için
+  [keybind uyumluluğunu](GRIM_UI_LAYOUT.md#keybind-uyumluluğu-ve-kayıt) incele.
+
+## Birleştirilmiş modüller
+
+### Anchor Macro
+
+Legit ve Blatant tek modül içindeki ayrı profillerdir; Safe Anchor ayrıdır.
+Slot geçişi, yerleştirme, glowstone, patlatma, geri dönüş, kamera ve
+rastgeleleştirme tercihleri profil başına saklanır. Gecikmeler toplanır;
+her bileşen 0–500 ms, açık rastgelelik ayarlanan ± sapmayı kullanır.
+Sıfır gecikmede bile kare başına en fazla bir etkileşim vardır.
+
+Tek açılış bir döngüdür; dolum gözlenmeden patlama aşamasına geçilmez.
+Dünya/oyuncu, odak/menü veya manuel slot değişimi pending işi iptal eder;
+slot yalnızca hâlâ modülün sahip olduğu seçimdeyse geri alınır.
+Yerel blok gözlemi sunucu onayı veya rastgelelik sunucu kabulü garantisi değildir.
+
+Eski `anchor_macro` / `blatant_anchor_macro` alanları iki profile taşınır.
+İkisi açıksa Legit; yalnızca Blatant açıksa Blatant ve onun tuşu seçilir.
+Yeni birleşik kayıt varsa önceliklidir.
+
+### Auto Totem
+
+Normal ve Legit tek modüldeki ayrı ayarlardır. Normal otomatik envanter açar;
+Legit yalnızca açık envanterde mevcut imleç davranışıyla çalışır.
+Mod/ayar değişimi pending işi sıfırlar. Eski `auto_totem` /
+`legit_auto_totem` kayıtları taşınır: yalnızca Legit açıksa Legit, ikisi açıksa
+Normal ve seçilen profilin tuşu alınır. Yeni birleşik kayıt önceliklidir.
+
+## Hedefleme ve oyun I/O
+
+- **Anti Bot:** yeni kullanımda açık, kaydedilmiş false korunur. İlk 40 tick
+  bekler; ardından 40 tick kayıtsız kalan oyuncuyu ortak hedef/görsel filtresinden
+  çıkarır. Görünmezlik, isim veya hareketsizlik tek başına kanıt değildir.
+  Tab listesi güvenilmezse elemez; dünya/sunucu değişiminde geçmiş temizlenir.
+- **Crystal Aura:** en yakın uygun hedefe kilitlenir; arkadaşları, izleyicileri
+  ve Anti Bot adaylarını dışlar. Kılıç, havalanma, uygun obsidyen/kristal
+  yerleştirme ve kırma aşamalarını izler; hedef kaybında sıradakine geçer.
+  Oyuncular / Oyuncular + Moblar / Yalnızca Moblar test seçenekleri vardır.
+  Golem gibi dirençli moblar için yerde kılıç sonrası deneme mümkündür;
+  oyuncuların havalanma şartı değişmez. Zırh askıları/eşyalar hedef değildir.
+  Hotbar seçimi, vanilla cooldown, görüş ve yerleştirme boşluğu doğrulanır;
+  kamera görünür döner, otomatik yürüme/erişim artırma yoktur.
+  **Kendine hasar/ölüm koruması yoktur; arkadaşlar da patlamadan zarar görebilir.**
+  Sonuçlar yeniden okunur, sınırsız paket yerine timeout/gecikme uygulanır.
+  Clicker'lar ortak saldırı sahipliğine uyar; Triggerbot önceliklidir.
+  Diğer slot/blok makrolarıyla eşzamanlı kullanım doğrulanmamıştır.
+- **Vape:** yalnızca Aim Assist (Simple/Adaptive), Left Clicker, Right Clicker.
+- **No Jump Delay:** tekrar zıplama cooldown'unu kaldırır; jump basışı üretmez.
+- **Fast Stop:** yerde hareket girdisi kesilince yatay kaymayı bir kez durdurur;
+  düşey hızı korur. Hava, sıvı, tırmanma, uçuş, araç ve hurt koşullarında durur;
+  dış itmelere sürekli hız sıfırlamayla müdahale etmez.
+- **Inv Walk:** izinli envanter/container ekranlarında fiziksel movement
+  bindinglerini izler. Jump açık, sneak varsayılan kapalıdır. Sohbet, kitap,
+  tabela ve odaklı arama alanları hareketi durdurur; yalnızca kendi basışını temizler.
+- **Pot Refill:** boş hotbar slotlarına Healing I/II taşır; slot sırası ve gecikme
+  ayarlanır, eski `delay_ms` korunur. Creative'de çalışmaz. Kaynak/hedef/adet/
+  bileşenler her işlemde okunur; 1,5 saniye sonuç yoksa tekrar tıklamak yerine
+  envanter oturumu yenilenene kadar durur. Manuel işlem ve bağlam değişimi iptal eder.
+
+1.21.11'de bazı I/O yolları Java'ya taşınmıştır; hesaplama, giriş sahipliği ve
+diğer sürümlerin native yolları için [grup sözleşmeleri](HYBRID_MIGRATION.md)
+esas alınır. Kaynak notları sunucu kabulü veya tüm modüllerin oyun testi değildir.
+
+## Görseller ve yerel sınırlar
+
+### ESP, Chams ve hedef bilgisi
+
+ESP/Chams/Storage ESP/Block ESP/Nametag için ayrı mesafe seçimi yoktur.
+Yalnızca oyunun yüklediği/verdiği nesneler görülebilir. Block ESP'nin 10.000
+işaret sınırı korunur; tarama bütçelidir. İkon seçicisi görünür blok item
+modellerini kare başına iki okuma bütçesiyle hazırlar; item'i olmayan blok küple gösterilir.
+Item ESP yüklenmiş düşen eşyaların kutu/isim/adet/mesafesini gösterir.
+Dünya/oyuncu kimliğine bağlı overlay snapshot'ları geçersiz oturumda temizlenir;
+önceki worker sonuçları yeni sunucunun üstüne yazılamaz.
+
+Target HUD gerçek skin, can, mesafe, zırh ve eli 232×94 kartta gösterir.
+Native item projeksiyonu GUI dönüşümlerini, atlası ve renk katmanlarını korur;
+built-in özel Java çizicisi isteyen modelde soru işareti kullanılabilir.
+Dayanıklılık çubuğu/büyü çerçevesi vardır. Varsayılan iki saniyelik hedef tutma
+süresi ayarlanır; ölüm/dünya/oyuncu kaybında temizlenir. HUD editörü taşıma,
+ölçek, hizalama, undo ve yerel kaydı yönetir.
+
+### Kozmetikler ve efektler
+
+China Hat, Wings ve Cape yalnızca yerel üçüncü şahıs kozmetikleridir; diğer
+oyunculara gönderilmez. Gövde/blok maskesi tam uzuv veya kısmi/şeffaf blok
+simülasyonu değildir; desteklenmeyen pozlarda çizim durur.
+Wings'in Dragon/Angel/Butterfly görselleri ve Cape'in Phoenix/Astral stilleri
+gömülüdür. Eski Cape indeksleri 0–7 korunur. Tint Artwork açık değilse özgün
+renkler kullanılır. Kumaş 9×13 parçacık, kanatlar sönümlü eklemlerle çalışır;
+120 Hz adım ve kare başına altı adım bütçesi vardır. Teleport/oturum/disable
+sıfırlar; Reduce Motion/Animation kapalıyken sabit poz kullanılır.
+[Asset kökeni ve üretim istemleri](../assets/cosmetics/README.md).
+
+Hit Particles en fazla 96, Jump Circles en fazla 8 efekt tutar; Block Highlight
+gerçek blok şeklinin en fazla 24 kutusunu çizer. Hasar, yerel saldırıya yakın
+gözlenmelidir; kısa hedef kaybında takip en fazla 500 ms, gözlem sırasına tolerans
+75 ms'dir. Bunlar sunucu vuruş ACK'i değildir ve saldırı göndermez.
+View Model yalnızca vanilla el push/pop aralığındaki eşya transformunu değiştirir;
+Vanilla/Compact/PvP/Low/Cinematic profilleri, elle değişince Custom görünümü vardır.
+Menzil, kamera, envanter ve saldırı mekaniği değişmez; sözleşme eşleşmezse durur.
+`scripts/Build-ViewModelBridge.ps1` kaynak değişince bytecode'u yeniler;
+`scripts/Test-ViewModel.py` yerel JAR/ASM ile dönüşümü test eder.
+
+Trails en fazla 96 parçacık / 48 ayak izi tutar. Slab/merdiven yüzeyleri vanilla
+collider raycast'inden gelir. Görünürlük kare başına 12 ray ve yaklaşık 200 ms
+önbellekle bütçelidir; düşük FPS'de yenileme uzayabilir. Uzun karelerde toplu
+emission yoktur. Oturum/teleport/disable izleri siler.
+
+### NameProtect ve Sky
+
+NameProtect yerel görünen adı değiştirir; hesap/UUID, sunucu adı ve gönderilen
+mesajı değiştirmez. Alias 1–16 harf/rakam/alt çizgi, varsayılan `Protected`.
+Tam isim sınırı ve stil parçaları korunur; önceden satırlara bölünmüş isimler
+ve vanilla font kullanmayan üçüncü taraf çizimler kapsam dışıdır.
+Vanilla font çizimi/ölçümü ile Target HUD/Nametag/ESP/Radar aynı filtreyi kullanır.
+JVMTI dönüşümü kapanışta geri alınır, pasif Java yardımcıları kalabilir.
+
+Sky renk ve gömülü panorama seçenekleri sunar; saat/hava/ışık vanilla kalır.
+Sis, güncel terrain fog rengi/mesafesiyle eşleşir; alt yarı küre gerçek sis
+rengini kullanır, doku satırı uzatılmaz. Sarma/zenith yumuşatma ve periyodik
+türevler seam/mipmap çizgilerini azaltır. Aktif Iris shader paketi, ışığı olmayan
+boyutlar veya su/lav/kar içindeki kamera panorama yolunu durdurur.
+Başka modun sonradan değiştirdiği renk eski kayıtla ezilmez.
+Fabric olayı/GLSL/JNI farkları [sürüm denetiminde](MINECRAFT_26_PORT.md) belgelenir.
+Kapanışta listener pasifleştirilir; Fabric kayıt silme API'si olmayan yolda pasif
+listener kalabilir. Sky/NameProtect bytecode'u kaynak değişince
+`scripts/Build-SkyBridge.ps1` / `scripts/Build-NameProtectBridge.ps1`
+araçlarıyla yenilenir.
+[Panorama kaynak ve indeksleri](../assets/skies/README.md).
+
+Kozmetik/efekt/overlay ayrıntıları için oyun içi görünüm, shader/resource-pack
+uyumluluğu ve FPS ayrıca test edilmelidir. Eski bir DLL veya yalnızca offline
+kontrol için verilmiş başarı kaydı yeni kaynak ağacının tamamını doğrulamaz.

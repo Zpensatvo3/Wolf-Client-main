@@ -93,7 +93,7 @@ namespace gui::friends_page
             const bool enabled = manager && manager->enabled;
             const float target = enabled ? 1.f : 0.f;
             auto& animation = state.middle_click_animation;
-            if (animation < 0 || gui::aegis::get_preferences().reduce_motion) animation = target;
+            if (animation < 0 || gui::ui_state::get_preferences().reduce_motion) animation = target;
             else animation += (target - animation) * (1.f - std::exp(-14.f * ImGui::GetIO().DeltaTime));
             auto* draw = ImGui::GetWindowDrawList();
             label(ImVec2(p.x, p.y + 9), "Middle-click friends", 12.5f, primary, false, width - 50);

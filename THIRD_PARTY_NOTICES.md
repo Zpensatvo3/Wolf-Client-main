@@ -1,4 +1,4 @@
-# Onestep — Üçüncü taraf bildirimleri
+# OneStep — Üçüncü taraf bildirimleri
 
 Bu belge projede kullanılan üçüncü taraf görsel kaynakları ve kütüphaneleri
 listeler. Tam lisans metinleri, ilgili kaynak dosyalarında veya aşağıdaki yerel
@@ -53,7 +53,7 @@ ve aynı dosya içinde açıklanır.
 - Montserrat: https://github.com/googlefonts/montserrat
 - Font Awesome: https://fontawesome.com/license/free
 
-## Kaynak kütüphaneleri
+## Spotify logosu
 
 Spotify HUD logosu, kullanıcının sağladığı
 `spotify-2015-vector-logo-seeklogo.zip` paketindeki `spotify-2015-seeklogo.png`
@@ -63,6 +63,8 @@ asset'i `assets/icons/spotify.svg` ve mekanik mesh derleyicisi arşiv amaçlı k
 Spotify markası ve logosu ilgili hak sahibine aittir;
 kullanıcı dosyası için ayrıca bir açık kaynak lisansı varsayılmamıştır.
 
+## Kaynak kütüphaneleri
+
 - Dear ImGui: https://github.com/ocornut/imgui — MIT.
 - MinHook: https://github.com/TsudaKageyu/minhook — BSD 2-Clause;
   telif ve koşullar `include/minhook/MinHook.h` içinde bulunur.
@@ -71,6 +73,12 @@ kullanıcı dosyası için ayrıca bir açık kaynak lisansı varsayılmamışt�
 
 Bu özet tam lisans metinlerinin yerine geçmez. Dağıtım sırasında kullanılan
 bağımlılıkların lisans ve telif bildirimleri de korunmalıdır.
+
+## Özgün kozmetik kaynakları
+
+Bu proje için üretilen Wings/Cape görsellerinin boyut, paketleme ve özgün üretim
+istemleri [assets/cosmetics/README.md](assets/cosmetics/README.md) içindedir.
+Bu kayıt üçüncü taraf marka/asset lisanslarının yerine geçmez.
 
 ## Hibrit mimari için incelenen yerel referans
 

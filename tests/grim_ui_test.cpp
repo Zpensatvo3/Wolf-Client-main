@@ -19,7 +19,7 @@
 
 namespace {
     std::vector<modules::module*> entries;
-    gui::aegis::preferences preferences;
+    gui::ui_state::preferences preferences;
     int last_key = 0, configs_rendered = 0, friends_rendered = 0;
     class fixture_module : public modules::module {
     public:
@@ -58,8 +58,23 @@ namespace modules {
     std::uintptr_t player_esp::local_skin_texture_id() { return 0; }
     void player_esp::refresh_local_skin_texture() {}
     bool arraylist::draw_overlay(ImDrawList*, float, float, bool, overlay_bounds*) { return false; }
+    // The real HUD editor dynamic_casts registry entries to these types. Supply
+    // complete inert virtual tables/RTTI in this fixture, without linking game
+    // overlays, Spotify services or platform hooks into the headless test.
+    void spotify_hud::run(::cache&) {}
+    void spotify_hud::render_overlay() {}
+    void spotify_hud::render_options() {}
+    void spotify_hud::on_enable(::cache&) {}
+    void spotify_hud::on_disable(::cache&) {}
     spotify_hud::bounds spotify_hud::get_bounds(float, float) const { return {}; }
     void spotify_hud::render_hud_preview(ImDrawList*, float, float) {}
+    struct target_hud::runtime {};
+    target_hud::target_hud() : module("target hud", "Visual", "target_hud") {}
+    target_hud::~target_hud() = default;
+    void target_hud::render_overlay() {}
+    void target_hud::render_options() {}
+    void target_hud::on_enable(::cache&) {}
+    void target_hud::on_disable(::cache&) {}
     target_hud::bounds target_hud::get_bounds(float, float) const { return {}; }
     void target_hud::render_hud_preview(ImDrawList*, float, float) {}
     void target_hud::set_placement(float, float, float) {}
@@ -75,7 +90,7 @@ namespace gui {
     int get_last_pressed_key() { return last_key; }
     void reset_last_pressed_key() { last_key = 0; }
 }
-namespace gui::aegis {
+namespace gui::ui_state {
     preferences& get_preferences() { return ::preferences; }
     void mark_preferences_dirty() {}
     void flush_preferences(bool, bool) {}

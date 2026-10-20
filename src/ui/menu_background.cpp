@@ -46,7 +46,7 @@ namespace
         ImGui::SetCursorScreenPos(ImVec2(p.x, p.y + 24));
         ImGui::SetNextItemWidth(width);
         if (ImGui::SliderFloat("##value", value, low, high, "", ImGuiSliderFlags_AlwaysClamp))
-            gui::aegis::mark_preferences_dirty();
+            gui::ui_state::mark_preferences_dirty();
         ImGui::PopID();
     }
 }
@@ -54,7 +54,7 @@ namespace
 void gui::background::render_settings(ImU32 accent)
 {
     ImGui::PushID("menu_background");
-    auto& value = aegis::get_preferences().menu_background;
+    auto& value = ui_state::get_preferences().menu_background;
     const auto import = status();
     const bool choosing = import == import_state::choosing;
     const float width = ImGui::GetContentRegionAvail().x;
@@ -99,7 +99,7 @@ void gui::background::render_settings(ImU32 accent)
             if (empty_custom) begin_import();
             else if (value.selected != preset) {
                 value.selected = preset;
-                aegis::mark_preferences_dirty();
+                ui_state::mark_preferences_dirty();
             }
         }
         const bool hover = ImGui::IsItemHovered();

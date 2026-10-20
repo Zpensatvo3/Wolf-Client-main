@@ -5,10 +5,10 @@
 
 namespace modules
 {
-class hud : public module
+class watermark : public module
 	{
 	public:
-		hud() : module("watermark", "Visual") { enabled = true; } // enable by default
+		watermark() : module("watermark", "Visual") { enabled = true; } // enable by default
 
 		void run(::cache& cache) override;
 		void render_overlay() override;
@@ -17,7 +17,7 @@ class hud : public module
 		float get_options_height() override { return 86.0f; }
 		void visit_config(config_visitor& v) override
 		{
-            modules::settings::visit(v, gui::watermark_settings, module_settings::hud::schema());
+            modules::settings::visit(v, gui::watermark_settings, module_settings::watermark::schema());
 }
 
 	private:

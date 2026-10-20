@@ -38,7 +38,7 @@ namespace gui::themes_page
                 ImGui::SetCursorScreenPos(p);
                 if (ImGui::InvisibleButton("##palette", size) && gui::active_theme != i) {
                     gui::active_theme = i;
-                    aegis::mark_preferences_dirty();
+                    ui_state::mark_preferences_dirty();
                 }
                 const bool selected = gui::active_theme == i, hovered = ImGui::IsItemHovered();
                 const auto& palette = theme::palettes[i];

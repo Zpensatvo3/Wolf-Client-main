@@ -20,7 +20,7 @@ TESTS = {
                        "include/imgui/imgui_widgets.cpp", "include/imgui/imgui_tables.cpp"],
     "spotify_vector": ["tests/spotify_vector_test.cpp", "include/imgui/imgui.cpp", "include/imgui/imgui_draw.cpp",
                        "include/imgui/imgui_widgets.cpp", "include/imgui/imgui_tables.cpp"],
-    "menu_background_renderer": ["tests/menu_background_renderer_test.cpp", "src/ui/menu_background.cpp",
+    "menu_background_renderer": ["tests/menu_background_renderer_test.cpp", "src/ui/menu_background.cpp", "src/ui/themes_page.cpp",
                                  "include/imgui/imgui.cpp", "include/imgui/imgui_draw.cpp", "include/imgui/imgui_widgets.cpp", "include/imgui/imgui_tables.cpp"],
     "auth_policy": ["tests/auth_policy_test.cpp"],
     "auth_screen_input": ["tests/auth_screen_input_test.cpp", "include/imgui/imgui.cpp", "include/imgui/imgui_draw.cpp",
@@ -95,11 +95,16 @@ def main():
             command += [f"/D{target_define}"] if msvc else [f"-D{target_define}"]
             if name in ("settings_renderer", "notification_renderer", "menu_background", "menu_background_renderer", "spotify_vector", "popup_controls", "auth_screen_input"):
                 command += [f"/I{ROOT / 'include'}"] if msvc else ["-I", str(ROOT / "include")]
-            if name == "auth_screen_input" and os.name != "nt":
+            if name in ("auth_screen_input", "menu_background_renderer") and os.name != "nt":
                 command += ["-I", str(ROOT / "tests/support")]
             if name in ("sdk_mappings", "minecraft_version"):
                 platform = "win32" if os.name == "nt" else "linux"
                 includes = [ROOT / "include/jni", ROOT / "include/jni" / platform]
+                if name == "sdk_mappings":
+                    # The Block ESP header owns ImGui-backed picker/icon state.
+                    # Both the executable and isolated header probes need the
+                    # same public include root as the application build.
+                    includes.append(ROOT / "include")
                 for include in includes:
                     command += [f"/I{include}"] if msvc else ["-I", str(include)]
             if name == "sdk_mappings":

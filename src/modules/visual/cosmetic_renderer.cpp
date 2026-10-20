@@ -688,7 +688,7 @@ void cosmetics::draw_wings(const module_settings::wings& config,cape_motion& mot
     {
         if (!std::isfinite(config.size) || !std::isfinite(config.speed) || !std::isfinite(config.physics)) return;
         const double size=std::clamp(config.size,.5f,1.6f);
-        const bool animate=config.animate && !gui::aegis::get_preferences().reduce_motion;
+        const bool animate=config.animate && !gui::ui_state::get_preferences().reduce_motion;
         auto& rig=*motion.state_;
         if (!rig.observe(s,animate,std::clamp(config.speed,.25f,2.f))) return;
         rig.wings.advance(rig.signal,rig.signal.steps(),config.physics);
@@ -800,7 +800,7 @@ void cosmetics::draw_cape(const module_settings::cape& config,cape_motion& motio
         if (!std::isfinite(config.length) || !std::isfinite(config.width) ||
             !std::isfinite(config.motion) || !std::isfinite(config.physics)) return;
         const double length=std::clamp(config.length,.65f,1.30f),width=std::clamp(config.width,.45f,.95f);
-        const bool animate=config.animate && config.physics>0 && !gui::aegis::get_preferences().reduce_motion;
+        const bool animate=config.animate && config.physics>0 && !gui::ui_state::get_preferences().reduce_motion;
         auto& rig=*motion.state_;
         if (!rig.observe(s,animate)) return;
         if (!rig.cloth.initialized || std::abs(rig.cloth.width-width)>1e-5 || std::abs(rig.cloth.length-length)>1e-5)
@@ -928,7 +928,7 @@ void cosmetics::draw_trails(const module_settings::trails& config,trail_state& s
             if (platform::jni_context::clear_exception()) { storage.clear(); return; }
             const bool lava=s.context.player.isInLava.call()==JNI_TRUE;
             if (platform::jni_context::clear_exception()) { storage.clear(); return; }
-            const bool reduced=gui::aegis::get_preferences().reduce_motion;
+            const bool reduced=gui::ui_state::get_preferences().reduce_motion;
             const bool particles=config.mode!=1 && !water && !lava;
             const bool feet=config.mode!=0 && grounded && !water && !lava;
             const auto emission=[&](double& carry,double spacing,const auto& emit)
@@ -1122,7 +1122,7 @@ void cosmetics::draw_hit_particles(const module_settings::hit_particles& config,
             if (platform::jni_context::clear_exception() || !finite(center) || !std::isfinite(height) || height<=0) { storage.clear(); return; }
             const bool hit=state.hits.sample(ticks,id,hurt,health,now);
             if (hit && dot(center-s.camera,center-s.camera)<144. && effect_visible(s,center)) {
-                const int count=gui::aegis::get_preferences().reduce_motion ? 4 : std::clamp(config.count,4,24);
+                const int count=gui::ui_state::get_preferences().reduce_motion ? 4 : std::clamp(config.count,4,24);
                 for (int i=0;i<count;++i) {
                     while (state.particles.size()>=visual_effects_logic::max_particles) state.particles.pop_front();
                     trail_particle p;
@@ -1198,7 +1198,7 @@ void cosmetics::draw_jump_circles(const module_settings::jump_circles& config, v
             }
             if (!ring.visible || dot(ring.position-s.camera,ring.position-s.camera)>1024.) continue;
             const double t=std::clamp((now-ring.born)/lifetime,0.,1.);
-            const double expand=gui::aegis::get_preferences().reduce_motion ? .75 : .15+.85*(1-std::pow(1-t,3));
+            const double expand=gui::ui_state::get_preferences().reduce_motion ? .75 : .15+.85*(1-std::pow(1-t,3));
             const double radius=std::clamp(config.radius,.3f,1.5f)*expand;
             auto color=ring.color; color.w*=config.opacity*static_cast<float>((1-t)*(1-t));
             effect_ring(m,ring.position,{1,0,0},{0,0,1},radius,color,48);

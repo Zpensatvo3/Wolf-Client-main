@@ -394,7 +394,7 @@ void modules::target_hud::draw_card(ImDrawList* draw, float x, float y, bool pre
     text(std::max(170.f, 222.f - distance_width), 30.f, 10.f, 52.f, muted, value);
     const float ratio = target.valid ? target.health / target.maximum_health : 0.f;
     const float dt = std::clamp(ImGui::GetIO().DeltaTime, 0.f, .05f);
-    runtime_->health_ratio = gui::aegis::get_preferences().reduce_motion ? ratio
+    runtime_->health_ratio = gui::ui_state::get_preferences().reduce_motion ? ratio
         : runtime_->health_ratio + (ratio - runtime_->health_ratio) * (1.f - std::exp(-14.f * dt));
     draw->AddRectFilled(point(65.f, 47.f), point(222.f, 51.f), IM_COL32(255, 255, 255, 18), 2.f * scale);
     const ImVec4 health_color = ratio < .25f ? ImVec4(.98f, .31f, .37f, 1.f) : accent;

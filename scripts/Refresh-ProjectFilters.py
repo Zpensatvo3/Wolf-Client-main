@@ -4,8 +4,8 @@ import xml.etree.ElementTree as ET
 
 
 ROOT = Path(__file__).resolve().parent.parent
-PROJECT_PATH = ROOT / "custom-base.vcxproj"
-FILTERS_PATH = ROOT / "custom-base.vcxproj.filters"
+PROJECT_PATH = ROOT / "OneStep.vcxproj"
+FILTERS_PATH = ROOT / "OneStep.vcxproj.filters"
 NAMESPACE = "http://schemas.microsoft.com/developer/msbuild/2003"
 ET.register_namespace("", NAMESPACE)
 

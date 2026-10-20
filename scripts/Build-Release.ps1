@@ -27,7 +27,7 @@ if ($ProtectWithVMProtect -and (-not $VMProtectProject -or -not (Test-Path -Lite
     throw 'VMProtect icin GUI ile hazirlanmis .vmp projesini VMProtectProject ile belirtin.'
 }
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$project = Join-Path $projectRoot 'custom-base.vcxproj'
+$project = Join-Path $projectRoot 'OneStep.vcxproj'
 $msbuildCandidates = @(
     'C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\MSBuild\Current\Bin\MSBuild.exe',
     'C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe',

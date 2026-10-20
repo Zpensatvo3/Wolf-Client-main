@@ -37,6 +37,7 @@ jobs:
       - name: Validate infrastructure and source boundaries
         run: |
           python scripts/Test-Infrastructure.py
+          python -m unittest discover -s tests -p 'test_repository_hygiene.py' -v
           python scripts/Test-AimAssistSources.py
           python scripts/Test-TriggerbotSources.py
           python scripts/Test-JumpResetSources.py

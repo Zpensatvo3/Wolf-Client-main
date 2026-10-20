@@ -1,19 +1,25 @@
 #include "../src/ui/menu_background.hpp"
 #include "../src/gui/ui_state.hpp"
+#include "../src/gui/gui.hpp"
+#include "../src/ui/themes_page.hpp"
 #include <cassert>
 #include <cfloat>
 #include <cstdint>
 
 namespace
 {
-    gui::aegis::preferences preferences;
+    gui::ui_state::preferences preferences;
     int dirty_count = 0;
     auto image_id(int index) { return reinterpret_cast<ImTextureID>(std::uintptr_t(10 + index)); }
 }
-namespace gui::aegis
+namespace gui::ui_state
 {
     preferences& get_preferences() { return ::preferences; }
     void mark_preferences_dirty() { ++dirty_count; }
+}
+namespace gui
+{
+    ImColor get_dynamic_color(int) { return ImColor(155, 69, 255); }
 }
 namespace gui::background
 {
@@ -89,5 +95,21 @@ int main()
     assert(dirty_count == 1);
     settings_frame();
     assert(ImGui::GetDrawData()->TotalVtxCount > 0);
+    // Exercise the shipping Themes page too, including its short ui_state::
+    // namespace lookups. Pure background fixtures cannot catch those link errors.
+    io.AddMousePosEvent(-100, -100);
+    const float rounding = ImGui::GetStyle().FrameRounding;
+    const auto selected = preferences.menu_background.selected;
+    for (int pass = 0; pass < 2; ++pass) {
+        ImGui::NewFrame();
+        ImGui::SetNextWindowSize({740, 600});
+        ImGui::Begin("Themes", nullptr, ImGuiWindowFlags_NoSavedSettings);
+        gui::themes_page::render();
+        ImGui::End();
+        ImGui::Render();
+    }
+    assert(ImGui::GetDrawData()->TotalVtxCount > 0);
+    assert(ImGui::GetStyle().FrameRounding == rounding);
+    assert(preferences.menu_background.selected == selected && dirty_count == 1);
     ImGui::DestroyContext();
 }

@@ -254,7 +254,7 @@ namespace gui::config_page
 
             const bool named = !model::trim(state.name).empty();
             const float target = named ? 1.f : 0.f;
-            state.expansion = gui::aegis::get_preferences().reduce_motion ? target
+            state.expansion = gui::ui_state::get_preferences().reduce_motion ? target
                 : state.expansion + (target - state.expansion) * (1.f - std::exp(-14.f * ImGui::GetIO().DeltaTime));
             if (std::abs(state.expansion - target) < .002f) state.expansion = target;
             const float eased = state.expansion * state.expansion * (3.f - 2.f * state.expansion);

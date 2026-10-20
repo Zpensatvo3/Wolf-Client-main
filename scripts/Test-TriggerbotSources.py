@@ -47,7 +47,7 @@ catalog = (ROOT / "src/modules/module_catalog.cpp").read_text(encoding="utf-8")
 assert re.findall(r'\{\s*"triggerbot"\s*,', catalog) == ['{ "triggerbot",']
 assert not re.search(r'\{\s*"(velocity|scaffold)"\s*,', catalog)
 namespace = {"m": "http://schemas.microsoft.com/developer/msbuild/2003"}
-project = ET.parse(ROOT / "custom-base.vcxproj")
+project = ET.parse(ROOT / "OneStep.vcxproj")
 compiled = [node.attrib["Include"].replace("\\", "/") for node in project.findall(".//m:ClCompile[@Include]", namespace)]
 assert "src/services/game/attack_coordinator.cpp" in compiled
 assert "src/modules/combat/*.cpp" in compiled

@@ -15,10 +15,10 @@ def main():
     domain = props.find(".//m:AuthServerDomain", NS).text
     public = props.find(".//m:AuthPublicKeySpkiBase64", NS).text
     assert domain == "onestep-auth.gogogamesas.workers.dev"
-    project = ET.parse(ROOT / "custom-base.vcxproj")
+    project = ET.parse(ROOT / "OneStep.vcxproj")
     defaults = project.findall(".//m:AuthRequired", NS)
     assert defaults and defaults[0].text == "true", "Production auth must fail closed if deployment props are missing"
-    for name in ["custom-base.vcxproj", "launcher/launcher.vcxproj", "src/auth/auth.cpp", "src/auth/config.hpp"]:
+    for name in ["OneStep.vcxproj", "launcher/launcher.vcxproj", "src/auth/auth.cpp", "src/auth/config.hpp"]:
         text = (ROOT / name).read_text(encoding="utf-8")
         assert "WOLF_AUTH_" not in text, name
         assert "ONESTEP_AUTH_" in text, name

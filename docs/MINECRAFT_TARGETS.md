@@ -1,9 +1,15 @@
-# Minecraft targets
+# Minecraft targets and builds
 
 OneStep uses **one source tree and a separate Windows x64 DLL per exact Fabric version**.
 The current targets are 1.21.1, 1.21.4, 1.21.8, 1.21.11, 26.1, 26.1.1 and 26.1.2. These are development
 targets until their Windows build and in-game checklist have passed; a successful
 offline signature check does not establish gameplay compatibility.
+
+This is the canonical target/build guide. The
+[26.x audit](MINECRAFT_26_PORT.md) retains version-specific evidence and fixture
+pins; [hybrid migration](HYBRID_MIGRATION.md) describes the 1.21.11 Java I/O
+exceptions. The catalog currently has 61 modules; historical audit counts are
+dated results, not the current test inventory.
 
 ## Architecture
 
@@ -20,8 +26,9 @@ offline signature check does not establish gameplay compatibility.
   owning class**, with two hot owners per thread. Identical record/enum methods,
   fields and constructors on unrelated classes cannot share an incompatible ID.
   JNI resolution runs outside the cache lock to allow Java class initialization.
-- `src/bridge/`: version-scoped NameProtect and Sky integration. Other gameplay
-  modules, including Click Aim Assist, remain native C++.
+- `src/bridge/`: version-scoped NameProtect/Sky/View Model integration and the
+  documented 1.21.11 hybrid I/O groups. C++ still owns module decisions/UI;
+  this is not a conversion of all modules to Java.
 
 The runtime reads the Minecraft mod version from Fabric Loader metadata before
 registering modules, initializing auth, or installing rendering hooks. An unknown
@@ -64,9 +71,11 @@ referenced client classes (including parents/interfaces) were byte-identical to
 
 Each file keeps the `Onestep.dll` filename, preserving the launcher's loaded-module
 identity. The default 1.21.1 path, release artifact name and signed release protocol
-are unchanged. The launcher is **not** yet a multi-version release selector; choose
-the matching artifact explicitly. No production manifest, release, credential, API
-or Cloudflare resource is changed by these build targets.
+are unchanged. The launcher is **not** a multi-version release selector. The
+recorded v2 release targets 1.21.11; a development artifact is not automatically
+an approved production release. See the [launcher guide](../launcher/README.md).
+No production manifest, release, credential, API or Cloudflare resource is
+changed by adding these build targets.
 
 The checked-in Java class resources must be rebuilt when bridge sources change:
 
@@ -79,6 +88,13 @@ The checked-in Java class resources must be rebuilt when bridge sources change:
 These use Java 17 bytecode and the ASM already supplied by Fabric. Minecraft's
 existing Java/JOML/Fabric libraries remain runtime requirements; no extra client mod
 or frontend framework is introduced.
+
+Rebuild the six hybrid classes with `scripts/Build-GameBridge.ps1` when their
+Java sources change. Those bridges use JDK reflection rather than ASM.
+Optional code signing still looks up the historical
+`CN=Thedorius Lite Test` certificate in the user's certificate store; that name
+has not been cosmetically renamed. Protector/device-key limitations are
+documented in [AUTH_HARDENING](../server/AUTH_HARDENING.md#vmprotect-isteğe-bağlı-doğrulanmış-koruma-iddiası-yok).
 
 ## Actual differences handled
 
@@ -144,7 +160,7 @@ The ordinary offline test runner still does not start a JVM.
 
 ## Required game checks before claiming full support
 
-For **each** target, complete an MSVC Release x64 build and test all 57 modules on
+For **each** target, complete an MSVC Release x64 build and test all registered modules on
 that exact Fabric version. Check targeting/cooldown/criticals, physical clicks and
 manual input, weapon swaps, inventory/equipment operations, world transitions,
 reload/shutdown, NameProtect, Chams animations, all Target HUD equipment icons,

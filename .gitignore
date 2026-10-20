@@ -6,6 +6,7 @@
 /Release/
 /Debug/
 /custom-base/
+/OneStep/
 /.vs/
 *.user
 *.suo

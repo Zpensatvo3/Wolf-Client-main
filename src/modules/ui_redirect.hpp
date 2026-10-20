@@ -5,15 +5,15 @@
 // header no longer pulls the complete GUI and every other module into a TU.
 #include "../gui/widgets.hpp"
 
-#ifndef THEDORIUS_UI_NO_REDIRECT
-#define Checkbox ThedoriusCheckbox
-#define SliderFloat ThedoriusSliderFloat
-#define SliderInt ThedoriusSliderInt
-#define SliderFloat2 ThedoriusSliderFloat2
-#define SliderInt2 ThedoriusSliderInt2
-#define Combo ThedoriusCombo
-#define ColorEdit4 ThedoriusColorEdit4
-#define SeparatorText ThedoriusSeparatorText
-#define TextDisabled ThedoriusStaticDescription
-#define TextWrapped ThedoriusStaticDescription
+#ifndef ONESTEP_UI_NO_REDIRECT
+#define Checkbox OneStepCheckbox
+#define SliderFloat OneStepSliderFloat
+#define SliderInt OneStepSliderInt
+#define SliderFloat2 OneStepSliderFloat2
+#define SliderInt2 OneStepSliderInt2
+#define Combo OneStepCombo
+#define ColorEdit4 OneStepColorEdit4
+#define SeparatorText OneStepSeparatorText
+#define TextDisabled OneStepStaticDescription
+#define TextWrapped OneStepStaticDescription
 #endif

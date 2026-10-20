@@ -1,160 +1,118 @@
 # OneStep authentication service
 
-Aktif üretim API'si: `https://onestep-auth.gogogamesas.workers.dev`.
-Yönetim paneli `/admin`, sağlık kontrolü `/health` yolundadır.
-20 Ekim 2026 itibarıyla launcher-only v2 üretimdedir; doğrudan DLL aktivasyonu ve
-v1 launcher yolları kapalıdır (410). Güncel Worker sürümü
-`b2daf1f6-1253-44ef-9cc7-d3a814fc7d37`, onaylı DLL sürümü
-`launcher-v2.1-20261020-1.21.11`.
-DB/KV/RateLimiter bağlantıları korunmuştur; v2 şeması eklemeli migration ile
-uygulanmıştır. Bu geçişte mevcut 5 lisans korunmuştur.
-Güncel protokol ve kalan işler: [LAUNCHER_V2.md](../docs/LAUNCHER_V2.md).
-Sürüm ve dosya özetleri `deployment.json` içindedir.
+Üretim hedefi `https://onestep-auth.gogogamesas.workers.dev`'dir.
+`/admin` yönetim paneli, `/health` sağlık yoludur.
+[deployment.json](deployment.json), 20 Ekim 2026 launcher-only v2 yayınını
+kaydeder; bu belge canlı kontrol yerine geçmez.
+Doğrudan DLL aktivasyonu / eski v1 launcher yolları kapalıdır (HTTP 410).
+Lisans, device-key/epoch ve config verisi korunmalıdır.
+
+## Okuma sırası
+
+- [SECURITY_SETUP](SECURITY_SETUP.md): aktif bağlar, public build ayarları ve güvenli yayın sırası.
+- [LAUNCHER_V2](../docs/LAUNCHER_V2.md): audience, proof, ticket, lease ve native hata politikası.
+- [AUTH_HARDENING](AUTH_HARDENING.md): koruma sınırları, cihaz/VMProtect, tarihçe ve açık olay işleri.
+- [Wolf arşivi](archive/wolf/README.md): çalıştırılmayan kurtarma referansları; aktif kurulum değil.
 
 ## Kaynak düzeni
 
-```text
-worker.js                 HTTP yönlendirme, sağlık kontrolü, servislerin birleştirilmesi
-core/http.mjs             Sınırlı JSON okuma ve güvenli JSON cevapları
-core/crypto.mjs           Hash, kodlama, AES-GCM lisans saklama
-core/rate-limit.mjs       RATE_LIMITER Durable Object ve çağrı adaptörü
-auth/sessions.mjs         P-256 oturum imzası ve aktif lisans/epoch denetimleri
-api/auth.mjs              Aktivasyon ve heartbeat
-api/admin.mjs             Admin yetkisi ve lisans işlemleri
-api/admin-read.mjs        İstatistikler, filtreli liste, audit geçmişi, sistem durumu
-api/configs.mjs           Lisansa ait public config işlemleri
-database/schema.mjs       OneStep şemasının salt okunur doğrulaması
-dashboard/index.mjs       HTML, aynı origin asset yolları ve güvenlik başlıkları
-dashboard/styles.mjs      Tasarım değişkenleri, responsive yerleşim ve hareket tercihleri
-dashboard/scripts.mjs     Tarayıcı etkileşimleri; framework ve harici CDN gerektirmez
-dashboard/i18n.mjs        Türkçe ve İngilizce metinler
-device-proof.mjs          Mevcut cihaz imzası protokolü
-session-policy.mjs        Mevcut oturum ve lisans süre politikası
-launcher.mjs              İmzalı sürüm, indirme ve tek kullanımlık launcher bileti
-schema.sql                Yeni, boş OneStep veritabanı için şema
-archive/wolf/             Çalıştırılmayan tarihsel kurtarma referansları
-```
+| Kaynak | Sorumluluk |
+| --- | --- |
+| `worker.js` | Routing, health ve servis bileşimi |
+| `core/http.mjs`, `core/crypto.mjs` | Sınırlı JSON, hash/kodlama ve P-256 araçları |
+| `core/rate-limit.mjs` | SQLite Durable Object limiter |
+| `auth/admin-access.mjs` | Access JWT/kimlik doğrulaması |
+| `auth/protocol-v2.mjs`, `auth/runtime-v2.mjs` | V2 proof ve runtime sözleşmeleri |
+| `auth/sessions.mjs`, `auth/nonces.mjs` | Oturum/lisans/epoch ve tekrar koruması |
+| `api/launcher-v2.mjs`, `launcher.mjs` | Launcher/runtime yolları ve release araçları |
+| `api/admin.mjs`, `api/admin-read.mjs` | Yetkili mutasyonlar, liste/istatistik/audit/status |
+| `api/configs.mjs` | Lisanslı public config işlemleri |
+| `api/auth.mjs` | Tarihsel v1 auth handler; aktif v2-only routing açmaz |
+| `database/schema.mjs` | Salt okunur canonical şema doğrulaması |
+| `dashboard/{index,styles,scripts,i18n}.mjs` | HTML/CSS/JS ve TR/EN metinleri |
+| `device-proof.mjs`, `session-policy.mjs` | Paylaşılan proof/süre araçları |
+| `schema.sql`, `migrations/` | Yeni DB şeması ve operatör incelemeli eklemeli geçişler |
+
+Framework/CDN gerektirmeyen dashboard asset'leri Worker paketinin parçasıdır.
+`wrangler.jsonc` içindeki **`keep_names: false` korunmalıdır**:
+`dashboardApp.toString()` ile taşınan tarayıcı kodu paketleyicinin dış isim
+yardımcısına bağlanırsa başlangıç bozulabilir. Bundle/browser testleri bunun içindir.
 
 ## Yönetim paneli
 
-Sol menüde genel bakış, lisanslar, işlem geçmişi, sistem durumu ve tercihler vardır.
-Genel bakıştaki toplam/aktif/kullanılmamış/yasaklı/süresi dolmuş sayıları D1'dan gelir.
-Bitiş tarihi geçmiş lisans, bir sonraki heartbeat beklenmeden süresi dolmuş gösterilir.
-Zaman serisi verisi olmadığı için tahmini grafik üretilmez. Audit listesi yalnızca
-sunucuda mevcut kayıtları gösterir; geçmişte tutulmayan olaylar sonradan uydurulmaz.
+Overview sayıları D1 kayıtlarından gelir: total/active/unused/banned/expired.
+Bitişi geçmiş lisans heartbeat beklenmeden expired gösterilir.
+Uydurma zaman serisi veya sonradan üretilmiş audit geçmişi yoktur.
 
-Lisans listesi ID/parmak izi/cihaz ipucu araması, durum filtresi, sıralama ve 20 kayıtlık
-sayfalar sunar. Ayrıntı çekmecesinde tarih, aktivasyon, HWID/cihaz anahtarı bağı ve epoch
-görülür. Oluşturma, anahtarı gösterme, cihaz sıfırlama, yasaklama/yasağı kaldırma ve silme
-sunucu onayından sonra tamamlanır. Erişimi değiştiren işlemler sonuçları açıklanan bir
-onay ister. Oluşturma formunun son düğmesi, seçilen süre ve açıklama ile açık onaydır.
+License listesi arama, durum filtresi, sıralama ve sayfalama sunar.
+Drawer; tarih, aktivasyon, HWID/device-key bağı ve epoch'u gösterir.
+Create/reset/ban/unban/delete işlemleri açık onay ve server sonucu bekler;
+erişim değiştiren eylemler optimistic uygulanmaz. Ham/şifreli lisans normal
+listede bulunmaz. Anahtar sadece create cevabında bir kez görünür;
+reveal kaldırılmıştır ve hash'ten geri çıkarılamaz.
 
-Ham veya şifreli lisans materyali normal listede bulunmaz. Tam anahtar yalnızca
-oluşturma cevabında bir kez gösterilir. `reveal-key` kaldırılmıştır (410).
-Hash olarak saklanan lisansların anahtarı geri çıkarılamaz.
+Access-only/MFA yönetiminde bearer veya gömülü credential kullanılmaz.
+Aynı-origin JS/CSS, CSP, `no-store`, `no-referrer`, native dialog odak/ESC,
+Reduce Motion ve mobil sidebar vardır. Kullanıcı metni DOM'a `textContent`
+ile yazılır; kapalı mobil menü klavye odağı almaz.
 
-Yönetim erişimi Cloudflare Access ve bağımsız MFA ile korunur; eski admin Bearer
-anahtarı kabul edilmez. CSP, aynı origin JS/CSS bağlantıları,
-`no-store`, `no-referrer`, native dialog odak yönetimi, Escape ve azaltılmış hareket
-desteği vardır. Değişken metinler DOM'a `textContent` ile yazılır. Mobilde sol menü
-açılır/kapanır ve kapalıyken klavyeyle erişilemez.
+## API özeti
 
-## Güvenlik güncellemesi
+| Yol | Kimlik / sözleşme |
+| --- | --- |
+| `POST /api/v2/launcher/{login,manifest,download,ticket}` | Launcher audience |
+| `POST /api/v2/runtime/{redeem,renew}` | Bağlı runtime audience/sequence |
+| `POST /api/v1/configs/{list,publish,load,delete}` | Güncel v2 runtime lease |
+| `POST /api/v1/auth`, `/api/v1/launcher/*` | Kapalı: 410, fallback yok |
+| `GET /api/v1/admin/{overview,activity,status,list-keys}` | Access-only admin |
+| `POST /api/v1/admin/{create-key,reset-hwid,ban-key,delete-key,delete-config}` | Access + aynı origin + girdi/onay denetimleri |
+| `PUT /api/v1/admin/release`, `POST /api/v1/admin/revoke-release` | Access/MFA, aynı origin, korumalı release işlemleri |
+| `reveal-key` | Kaldırıldı: 410 |
 
-20 Ekim sertleştirmesi ve launcher-only v2 canlıya alınmıştır.
-Güncel kurulum, Access ön koşulu ve lisansları koruyan geçiş:
-[AUTH_HARDENING.md](AUTH_HARDENING.md). Eski vault yardımcıları artık otomatik
-anahtar çözmez/kopyalamaz. Yeni lisans yalnızca oluşturulurken bir kez gösterilir.
+`list-keys?page=1&page_size=20&status=all&sort=newest&search=` sayfalı
+`keys,total,page,page_size` döndürür; parametresiz eski `keys` biçimi korunur.
+Sayfa boyutu 1–100; status `all/active/unused/banned/expired`, sort
+`newest/oldest/expiry` izin listesidir. Activity de sayfalıdır.
+SQL değerleri parametrelenir; raw device-key hash yerine binding bayrakları sunulur.
 
-## API uyumluluğu
-
-Aktif endpointler ve alanları korunur:
-
-- `POST /api/v2/launcher/{login,manifest,download,ticket}`: launcher audience.
-- `POST /api/v2/runtime/{redeem,renew}`: bağlı oyun oturumu.
-- `POST /api/v1/auth` ve `/api/v1/launcher/*`: kapalı (410).
-- `POST /api/v1/configs/{list,publish,load,delete}`: güncel v2 runtime izni gerekir.
-- `GET /api/v1/admin/list-keys`: parametresiz eski `keys` cevabı korunur.
-- `POST /api/v1/admin/{create-key,reset-hwid,ban-key,delete-key,delete-config}`.
-- `reveal-key` kaldırıldı (410); `create-key` özel anahtar kabul etmez.
-- `PUT /api/v1/admin/release` ve `POST /api/v1/admin/revoke-release`.
-
-Yeni admin okuma yolları: `GET /api/v1/admin/{overview,activity,status}`.
-Sayfalı liste isteği `list-keys?page=1&page_size=20&status=all&sort=newest&search=` biçimindedir.
-`page_size` 1–100, durum `all/active/unused/banned/expired`, sıralama
-`newest/oldest/expiry` olabilir. Sayfalı cevapta `keys,total,page,page_size` bulunur.
-`activity` de `page/page_size` kullanır. SQL arama değerleri parametrelenir; sıralama
-yalnızca sabit bir izin listesinden seçilir. Liste cihaz anahtarı hash'i yerine
-`device_bound` ve `hwid_bound` bayraklarını da sağlar.
-
-Admin API 401 yetkisiz, 405 yanlış yöntem, 400 geçersiz girdi, 404 olmayan kayıt/yol,
-409 çakışma veya gösterilemeyen anahtar, 429 istek sınırı, 500/503 servis hatası döndürür.
-Eski v1 istemcileri artık desteklenmez. Yasağı kaldırma için
-mevcut `status: active` kullanılır; cihaz bağı henüz yoksa kayıt `unused` olur ve normal
-aktivasyonla bağlanır. Bağlı lisansın cihazı ve bitiş tarihi korunur.
-
-## Bağlantılar ve sırlar
-
-`wrangler.jsonc` içindeki mevcut `DB` (OneStep D1), `RATE_LIMITER` (SQLite Durable
-Object) ve `RELEASES` (KV) bağlantıları korunur. Cihaz tabanlı lisanssız config
-erişimi kapalıdır. `AUTH_V2_ONLY` ve `AUTH_V2_RELEASES` üretimde `true` olmalıdır.
-`RATE_LIMITER` class adı ve migration etiketi değiştirilmez. Sayaç transaction içinde
-artırılır; aynı milisaniyedeki ve eşzamanlı istekler de sayılır.
-
-Gerekli sırlar: `KEY_PEPPER`, `HWID_PEPPER`,
-`SIGNING_PRIVATE_KEY_PKCS8`, `SIGNING_PUBLIC_KEY_SPKI`. Var olan değerleri koruyun.
-Kurulum ayrıntıları [SECURITY_SETUP.md](SECURITY_SETUP.md) içindedir. Bu refaktör için
-anahtar üretme, pepper değiştirme veya lisans sıfırlama gerekmez.
+Admin API 401/405/400/404/409/429/500/503 durumlarını kimlik/yöntem/girdi/
+yokluk/çakışma/limit/servis hatası için kullanır; edge Access önce redirect
+döndürebilir. Unban `status: active` sözleşmesini korur; bağı olmayan kayıt
+`unused` kalır, var olan cihaz/bitiş bağı bozulmaz.
 
 ## Yerel doğrulama
 
-Node 24 ve depodaki kilit dosyasıyla:
+Node 24 ile depo kökünden:
 
 ```sh
-cd server
-npm ci
-npm test
-npm run test:bundle    # Minify açık/kapalı gerçek Worker paketinde dashboard başlangıcı
-npm run test:browser   # Chromium; CHROMIUM değişkeniyle yol belirtilebilir
-npm run test:runtime   # Wrangler dry-run + yerel workerd/D1/SQLite DO
-npm run check          # Yalnızca dry-run; deploy yapmaz
-cd ..
+npm ci --prefix server
+npm test --prefix server
+npm run test:v2 --prefix server
+npm run test:v2:runtime --prefix server
+npm run test:runtime --prefix server
+npm run test:bundle --prefix server
+npm run test:browser --prefix server
+npm run check --prefix server
 python scripts/Test-AuthConfiguration.py
 python scripts/Test-Infrastructure.py
-python scripts/Test-Offline.py --jobs 4
 ```
 
-Testler geçici SQLite/Miniflare kaynakları ve bellekte üretilen test anahtarları kullanır.
-Canlı API veya tarihsel Wolf D1'a bağlanmaz. Browser testi Chromium yoksa bunu açıkça
-skip olarak bildirir. MSVC için Developer PowerShell'de aynı Python kontrolleri ve
-`scripts/Build-Release.ps1 -Clean -SkipSign` kullanılabilir. Bu komut DLL üretir;
-üretim API'sini değiştirmez. Launcher: `scripts/Build-Launcher.ps1`.
+Testler synthetic key, geçici SQLite/JWKS/Miniflare/workerd kullanır; production
+ve Wolf D1'a bağlanmaz. Browser kontrolü Chromium yoksa açıkça skip bildirir;
+`CHROMIUM` yolu ve `ONESTEP_WORKER_BUNDLE` ile gerçek bundle seçilebilir.
+Dry-run deploy değildir; bu komut listesi testlerin bu belge görevi sırasında
+yeniden çalıştırıldığı veya Windows/Minecraft doğrulaması yapıldığı iddiası taşımaz.
 
-Dashboard tarayıcı kodu `dashboardApp.toString()` ile üretildiğinden
-`wrangler.jsonc` içindeki `keep_names: false` korunmalıdır. Aksi halde paketleyicinin
-harici isim yardımcısı tarayıcıda tanımsız kalıp giriş ekranını durdurabilir.
-Browser testinde `ONESTEP_WORKER_BUNDLE` değişkenine oluşturulan Worker dosyasının
-tam yolunu vererek kaynak yerine gerçek yayın paketi de doğrulanabilir.
+## Şema ve yayın güvenliği
 
-## Güvenli şema ve manuel yayın
+Şema doğrulaması `PRAGMA table_info` ile salt okunurdur; request handler
+tablo dönüştürmez/ALTER/CREATE/DROP/veri taşıma yapmaz.
+Eksik kolon veya raw-key Wolf şeması operatör incelemesi ister.
+Yeni boş DB'ye `schema.sql`; mevcut DB'ye yalnızca incelenmiş, yerelde denenmiş
+ve ayrıca onaylanmış migration uygulanır. Kayıtlı `0002`/`0003` geçişlerini
+otomatik tekrarlama; özel backup veya ham anahtarları workspace/Git'e koyma.
 
-Request işleyicisi artık tablo dönüştürmez, kolon eklemez, veri taşımaz veya tablo
-silmez. `database/schema.mjs` gereken tabloları ve kolonları `PRAGMA table_info` ile
-kontrol eder. Ham `key_code` şeması veya eksik kolon varsa istek kapalı hata verir;
-işletmeci incelemesi gerekir. Mevcut lisanslar, configler, audit kayıtları ve launcher
-biletleri korunur. Doğrulama kayıtların içeriğini değiştirmez.
-
-Yeni boş OneStep veritabanında `schema.sql` kullanılabilir. Mevcut veritabanında önce
-yetkili bir operatör şemayı ve yedeği kontrol etmeli, gerekli ise yalnızca incelenmiş
-eklemeli bir migration hazırlamalı ve yerel temsilî kopyada denemelidir. Wolf şemasını
-OneStep'e otomatik dönüştürmeyin. Ham anahtarları veya hassas kayıtları raporlamayın.
-
-Yayın operatörün ayrı kararıdır: güncel OneStep hedefini kontrol edin, testleri ve
-dry-run'ı çalıştırın, sonra bilinçli olarak `npm run deploy` kullanın. Bu script mevcut
-vars değerlerini `--keep-vars` ile korur; secrets yönetimine dokunmaz. Bütün modüller
-Wrangler tarafından tek Worker paketine dahil edilir. Ayrı manuel asset yüklemesi
-gerekmez. Eski Wolf Worker ve veritabanı bu sürecin hedefi değildir.
-
-Native `WOLF-HWID-V3|` fingerprint önekini değiştirmeyin; mevcut cihaz bağı buna
-dayanır. V2 audience değerleri birbirinden ayrıdır; tarihsel `wolf-client-v1`
-oturumlarıyla geri dönüş açılmamalıdır.
+`DB`, `RELEASES`, `RATE_LIMITER`, class/migration kimliği ve secret'lar
+bu temizlikte değişmez. Gerçek yayın `npm run deploy` ile ayrı operatör
+kararıdır; predeploy Access metadata kontrolü ve `--keep-vars` atlanmaz.
+Eski Wolf ortamı hiçbir zaman bu yayının hedefi değildir.

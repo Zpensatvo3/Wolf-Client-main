@@ -1,6 +1,6 @@
-#define THEDORIUS_UI_NO_REDIRECT
+#define ONESTEP_UI_NO_REDIRECT
 #include "modules.hpp"
-#undef THEDORIUS_UI_NO_REDIRECT
+#undef ONESTEP_UI_NO_REDIRECT
 #include "module_catalog.hpp"
 
 namespace
@@ -27,16 +27,16 @@ namespace
         { "notifications", &create_module<modules::notifications> },
         { "nameprotect", &create_module<modules::nameprotect> },
         { "anti_bot", &create_module<modules::anti_bot> },
-        { "legit_click_aim_assist", &create_module<modules::aimassist> },
-        { "blatant_click_aim_assist", &create_module<modules::blatant_clickaimassist> },
-        { "aim_assist", &create_module<modules::clickaimassist> },
+        { "legit_click_aim_assist", &create_module<modules::legit_click_aim_assist> },
+        { "blatant_click_aim_assist", &create_module<modules::blatant_click_aim_assist> },
+        { "aim_assist", &create_module<modules::aim_assist> },
         { "triggerbot", &create_module<modules::triggerbot> },
         { "mace_swap", &create_module<modules::mace_swap> },
         { "anchor_macro", &create_module<modules::anchor_macro> },
         { "safe_anchor", &create_module<modules::safe_anchor> },
         { "hit_crystal", &create_module<modules::hit_crystal> },
         { "crystal_aura", &create_module<modules::crystal_aura> },
-        { "watermark", &create_module<modules::hud> },
+        { "watermark", &create_module<modules::watermark> },
         { "arraylist", &create_module<modules::arraylist> },
         { "glow_esp", &create_module<modules::glow_esp> },
         { "chams", &create_module<modules::chams> },

@@ -5,10 +5,10 @@
 
 namespace modules
 {
-class blatant_clickaimassist : public module
+class blatant_click_aim_assist : public module
 	{
 	public:
-		blatant_clickaimassist() : module("blatant click aim assist") {}
+		blatant_click_aim_assist() : module("blatant click aim assist") {}
 
 		void run(::cache& cache) override;
 		void on_disable(::cache& cache) override;

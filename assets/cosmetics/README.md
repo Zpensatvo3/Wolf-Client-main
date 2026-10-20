@@ -1,7 +1,12 @@
-# Wings and cape artwork update
+# Cosmetic artwork: Wings and Cape
 
 Five original cosmetic textures generated with the built-in image_gen tool on 2026-10-20.
 No CLI/API fallback, downloaded third-party art or assets from the reference Java client were used.
+
+[Module behavior](../../docs/MODULES.md#kozmetikler-ve-efektler) covers local-only
+rendering and limitations; [third-party notices](../../THIRD_PARTY_NOTICES.md)
+remain the separate attribution/licensing record. The exact prompts below are
+asset provenance, not a request to regenerate or modify any image.
 
 ## Runtime assets
 

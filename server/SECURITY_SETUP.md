@@ -1,159 +1,98 @@
-# Onestep — Lisans girişi kurulumu
+# OneStep güvenli kurulum
 
-> **20 Ekim güvenlik güncellemesi:** Aşağıdaki eski vault/kopyalama talimatları
-> artık geçerli değildir. Güncel ve henüz canlıya alınmamış geçiş planı
-> [AUTH_HARDENING.md](AUTH_HARDENING.md) içindedir. Kaynakta auth zorunludur;
-> `AuthRequired=false` DLL üretiminde reddedilir. Eski sırlar yenilenmeden ve
-> Access etkinleşmeden olay kapatılmış sayılmaz.
+Bu belge güncel kaynak yapılandırmasını anlatır. 16 Ekim'deki DLL'den lisans
+girişi, admin bearer ve otomatik DPAPI/kopyalama talimatları artık geçerli değildir.
+Kaynakta launcher-only v2 ve Access-only yönetim esas alınır.
+Kayıtlı yayın durumu [deployment.json](deployment.json), protokol
+[LAUNCHER_V2](../docs/LAUNCHER_V2.md), olay/kurtarma notları
+[AUTH_HARDENING](AUTH_HARDENING.md) içindedir.
+Hiçbir adım bu belge düzenlemesi sırasında canlıda çalıştırılmamıştır.
 
-> Aşağıdaki ilk kurulum ve canlı kontrol notları `77373b6` döneminin tarihsel
-> kaydıdır; bu çalışma sırasında yeniden canlı test yapılmadı. Yeni kaynak yapısı,
-> dashboard, yerel testler ve güncel yayın adımları [README.md](README.md) içindedir.
-> Refaktör yereldir; otomatik deploy veya üretim migration'ı yapılmaz.
+## Dağıtım ve güven sınırı
 
-16 Ekim 2026'da servis `https://onestep-auth.gogogamesas.workers.dev` adresine
-yayımlandı. Yönetim paneli `/admin`, sağlık kontrolü `/health` yolundadır.
-`onestep-licenses` veritabanı ve SQLite RateLimiter bu servise aittir; eski
-`wolf-auth-api`, `wolf-db` ve diğer projeler değiştirilmedi.
+Aktif hedef `onestep-auth.gogogamesas.workers.dev` Worker'ıdır.
+Tarihsel Wolf Worker/D1 ayrı kaynaklardır; onlara deploy, veri silme veya
+otomatik config taşıması yapılmaz.
 
-Native C++ probe ile gerçek HTTPS giriş, ECDSA imzası/nonce, hatalı anahtar
-reddi, lisanslı config listesi ve heartbeat doğrulandı. Oyun içi panel testi
-yapılmadı. `server/AuthDeployment.props`, normal x64 build'lerinde auth'u
-etkinleştirir ve yalnızca public key/hostname içerir. Yayın bilgileri
-`server/deployment.json` dosyasındadır.
-
-## Giriş bilgilerine erişim
-
-Proje kökündeki `Onestep-Auth.cmd` dosyasını aç. PowerShell 7 kullanır;
-PATH'te yoksa bu bilgisayardaki Codex runtime kopyasını otomatik bulur.
-Yerel penceredeki düğmeler yönetici parolasını veya client lisansını sen
-istediğinde panoya kopyalar; parola ekranda/log'da gösterilmez. Paneldeki
-parola alanına yönetici bilgisini, oyun içi girişe client lisansını yapıştır.
-
-İlk lisans süresizdir, kimliği `1`'dir ve native kontrolde bu bilgisayarın
-HWID'sine bağlandı. Başka bilgisayarda kullanılacaksa admin panelinden HWID
-sıfırlanabilir. Yeni lisansları admin panelinden oluşturabilirsin.
-
-`server/.credentials/worker-secrets.enc.json`, sunucu sırları/yönetici girişi/
-ilk lisansın AES-GCM + RSA-OAEP şifreli yedeğidir. RSA private key aynı klasörde
-`wrapping-key.dpapi` olarak Windows CurrentUser korumasıyla saklanır. İkisi de
-git dışında tutulur; birlikte ve güvenli şekilde yedeklenmelidir. Başka Windows
-hesabına doğrudan taşımak şifreyi çözmez. Yeni anahtar üretip mevcut pepper veya
-imza anahtarını rastgele değiştirme; çalışan lisansları geçersizleştirebilir.
-
-Komut satırı alternatifi: `scripts/Copy-AuthCredential.ps1 -Kind Admin` veya
-`-Kind License`. Bu yardımcılar yalnızca kullanıcı çalıştırdığında panoya yazar.
-
-## İstemci akışı
-
-`AuthRequired=true` derlemesinde giriş tamamlanana kadar ClickGUI, HUD,
-modül tick'leri ve public config işleri açılmaz. Renderer yalnızca giriş
-paneli için çalışır. Aynı anda tek doğrulama yapılır; ağ işi render thread'ini
-bekletmez. Panel İngilizce/Türkçe arayüz tercihini kullanır.
-
-İstemciye girilen anahtar diske, config'e veya log'a kaydedilmez. Gönderimden sonra panelin
-tamponları temizlenir; oturum bellekte tutulur. Kapatma, bekleyen giriş işini
-ve heartbeat'i bitirir; geç gelen cevap yeniden erişim açamaz. Ağ işlemleri
-WinHTTP zaman aşımıyla sınırlıdır; kapanış devam eden isteği bekleyebilir.
-
-Heartbeat 55–75 saniyede bir yeniler. Geçici ağ hatalarında 12–90 saniye
-arasında geri çekilerek tekrar dener; son imzalı oturumun süresini uzatmaz.
-Oturum en fazla 45 dakika ve lisansın kalan süresi kadar geçerlidir.
-Yerel süre sınırı monotonic Windows sayacıyla izlenir. Sunucu reddi, cihaz/
-epoch değişimi veya süre bitiminde modül/çizim kapıları kapanır ve istemci
-normal kaynak temizliğiyle unload olur; Minecraft kapatılmaz.
-
-Giriş/heartbeat ayrıca export izni kapalı CNG cihaz anahtarıyla imzalanır.
-Yeni sürümle ilk girişte cihaz public key hash'i lisansa bağlanır. Bu geçişten
-sonra eski DLL kullanımı HWID Reset gerektirir. TPM/VMProtect ayrıntıları ve
-korumalı derleme yolu [PROTECTION.md](PROTECTION.md) dosyasındadır. Canlı cihaz
-kontrolü ayrı geçici lisansla yapıldı; asıl lisansın cihaz anahtarı bağı bu
-kontrol sırasında değiştirilmedi.
-
-## Sunucuyu hazırlama
-
-1. Hedef Cloudflare hesabında Worker, D1 ve `RATE_LIMITER` Durable Object
-   kaynaklarını yapılandır. Güncel dosya `wrangler.jsonc`'dir. Eski
-   `archive/wolf/wrangler.legacy.toml.txt` yalnızca geçmiş Wolf ortamının
-   çalıştırılmayan referansıdır; aktif deploy girdisi değildir.
-2. Yeni veritabanında `schema.sql` uygula. Mevcut veritabanı varsa önce şemayı
-   incele ve gereken migration'ı hazırla; üretim verisini yeniden oluşturma.
-3. Aşağıdaki sırları Worker secrets olarak kaydet.
-4. `worker.js` ve bütün modülleri Wrangler ile tek paket olarak hazırla.
-   `npm run check` yalnızca dry-run yapar; gerçek yayın ayrı operatör kararıdır.
-5. Admin panelinden test lisansı oluştur; aynı ortamın public key'iyle auth
-   etkin istemci üret. Yukarıdaki Onestep ortamında bu adımlar tamamlandı.
-
-İlk yayın bağlı Cloudflare eklentisiyle yapıldı. Yerel Wrangler oturumunun eski
-token'ı süresi dolmuştu; yeniden giriş istemek yerine eklentinin mevcut yetkisi
-kullanıldı. İleride CLI'dan yayın için `npx wrangler login`, ardından `npm run
-check` ve `npm run deploy` kullanılabilir. Yeni yayında mevcut `secret_text`
-binding'leri korunmalı; sırlar config'e eklenmemelidir. Sunucu modülünün başlangıç
-süresi canlı upload cevabında **2 ms** olarak raporlandı.
-
-| Secret | İçerik |
+| Yapılandırma | Sorumluluk |
 | --- | --- |
-| `KEY_PEPPER` | Lisans hash/şifreleme için rastgele en az 32 karakter |
-| `HWID_PEPPER` | Cihaz hash'i için ayrı rastgele en az 32 karakter |
-| `ADMIN_TOKEN_HASH` | Uzun rastgele admin token'ının SHA-256 özeti |
-| `SIGNING_PRIVATE_KEY_PKCS8` | ECDSA P-256 PKCS#8 DER private key, base64url |
-| `SIGNING_PUBLIC_KEY_SPKI` | Aynı çiftin SPKI DER public key'i, base64url |
+| `DB` | OneStep D1; lisans, config, audit, release/runtime kayıtları |
+| `RELEASES` | KV; onaylı DLL baytları |
+| `RATE_LIMITER` / `RateLimiter` | SQLite Durable Object; sınıf/migration kimliği korunur |
+| `ADMIN_ACCESS_TEAM_DOMAIN`, `ADMIN_ACCESS_AUD`, `ADMIN_ACCESS_EMAIL` | Worker'ın doğruladığı public Access kimlik ayarları |
+| `SIGNING_KEY_ID` | Aktif imza anahtarının public kimliği |
+| `AUTH_V2_ONLY=true`, `AUTH_V2_RELEASES=true` | Üretimde v2 akışını zorunlu tutan ayarlar |
 
-İstemciye yalnızca public key eklenir. Private key, pepper ve ham admin token
-istemciye veya repoya konulmaz. Önceden bulunan yerel signing dosyaları bu
-entegrasyonda okunmadı/değiştirilmedi. Anahtar değişiminde Worker ve istemci
-public key'i birlikte güncellenir; pepper değişikliği veri migration'ı gerektirir.
+Bağlantılar ve public vars `wrangler.jsonc` içindedir; secret değerleri değildir.
+Cloudflare Access `/admin*` ve `/api/v1/admin/*` yollarını, asset/release alt
+yollarıyla birlikte aynı audience altında korumalıdır. Worker ayrıca JWT'nin
+imza/issuer/audience/süre/izinli insan kimliğini doğrular. Mutasyonlar aynı
+origin ister; geniş Bypass veya bearer fallback açılmaz. İnsan MFA'sını
+operatör kendi tarayıcısında tamamlar; QR/OTP/oturum bilgisi rapora aktarılmaz.
 
-## Auth etkin derleme
+## Sırlar ve lisanslar
+
+| Secret | Kullanım |
+| --- | --- |
+| `KEY_PEPPER` | Lisansın tek yönlü hash'i |
+| `HWID_PEPPER` | Cihaz özeti |
+| `SIGNING_PRIVATE_KEY_PKCS8` | P-256 private signing key |
+| `SIGNING_PUBLIC_KEY_SPKI` | Aynı çiftin public doğrulama anahtarı |
+
+Var olan değerleri koru. Public key, key ID ve Access issuer/audience istemci
+ve config'te bulunabilir; private key/pepper bulunamaz. Güncel rotasyon politikası
+production sırlarını Cloudflare secret binding'lerinde tutar; yeni yerel vault
+veya private-key dosyası üretmek gerekli kurulum adımı değildir.
+`ADMIN_TOKEN_HASH` ekleme, `ALLOW_DEVICE_CONFIGS` ile lisans denetimini açma.
+
+Lisans anahtarı oluşturma cevabında bir kez gösterilir; tekrar reveal yoktur.
+Launcher lisansı diske kaydetmez, DLL'ye kalıcı key devretmez. Cihaz imzası,
+lisans epoch'u, runtime lease ve release onayı kaldırılamaz.
+Pepper'ları körlemesine değiştirmek mevcut lisans/cihaz/config hash'lerini bozar;
+kontrollü migration ayrı operatör kararıdır.
+
+## Native derleme
+
+`server/AuthDeployment.props` yalnızca hostname ve public doğrulama bilgisini
+MSBuild'e taşır. Normal DLL üretiminde `AuthRequired=false` reddedilir.
+Eksik host/public key veya eski Wolf host'una fallback derleme hatasıdır.
+Yalnızca açıkça işaretlenmiş non-release test probe'ları auth'suz olabilir;
+bu bir dağıtım modu değildir.
 
 ```powershell
-.\scripts\Build-Release.ps1 -RequireAuth -AuthServerDomain 'auth.example.com' -AuthPublicKeySpkiBase64 'BASE64URL_SPKI'
+./scripts/Build-Release.ps1 -MinecraftVersion 1.21.11 -SkipSign
+./scripts/Build-Launcher.ps1
 ```
 
-Adres yalnızca hostname olmalıdır; `https://`, port veya yol eklenmez.
-Tüm istekler HTTPS/443 kullanır ve yönlendirmeler takip edilmez.
-[WinHTTP yönlendirme politikası](https://learn.microsoft.com/en-us/windows/win32/winhttp/option-flags#winhttp_option_redirect_policy)
-`NEVER` olarak ayarlanır; lisans/token başka host'a yönlendirilmez.
-MSBuild karşılığı:
+Özel, operatöre ait geliştirme ortamı için public ayarların açıkça verilmesi:
 
 ```powershell
-msbuild custom-base.vcxproj /m /p:Configuration=Release /p:Platform=x64 /p:AuthRequired=true /p:AuthServerDomain=auth.example.com /p:AuthPublicKeySpkiBase64=BASE64URL_SPKI
+./scripts/Build-Release.ps1 -RequireAuth -AuthServerDomain 'auth.example.com' -AuthPublicKeySpkiBase64 'BASE64URL_SPKI'
 ```
 
-Bu projede değerler `server/AuthDeployment.props` içinden gelir ve
-`ONESTEP_AUTH_REQUIRED`, `ONESTEP_AUTH_SERVER_DOMAIN`,
-`ONESTEP_AUTH_PUBLIC_KEY_SPKI_BASE64` tanımlarına dönüşür. Normal
-`scripts/Build-Release.ps1` de auth açık üretir. İzole geliştirme ihtiyacında
-MSBuild'e `/p:AuthRequired=false` açıkça verilmelidir. Auth etkin ama hostname/
-public key eksikse derleme durur. Eski Wolf hostname'i fallback olarak kullanılmaz;
-açıkça verilse de auth etkin derlemede reddedilir. Auth ve config aynı hostname'i kullanır.
+Karşılıkları `ONESTEP_AUTH_REQUIRED`, `ONESTEP_AUTH_SERVER_DOMAIN` ve
+`ONESTEP_AUTH_PUBLIC_KEY_SPKI_BASE64` makrolarıdır. Host yalnızca hostname'dir:
+şema, port veya yol verilmez. WinHTTP HTTPS/443 kullanır; redirect takip edilmez.
+DLL/launcher, server ile aynı public key/key ID ve protokolü kullanmalıdır.
+`WOLF-HWID-V3|` girdisi cihaz kimliğidir; kozmetik isim temizliği için değiştirilmez.
+Tarihsel `wolf-client-v1` audience güncel v2'de yeniden açılmaz.
 
-Aktif Worker artık request sırasında eski tablo dönüştürmesi veya ALTER/CREATE
-işlemi yapmaz. Canonical OneStep şeması salt okunur doğrulanır; eksik kolon veya
-legacy raw-key şeması operatör incelemesi gerektirir. Mevcut DB üzerinde migration
-gerekiyorsa önce yedek ve yerel temsilî şema ile ayrı incelenmelidir.
+## Şema, test ve yayın sırası
 
-`wolf-client-v1` session audience'ı ve `WOLF-HWID-V3|` fingerprint girdisi aktif
-protokol parçaları olarak korunur. Mevcut lisansları/cihazları sıfırlamak gerekmez.
+1. Hedef hesap/Worker/DB/binding kimliklerini ve public config'i doğrula.
+2. Yeni boş DB için `schema.sql` kullanılabilir. Mevcut D1'da şema ve yetkili
+   kurtarma noktası incelenmeden hiçbir SQL çalıştırma.
+3. Request-time şema kontrolü salt okunurdur. Eksik kolon, raw-key Wolf şeması
+   veya yanlış binding otomatik CREATE/ALTER/DROP/taşımayla düzeltilmez.
+4. Gerekli migration'ı temsilî yerel kopyada test et; `0002` ve `0003`
+   migration'larının kayıtlı üretimde uygulandığını unutma, rutin olarak tekrar çalıştırma.
+5. [Sunucu testlerini](README.md#yerel-doğrulama), native kontrolleri ve dry-run'ı çalıştır.
+6. Canlı deploy/release upload/imza rotasyonu ayrı onaylı operatör işlemidir.
+   Yeni private/public signer ve native pin birlikte planlanır; compromise olmuş
+   eski signer'a veya v1/bearer akışına rollback yapılmaz.
 
-Yeni Onestep servisinde `ALLOW_DEVICE_CONFIGS=false` olduğu için config uçları
-geçerli lisans oturumu ister. Eski Wolf servisindeki lisanssız cihaz-sahipliği
-yolu değiştirilmedi; eski public configler yeni veritabanına taşınmadı.
-
-## Kısa doğrulama
-
-`tests/auth_policy_test.cpp` zaman/alan/anahtar sınırlarını;
-`tests/auth_client_test.cpp` tek istek, hatadan sonra tekrar deneme, iptal,
-geç cevap ve lisanssız geliştirme davranışını sahte backend ile denetler.
-`tests/auth_session_test.cpp`, gerçek oturum durumunu ve ilk ağ isteğinden
-önce heartbeat'in uyandırılıp tamamen bitirilmesini kontrol eder.
-`node --test tests/auth_server_policy_test.mjs`, Worker süre sınırlarını ve
-D1 tarihlerini kontrol eder. `tests/auth_live_probe.cpp` yalnızca açıkça
-çalıştırılan canlı smoke kontrolüdür; stdin'den lisans alır ve hiçbir anahtar/
-token yazdırmaz. `scripts/Test-AuthDeployment.ps1 -Probe <exe>` şifreli vault'u
-kullanarak çalıştırır. Bu kontroller oyun içi panel testi yerine geçmez.
-
-Yayından önce geçerli, hatalı, iptal edilmiş ve süresi dolmuş lisanslar; yanlış
-cihaz, bozuk imza/nonce, ağ kesintisi, yeniden giriş ve unload akışı gerçek
-test ortamında denenmelidir. Şu an kullanıcı kaydı, parola girişi, ödeme veya
-kalıcı “beni hatırla” akışı bulunmaz; giriş mevcut lisans anahtarı modelini kullanır.
+`npm run check` dry-run'dır. `npm run deploy` gerçek yayındır; predeploy Access
+ayarlarını kontrol eder, `--keep-vars` kullanır. Sırları/config'i bu belge görevi
+kapsamında değiştirme. Lisanslar, device key bağları, epoch, config sahipliği ve
+audit/runtime kayıtları korunmalıdır. Sırf dokümantasyon temizliği lisans reseti
+veya incident kapanışı gerekçesi değildir.

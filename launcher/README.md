@@ -1,45 +1,54 @@
-# OneStep Launcher v2
+# OneStep Launcher
 
-Windows x64 native launcher for the current **Fabric 1.21.11** release. No
-administrator requirement, browser runtime, driver or VMProtect dependency.
+Windows x64 native başlatıcı. Güncel kayıtlı dağıtım Fabric **1.21.11** için
+launcher-only v2'dir. Kullanım bu belgededir; signed audience, ticket, lease ve
+IPC sözleşmesi [LAUNCHER_V2](../docs/LAUNCHER_V2.md) içindedir.
 
-## Use
+## Kullanım
 
-1. Open Minecraft Fabric 1.21.11 normally.
-2. Run `build/launcher-v2/launcher/Onestep-Launcher.exe` and enter a client license.
-3. Wait for the signed manifest and verified DLL download, select the intended
-   Minecraft window, and choose Launch Client.
+1. Minecraft Fabric 1.21.11'i normal aç.
+2. Onaylı paketteki `Onestep-Launcher.exe` dosyasını çalıştır, client lisansını gir.
+3. İmzalı manifest/özeti doğrulanmış DLL indirmesini bekle; doğru Minecraft
+   penceresini seçip Launch Client kullan.
 
-DLL-only license login is removed. The launcher uses ordinary explicit Windows
-DLL loading, not a manual mapper or hidden loader. It never closes or restarts
-Minecraft. The launcher may close after successful loading; the DLL owns renewal.
+DLL-only lisans girişi yoktur. Yönetici yetkisi, browser runtime, driver,
+VMProtect veya gizli/manual loader gerekmez. Minecraft kapatılmaz/yeniden
+başlatılmaz. Launcher başarılı yüklemeden sonra kapanabilir; yenilemeyi DLL yapar.
+İlk başarısız lease yenilemesi client erişimini durdurur; yeniden launcher gerekir.
+Yavaş indirme dahil ağ watchdog sınırları protokol belgesindedir.
 
-Runtime permission lasts at most 60 seconds and renews every 18–22 seconds.
-The first failed renewal stops the client modules, not Minecraft. There is no
-offline grace or automatic reopening after a late response. Start again from
-the launcher after a failure. A five-second request watchdog also applies to the
-streaming download: very slow downloads can fail rather than extend that limit.
+Client key diske kaydedilmez. Kalıcı non-exportable Windows CNG device key
+proof üretir; public doğrulama anahtarı sır değildir. Cache yolu
+`%LOCALAPPDATA%/Onestep/releases/<sha256>/Onestep.dll`'dir.
+Cache, geçerli launcher session/release onayı/taze one-use ticket'ın yerine geçmez.
+İstemci hash beyanı donanım attestation değildir.
 
-Client licenses are not saved by the launcher. A persistent non-exportable
-Windows CNG device key proves possession; the server signing key remains only
-in Cloudflare. Public verification keys embedded in binaries are not secrets.
-Downloaded DLLs are cached under
-`%LOCALAPPDATA%/Onestep/releases/<sha256>/Onestep.dll`. A cached file still needs
-a valid launcher session, approved release and fresh one-use runtime ticket.
-Hashes reported by client code are not hardware attestation.
+## Derleme ve paketleme
 
-## Build and package
+Depo kökünde Windows C++ Build Tools ile:
 
-`scripts/Build-Launcher.ps1` now builds a 1.21.11 DLL and launcher.
-The current isolated verified outputs are under `build/launcher-v2/`.
-`scripts/Package-LauncherRelease.ps1` creates a ZIP containing exactly the
-launcher and DLL, refusing an existing output and rejecting extra archive entries.
-Do not ship source, MAP/PDB, local vaults or the optional test probe.
+```powershell
+./scripts/Build-Launcher.ps1
+```
 
-Publication is through the MFA-protected admin DLL upload form. The GitHub
-workflow prepares a selected hash-verified artifact; it does not create a public
-unauthenticated DLL download. Both binaries must be updated together.
+Bu yardımcı 1.21.11 DLL'yi `build/launcher-client/Onestep.dll`,
+EXE'yi `build/launcher/Onestep-Launcher.exe` yoluna üretir.
+Yayın kaydındaki izole v2 çıktıları `build/launcher-v2/` altındadır;
+standart build komutunun otomatik olarak bu kayıtlı hash'leri ürettiğini varsayma.
 
-The protocol, deployment record and remaining incident tasks are documented in
-`docs/LAUNCHER_V2.md` and `server/deployment.json`. Old v1 entrypoints return
-HTTP 410. Do not restore direct DLL login as a rollback workaround.
+`scripts/Package-LauncherRelease.ps1` yalnızca izole v2 EXE+DLL çiftini alır.
+Var olan output'u ezmez ve ZIP'in tam iki whitelist dosyasını içerdiğini doğrular.
+Kaynak, PDB/MAP, test probe'u, vault ve özel yedek dağıtılmaz. Her iki binary
+birlikte güncellenir; bir sürümün EXE'siyle başka sürümün DLL'si karıştırılmaz.
+
+## Yayın ve doğrulama sınırı
+
+Yayın, MFA-korumalı admin DLL upload formunda ayrı operatör işlemidir.
+GitHub'ın verified-release workflow'u başarılı run/artifact ve onaylı hash
+seçerek yalnız binary artifact hazırlar; public unauthenticated indirme veya
+otomatik deploy açmaz.
+
+Mevcut binary hash/boyutları [deployment.json](../server/deployment.json),
+açık olay işleri [güvenlik kaydı](../server/AUTH_HARDENING.md) içindedir.
+Kaydedilmiş v2 yayını canlı lisanslı launcher→oyun round-trip testi değildir.
+V1'e veya doğrudan DLL girişine rollback yapılmaz.

@@ -1,10 +1,17 @@
-# Minecraft 26.x port: 26.1, 26.1.1 and 26.1.2 development targets
+# Minecraft 26.x SDK/JNI audit
 
 Status: **26.1/26.1.1/26.1.2 source integration and static SDK/JNI audits complete;
 exact DLL development targets enabled. Windows MSVC builds and in-game acceptance remain.**
-All 57 module registrations, config IDs and gameplay decisions remain intact.
-Gameplay modules have not been converted to Java. These three exact releases
+The original audit covered 57 registrations; its config IDs/gameplay decisions
+were preserved. The current catalog has 61 modules. These 26.1 targets retain
+native gameplay; the later 1.21.11 hybrid work is a separate scope. These three exact releases
 share a verified layout; do not treat `26.x` or later patches as one compatible ABI.
+
+This document preserves the **17–18 October 2026** fixture/audit evidence.
+Current build/output instructions belong to [MINECRAFT_TARGETS](MINECRAFT_TARGETS.md).
+Historical test counts below are not the current test inventory or a new live run.
+The earlier discovery tool's `supported: false` describes that discovery report,
+not a reversal of the exact development targets enabled later.
 
 ## Patch release verification (26.1.1 and 26.1.2)
 
@@ -175,25 +182,13 @@ python scripts/Test-MinecraftBridges.py --fixture-dir /path/to/client-cache --li
 python scripts/Test-MinecraftBridges.py --fixture-dir /path/to/client-cache --library-dir /path/to/test-libraries --java-home /path/to/jdk25 --target 1.21.11 --target 26.1
 ```
 
-### Exact development build target
+### Exact development targets
 
-The exact SDK target IDs are `26100`, `26101` and `26102`. Following the full source audit, they are
-available through MSBuild, `Build-Release.ps1` and the Windows CI matrix without
-a porting bypass. Unknown IDs still fail compilation; unknown releases, prereleases
-and mismatched DLL/game versions still stop initialization before modules/hooks.
-No 26.x wildcard or 1.21 fallback is enabled.
-
-On Windows, with the existing auth build configuration:
-
-```powershell
-.\scripts\Build-Release.ps1 -MinecraftVersion 26.1 -SkipSign
-.\scripts\Build-Release.ps1 -MinecraftVersion 26.1.1 -SkipSign
-.\scripts\Build-Release.ps1 -MinecraftVersion 26.1.2 -SkipSign
-```
-
-Outputs: `build/minecraft/<version>/Onestep.dll`. Run each against **its exact Minecraft Fabric
-version on Java 25** with Fabric API. Keep the existing launcher artifact-selection
-limitations in mind; no release or launcher manifest was published automatically.
+IDs `26100`, `26101` and `26102` are explicit build targets. Unknown IDs,
+prereleases and DLL/game mismatches are rejected; no wildcard/fallback is enabled.
+Use the canonical [build table](MINECRAFT_TARGETS.md#build) and Java 25 for the
+matching Fabric version. A development artifact is not a production release
+approval; no launcher manifest is automatically published.
 
 ### Tests for this batch
 
@@ -210,8 +205,8 @@ binding is absent or has the wrong static flag. It does not build or run a DLL.
 `tests/minecraft261_sdk_test.cpp` checks exact version rejection,
 Mojang descriptors and finite/bounded affine item transforms. Native adapter,
 item-reader and version-manager translation units plus private Chams/Sky/Vape
-binding headers are syntax-checked. The normal 35-case offline suite remains
-separate and unchanged.
+binding headers are syntax-checked. The ordinary offline suite is separate; the 35-case counts in the dated table
+below describe that audit revision, not the present suite size.
 
 To reproduce the generated spelling table, provide local `client-<version>.txt`
 Mojang ProGuard mappings and `intermediary-<version>.jar` Fabric v2 mappings for
@@ -229,14 +224,14 @@ committed. The first command is a reproducibility check, not an implicit rewrite
 ### Remaining owner validation
 
 1. Build/link each exact 26.1/26.1.1/26.1.2 Release x64 target with Windows MSVC.
-2. Run the 57-module game checklist in `MINECRAFT_TARGETS.md`, including native
+2. Run the [current full module checklist](MINECRAFT_TARGETS.md#required-game-checks-before-claiming-full-support), including native
    attach/reload, world transitions, inventory operations, Fabric render timing,
    panorama projection/depth, Iris interaction and shutdown on Java 25.
 
 All source-side audits and available offline checks are complete. Windows
 compilation and in-game visuals/gameplay have not been verified here.
 
-### Executed validation
+### Executed validation — historical 18 October audit
 
 | Check | Result |
 | --- | --- |
@@ -256,7 +251,7 @@ compilation and in-game visuals/gameplay have not been verified here.
 | MSBuild target ID mapping and `git diff --check` | Passed |
 | Windows MSVC Release x64 / live game | Not executed; remaining owner checks |
 
-## Verified public release fixtures
+## Earlier discovery fixtures — 17 October 2026
 
 Inspected on 2026-10-17 using Mojang's version manifest and official client jars,
 with size and SHA-1 checks against the manifest's download metadata. The fixtures
@@ -281,7 +276,7 @@ old intermediary `net/minecraft/class_310` namespace. Fabric's Yarn API returns 
 26.1 Yarn version, and the intermediary API returns the identity version `0.0.0`.
 Do not reuse 1.21.11 names or generate a fake 26.x Yarn profile.
 
-## Confirmed migration boundaries
+## Earlier discovery findings
 
 - **Namespace:** migrate all active class/member descriptors, including raw JNI
   lookups and Java reflection/ASM targets outside the SDK. Do not change global
@@ -336,19 +331,18 @@ Exit zero means the report was successfully generated, **not that a 26.x target
 is ready**. JSON explicitly includes `supported: false`. No build targets, DLLs,
 launcher manifests or remote resources are generated or changed by this tool.
 
-## Implementation and acceptance order
+## Current acceptance boundary
 
-1. Implement an isolated Mojang-named 26.1 SDK/profile and raw-JNI adaptation;
-   preserve shared C++ module decisions/config IDs and the existing 1.21.x SDK.
-2. Resolve inventory, FOV, item models and version-specific Java bridge bindings.
-   Test actual classfiles plus representative enum/record semantics, not just
-   symbol spellings. Do not skip broken modules to declare the target working.
-3. Enable an exact DLL target only when its native source/bridge checks pass.
-   Keep an explicit runtime version check; do not allow a 26.x wildcard fallback.
-4. Build with Windows MSVC x64, then test all 57 modules and the existing game
-   checklist in `MINECRAFT_TARGETS.md` on 26.1 with Java 25.
-5. 26.1.1/26.1.2 source checks are complete as documented above; repeat this
-   process for 26.2 and the additional 26.3 render differences before enabling them.
+The isolated 26.1 name table, native SDK/raw-JNI adaptation, inventory/FOV/item
+contracts and version-scoped bridges above were implemented and audited.
+Exact build targets were enabled only after those source checks. This is not
+proof of Windows link or live game behavior.
 
-No automatic deployment, Git push, license/auth change, or module Java rewrite
-is part of this native port batch.
+The remaining checklist is the [shared per-target acceptance checklist](MINECRAFT_TARGETS.md#required-game-checks-before-claiming-full-support).
+26.2/26.3 remain discovery-only; audit their full SDK/bridge/render contracts
+before enabling any target, especially the 26.3 renderpearl changes.
+Do not skip modules to declare compatibility.
+
+No deployment, Git push, auth migration or gameplay-to-Java rewrite was part
+of this dated native-port audit. Current security/protocol requirements are
+documented separately in [launcher v2](LAUNCHER_V2.md).

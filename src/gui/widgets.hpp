@@ -15,9 +15,6 @@ namespace gui
     // Shared action control used by Configs and future settings pages.
     bool centered_text_button(const char* label, const ImVec2& size);
     ImVec2 page_header(const char* title, const char* subtitle);
-    bool begin_surface(const char* id, const ImVec2& size, const ImVec2& padding = ImVec2(12.0f, 12.0f),
-        bool transparent = false);
-    void end_surface();
     bool action_button(const char* label, const ImVec2& size, action_tone tone = action_tone::neutral);
     bool icon_action(const char* id, const char* glyph, const char* fallback, const char* tooltip,
         bool danger = false, bool accent = false);
@@ -44,21 +41,21 @@ namespace gui
 
 // Compatibility entry points used by module option renderers. Keeping the
 // signatures aligned with Dear ImGui means module behavior stays untouched
-// while every option receives the same Thedorius presentation.
+// while every option receives the same OneStep presentation.
 namespace ImGui
 {
-    bool ThedoriusCheckbox(const char* label, bool* value);
-    bool ThedoriusSliderFloat(const char* label, float* value, float minimum, float maximum,
+    bool OneStepCheckbox(const char* label, bool* value);
+    bool OneStepSliderFloat(const char* label, float* value, float minimum, float maximum,
         const char* format = "%.3f", ImGuiSliderFlags flags = 0);
-    bool ThedoriusSliderInt(const char* label, int* value, int minimum, int maximum,
+    bool OneStepSliderInt(const char* label, int* value, int minimum, int maximum,
         const char* format = "%d", ImGuiSliderFlags flags = 0);
-    bool ThedoriusSliderFloat2(const char* label, float value[2], float minimum, float maximum,
+    bool OneStepSliderFloat2(const char* label, float value[2], float minimum, float maximum,
         const char* format = "%.3f", ImGuiSliderFlags flags = 0);
-    bool ThedoriusSliderInt2(const char* label, int value[2], int minimum, int maximum,
+    bool OneStepSliderInt2(const char* label, int value[2], int minimum, int maximum,
         const char* format = "%d", ImGuiSliderFlags flags = 0);
-    bool ThedoriusCombo(const char* label, int* current_item, const char* const items[], int item_count,
+    bool OneStepCombo(const char* label, int* current_item, const char* const items[], int item_count,
         int popup_max_height_in_items = -1);
-    bool ThedoriusColorEdit4(const char* label, float color[4], ImGuiColorEditFlags flags = 0);
-    void ThedoriusSeparatorText(const char* label);
-    void ThedoriusStaticDescription(const char* format, ...);
+    bool OneStepColorEdit4(const char* label, float color[4], ImGuiColorEditFlags flags = 0);
+    void OneStepSeparatorText(const char* label);
+    void OneStepStaticDescription(const char* format, ...);
 }

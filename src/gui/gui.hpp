@@ -3,7 +3,7 @@
 #include <Windows.h>
 #include <imgui/imgui.h>
 #include "widgets.hpp"
-#include "../modules/render/settings/hud_settings.hpp"
+#include "../modules/render/settings/watermark_settings.hpp"
 #include "../modules/render/settings/arraylist_settings.hpp"
 
 namespace gui
@@ -27,7 +27,7 @@ namespace gui
 	inline std::atomic_bool suppress_escape_until_release{false};
 	inline int active_theme = 0; // 0: onestep, 1: Crimson, 2: Emerald, 3: Ocean, 4: Rose, 5: Cyber, 6: Sunset, 7: Mono
 	// Render-thread preferences; reference aliases keep the HUD editor API stable.
-	inline module_settings::hud watermark_settings{};
+	inline module_settings::watermark watermark_settings{};
 	inline module_settings::arraylist arraylist_settings{};
 	inline float& hud_scale = watermark_settings.scale;
 	inline float& arraylist_scale = arraylist_settings.scale;

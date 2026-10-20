@@ -3,6 +3,7 @@ from pathlib import Path
 import json
 import re
 import xml.etree.ElementTree as ET
+from repository_hygiene import validate_repository
 
 ROOT = Path(__file__).resolve().parent.parent
 KINDS = {"ClCompile", "ClInclude", "ResourceCompile", "None"}
@@ -305,23 +306,31 @@ def validate_anchor_macro():
 
 
 def project_items(path):
-    result = set()
+    result = []
     for node in ET.parse(path).iter():
         kind = node.tag.rsplit("}", 1)[-1]
         include = node.get("Include")
         if kind in KINDS and include:
-            result.add((kind, include))
+            result.append((kind, include))
     return result
 
 
+def validate_project_entries(project, filters):
+    errors = []
+    if set(project) != set(filters):
+        errors.append("Project/filter entries differ; run scripts/Refresh-ProjectFilters.py")
+    if len(project) != len(set(project)) or len(filters) != len(set(filters)):
+        errors.append("Duplicate project/filter entries")
+    return errors
+
+
 def validate():
-    errors = (validate_sdk() + validate_settings() + validate_overlay_sessions() + validate_esp_ranges()
+    errors = (validate_repository(ROOT) + validate_sdk() + validate_settings() + validate_overlay_sessions() + validate_esp_ranges()
               + validate_inv_walk() + validate_anti_bot() + validate_notifications() + validate_pot_refill()
               + validate_fast_stop() + validate_crystal_aura() + validate_anchor_macro())
-    project = project_items(ROOT / "custom-base.vcxproj")
-    filters = project_items(ROOT / "custom-base.vcxproj.filters")
-    if project != filters:
-        errors.append("Project/filter entries differ; run scripts/Refresh-ProjectFilters.py")
+    project = project_items(ROOT / "OneStep.vcxproj")
+    filters = project_items(ROOT / "OneStep.vcxproj.filters")
+    errors.extend(validate_project_entries(project, filters))
     compiled = set()
     for kind, include in sorted(project):
         normalized = include.replace("\\", "/")
@@ -395,4 +404,4 @@ if __name__ == "__main__":
     errors, modules, sources = validate()
     if errors:
         raise SystemExit("\n".join(errors))
-    print(f"Infrastructure passed: {modules} module IDs, {sources} compile inputs, matching filters, SDK manifest and settings/service boundaries.")
+    print(f"Infrastructure passed: {modules} module IDs, {sources} compile inputs, matching filters, SDK manifest, settings/service boundaries and repository hygiene.")

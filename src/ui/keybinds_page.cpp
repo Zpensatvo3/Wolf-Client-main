@@ -18,7 +18,7 @@ namespace {
         float reveal = 0.f;
     } state;
     float approach(float value, float target) {
-        if (gui::aegis::get_preferences().reduce_motion) return target;
+        if (gui::ui_state::get_preferences().reduce_motion) return target;
         return value + (target - value) * (1.f - std::exp(-14.f * std::clamp(ImGui::GetIO().DeltaTime, .0001f, .05f)));
     }
     ImFont* regular() { return gui::ui_font ? gui::ui_font : ImGui::GetFont(); }

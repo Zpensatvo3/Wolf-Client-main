@@ -948,7 +948,7 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 		style.Colors[ImGuiCol_ScrollbarGrabActive] = accent;
 	}
 
-	// The standalone Thedorius injector owns the visible loading experience.
+	// The standalone launcher owns the visible loading experience.
 	// Inside Minecraft we only keep a headless readiness gate so gameplay
 	// modules cannot run before JNI/JVMTI initialization has finished.
 	if (gui::loader_visible)
@@ -1006,7 +1006,7 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 	// Escape/auth can close the panel inside the UI render. Restore capture on
 	// that same frame and neutralize any input written by earlier callbacks.
 	sync_panel_input();
-	gui::aegis::flush_preferences(false, ImGui::IsAnyItemActive());
+	gui::ui_state::flush_preferences(false, ImGui::IsAnyItemActive());
 	configs::keybind_profile::flush();
 	ImGui::EndFrame();
 	ImGui::Render();
@@ -1025,7 +1025,7 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 
 bool gui::init()
 {
-	gui::aegis::load_preferences();
+	gui::ui_state::load_preferences();
 	HMODULE opengl = GetModuleHandleA("opengl32.dll");
 	if (!opengl) 
 	{
@@ -1165,9 +1165,9 @@ void gui::background::update()
 		if (previous.id) glDeleteTextures(1, &previous.id);
 		candidate.attempted = true;
 		previous = candidate;
-		gui::aegis::get_preferences().menu_background.selected = style::custom;
-		gui::aegis::mark_preferences_dirty();
-		gui::aegis::flush_preferences(true);
+		gui::ui_state::get_preferences().menu_background.selected = style::custom;
+		gui::ui_state::mark_preferences_dirty();
+		gui::ui_state::flush_preferences(true);
 	}
 	else glDeleteTextures(1, &candidate.id);
 	std::lock_guard lock(background_import_mutex);
@@ -1189,7 +1189,7 @@ void gui::background::shutdown()
 
 void gui::shutdown()
 {
-	gui::aegis::flush_preferences(true);
+	gui::ui_state::flush_preferences(true);
 	request_shutdown.store(true, std::memory_order_release);
 	while (!shut_down.load(std::memory_order_acquire))
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -1221,6 +1221,6 @@ ImColor gui::get_dynamic_color(int offset)
 	static gui::theme::transition animation;
 	const double time = ImGui::GetCurrentContext() ? ImGui::GetTime()
 		: static_cast<double>(GetTickCount64()) / 1000.0;
-	const auto color = animation.evaluate(active_theme, time, offset, gui::aegis::get_preferences().reduce_motion);
+	const auto color = animation.evaluate(active_theme, time, offset, gui::ui_state::get_preferences().reduce_motion);
 	return ImColor(color.r, color.g, color.b, 1.0f);
 }

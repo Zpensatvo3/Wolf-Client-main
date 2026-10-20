@@ -5,10 +5,10 @@
 
 namespace modules
 {
-class clickaimassist : public module
+class aim_assist : public module
 	{
 	public:
-		clickaimassist() : module("aim assist") { settings.weapon_only = false; }
+		aim_assist() : module("aim assist") { settings.weapon_only = false; }
 
 		void run(::cache& cache) override;
 		void render_overlay() override;

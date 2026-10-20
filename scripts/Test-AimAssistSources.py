@@ -11,8 +11,8 @@ options = parser.parse_args()
 sources = [
     "src/modules/combat/legit_aim_math.hpp", "src/modules/combat/legit_aim_config.hpp",
     "src/modules/combat/legit_aim_engine.hpp", "src/modules/combat/legit_aim_engine.cpp",
-    "src/modules/combat/aimassist.hpp", "src/modules/combat/aimassist.cpp",
-    "src/modules/combat/clickaimassist.hpp", "src/modules/combat/clickaimassist.cpp",
+    "src/modules/combat/legit_click_aim_assist.hpp", "src/modules/combat/legit_click_aim_assist.cpp",
+    "src/modules/combat/aim_assist.hpp", "src/modules/combat/aim_assist.cpp",
     "tests/aimassist_math_test.cpp", "tests/aimassist_config_test.cpp",
 ]
 texts = {source: (ROOT / source).read_text(encoding="utf-8") for source in sources}
@@ -39,7 +39,7 @@ assert re.search(r'jni::method<jfloat,\s*"method_5751">\s+getStandingEyeHeight',
 assert "context.player.getEyeY.is_valid()" in engine
 assert "state.reset_generation.load(std::memory_order_acquire) != generation" in engine
 assert "head = 0, upper_body = 1, adaptive = 4" in texts["src/modules/combat/legit_aim_config.hpp"]
-for module in ("aimassist", "clickaimassist"):
+for module in ("legit_click_aim_assist", "aim_assist"):
     header = texts[f"src/modules/combat/{module}.hpp"]
     source = texts[f"src/modules/combat/{module}.cpp"]
     assert "render_when_disabled()" in header and "request_reset(state)" in header

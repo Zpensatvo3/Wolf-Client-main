@@ -128,7 +128,7 @@ namespace
 
     float approach(float current, float target, float speed = 12.0f)
     {
-        if (gui::aegis::get_preferences().reduce_motion) return target;
+        if (gui::ui_state::get_preferences().reduce_motion) return target;
         const float dt = std::clamp(ImGui::GetIO().DeltaTime, 0.0001f, 0.05f);
         const float diff = target - current;
         if (std::abs(diff) < 0.0005f)
@@ -446,7 +446,7 @@ namespace
         draw->AddRect(minimum, maximum, alpha(accent, opacity), 8.f, 0, 1.35f);
         const float width = maximum.x - minimum.x, height = maximum.y - minimum.y;
         const float perimeter = std::max(1.f, 2.f * (width + height));
-        const double phase = gui::aegis::get_preferences().reduce_motion ? 0. : ImGui::GetTime() * .22;
+        const double phase = gui::ui_state::get_preferences().reduce_motion ? 0. : ImGui::GetTime() * .22;
         for (int index = first; index < draw->VtxBuffer.Size; ++index)
         {
             auto& vertex = draw->VtxBuffer[index];
@@ -1092,7 +1092,7 @@ void gui::grim::render(const ImGuiViewport* viewport, const page_callbacks& call
                     ImVec2(minimum.x - layer.first, minimum.y - layer.first),
                     ImVec2(maximum.x + layer.first, maximum.y + layer.first), IM_COL32(0, 0, 0, layer.second), 20.f + layer.first);
             draw->AddRectFilled(minimum, maximum, shell, 20.f);
-            gui::background::render(draw, minimum, size, gui::aegis::get_preferences().menu_background);
+            gui::background::render(draw, minimum, size, gui::ui_state::get_preferences().menu_background);
             draw->AddRect(minimum, maximum, IM_COL32(255, 255, 255, 12), 20.f);
         };
         menu_surface(origin, main_size);

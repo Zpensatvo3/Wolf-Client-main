@@ -19,7 +19,7 @@
 
 namespace
 {
-    gui::aegis::preferences state{};
+    gui::ui_state::preferences state{};
     bool loaded = false;
     struct save_schedule
     {
@@ -102,7 +102,7 @@ namespace
         return false;
     }
 
-    void write_hud_preferences(std::ostream& output, const gui::aegis::preferences& value)
+    void write_hud_preferences(std::ostream& output, const gui::ui_state::preferences& value)
     {
         output << "{\n  \"has_hud_layout\": " << (value.has_hud_layout ? "true" : "false") << ",\n";
         const char* ids[] = { "watermark", "arraylist", "spotify", "target_hud" };
@@ -117,7 +117,7 @@ namespace
         }
     }
 
-    void normalize(gui::aegis::preferences& value)
+    void normalize(gui::ui_state::preferences& value)
     {
         gui::background::normalize(value.menu_background);
         if (!std::isfinite(value.window_position.x)) value.window_position.x = 0.0f;
@@ -125,9 +125,9 @@ namespace
         if (!std::isfinite(value.window_size.x)) value.window_size.x = 1280.0f;
         if (!std::isfinite(value.window_size.y)) value.window_size.y = 620.0f;
         value.version = 1;
-        value.layout = static_cast<gui::aegis::layout_mode>(
+        value.layout = static_cast<gui::ui_state::layout_mode>(
             std::clamp(static_cast<int>(value.layout), 0, 1));
-        value.energy = static_cast<gui::aegis::energy_quality>(
+        value.energy = static_cast<gui::ui_state::energy_quality>(
             std::clamp(static_cast<int>(value.energy), 0, 2));
         value.window_size.x = std::clamp(value.window_size.x, 980.0f, 1800.0f);
         value.window_size.y = std::clamp(value.window_size.y, 520.0f, 1100.0f);
@@ -141,13 +141,13 @@ namespace
     }
 }
 
-gui::aegis::preferences& gui::aegis::get_preferences()
+gui::ui_state::preferences& gui::ui_state::get_preferences()
 {
     if (!loaded) load_preferences();
     return state;
 }
 
-void gui::aegis::load_preferences()
+void gui::ui_state::load_preferences()
 {
     if (loaded) return;
     loaded = true;
@@ -204,12 +204,12 @@ void gui::aegis::load_preferences()
     normalize(state);
 }
 
-void gui::aegis::mark_preferences_dirty()
+void gui::ui_state::mark_preferences_dirty()
 {
     pending_save.changed(std::chrono::steady_clock::now());
 }
 
-void gui::aegis::flush_preferences(bool force, bool interacting)
+void gui::ui_state::flush_preferences(bool force, bool interacting)
 {
     const auto now = std::chrono::steady_clock::now();
     if (!pending_save.ready(now, force, interacting)) return;
@@ -258,7 +258,7 @@ void gui::aegis::flush_preferences(bool force, bool interacting)
     }
 }
 
-void gui::aegis::reset_preferences()
+void gui::ui_state::reset_preferences()
 {
     state = {};
     gui::active_theme = 0;

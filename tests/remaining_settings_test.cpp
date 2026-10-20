@@ -31,7 +31,7 @@
 #include "../src/modules/visual/cape_design.hpp"
 #include "../src/modules/visual/settings/cape_settings.hpp"
 #include "../src/modules/visual/settings/wings_settings.hpp"
-#include "../src/modules/render/settings/hud_settings.hpp"
+#include "../src/modules/render/settings/watermark_settings.hpp"
 #include "../src/modules/render/settings/arraylist_settings.hpp"
 #include "../src/modules/combat/anchor_config.hpp"
 #include "../src/modules/combat/settings/anchor_macro_settings.hpp"
@@ -240,7 +240,7 @@ int main()
     check_contract<spotify_hud>({"position_x","position_y","scale","background_opacity","show_artwork","show_progress","show_visualizer","show_brand","show_lyrics","lyric_lines","enable_lyrics","show_when_idle"});
     check_contract<nametag>({"scale","show_health","show_armor"});
     check_contract<chams>({"opacity","glow","glow_strength","glow_radius","through_walls","theme_color","ignore_friends","visible_color","hidden_color"});
-    check_contract<hud>({"scale","position_x","position_y"});
+    check_contract<watermark>({"scale","position_x","position_y"});
     check_contract<arraylist>({"scale","position_x","position_y","bar_glow","text_shadow","bg_opacity","bar_width","show_keybinds"});
 
     settings_fixture<block_esp> blocks;

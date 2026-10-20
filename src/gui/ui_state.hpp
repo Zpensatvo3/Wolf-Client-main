@@ -4,7 +4,7 @@
 #include <array>
 #include "../ui/menu_background.hpp"
 
-namespace gui::aegis
+namespace gui::ui_state
 {
     enum class layout_mode : int
     {

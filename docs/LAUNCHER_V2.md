@@ -1,11 +1,19 @@
-# Launcher-only protocol v2 — 20 October 2026
+# Launcher-only v2 protokolü
 
-## Production status
+## Kayıtlı yayın durumu
+
+The following is the repository's **20 October 2026 deployment record**, not a
+fresh production check. Operational use/build steps live in the
+[launcher guide](../launcher/README.md); active setup and open incident tasks
+live in [security setup](../server/SECURITY_SETUP.md) and
+[auth hardening](../server/AUTH_HARDENING.md).
 
 Live Worker version: `b2daf1f6-1253-44ef-9cc7-d3a814fc7d37`.
 Deployment: `1ac3e381-a443-4f82-8157-342893fe0981`.
 Release: `launcher-v2.1-20261020-1.21.11`, Windows x64 / Fabric 1.21.11.
-Exact binary hashes and sizes are recorded in `server/deployment.json`.
+Exact binary hashes and sizes are recorded in
+[server/deployment.json](../server/deployment.json). Do not duplicate or infer
+them from an ordinary local build.
 
 The owner uploaded the new DLL from their MFA-authenticated Edge admin panel.
 The initial v2 approval was checked before `AUTH_V2_ONLY=true` was deployed.
@@ -19,7 +27,7 @@ new Cloudflare API credential or private signing key was stored locally.
 All FIVE pre-existing license records and ZERO public configs were preserved.
 The current signing key, Access owner policy and MFA were not changed.
 
-## API and trust boundaries
+## API ve güven sınırları
 
 All v2 service endpoints use POST and bounded JSON:
 
@@ -61,7 +69,7 @@ includes the request-message hash, nonce hash, protocol 2, audience, key ID,
 expiry and appropriate runtime bindings/sequence. No permanent license key is
 included in the local message-mode named-pipe handoff.
 
-## Native behavior and failure policy
+## Native davranış ve hata politikası
 
 The DLL has no license input or activation path. A spoofed UI `authorized` state
 does not create execution authority. No public session setter exists. A private
@@ -86,7 +94,7 @@ path; user-held physical keys are preserved. Minecraft is never closed or
 restarted. The user must start again through the launcher after a failure.
 The launcher itself may close after a successful launch; the DLL owns renewal.
 
-## Checks and rollout
+## Doğrulama ve dağıtım
 
 Focused checks cover real SQLite and workerd/D1 concurrent redemption/renewal,
 role substitution, modified fields/path, release revocation before redemption,
@@ -100,7 +108,7 @@ No licensed production launcher-to-runtime round-trip or in-game verification
 has been claimed. Those remain user acceptance checks. A cracked DLL sample has
 not been supplied, so the exact reported patch is not yet attributed.
 
-The GitHub publication workflow now selects a successful build/run and verifies
+The [GitHub publication workflow](../.github/workflows/publish-dll.yml) selects a successful build/run and verifies
 an operator-specified digest; it only creates a binary artifact for protected
 admin upload, not an unauthenticated DLL release. Distribute only the new
 launcher/DLL pair. No source, PDB, MAP, probes or vault files belong in packages.

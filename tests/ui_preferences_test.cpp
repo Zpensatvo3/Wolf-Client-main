@@ -35,7 +35,7 @@ int main()
     check(!read_integer("{\"theme\":1.5}", "theme", index) && index == 3, "fractional theme must be rejected");
     check(!read_integer("{\"theme\":1e30}", "theme", index), "integer overflow must be rejected");
     check(read_integer("{\"theme\":7}", "theme", index) && index == 7, "valid theme must parse");
-    gui::aegis::preferences test{};
+    gui::ui_state::preferences test{};
     test.window_size = ImVec2(std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity());
     test.window_position = ImVec2(std::numeric_limits<float>::quiet_NaN(), -std::numeric_limits<float>::infinity());
     normalize(test);

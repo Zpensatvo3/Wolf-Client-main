@@ -5,10 +5,10 @@
 
 namespace modules
 {
-class aimassist : public module
+class legit_click_aim_assist : public module
 	{
 	public:
-		aimassist() : module("legit click aim assist") {}
+		legit_click_aim_assist() : module("legit click aim assist") {}
 
 		void run(::cache& cache) override;
 		void render_overlay() override;

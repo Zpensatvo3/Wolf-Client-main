@@ -1,6 +1,6 @@
 # Historical Wolf deployment. Current Onestep uses wrangler.jsonc.
 # Reference only: do not deploy current worker.js to this legacy database.
-# Live admin redirects to Onestep; see ADMIN_MIGRATION.md.
+# Historical admin redirect record: see README.md, "16 Ekim 2026 admin konsolidasyonu".
 name = "wolf-auth-api"
 main = "worker.js"
 compatibility_date = "2026-07-25"

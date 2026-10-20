@@ -408,14 +408,6 @@ namespace
 		return json.substr(start, end - start);
 	}
 
-	bool parse_json_bool(const std::string& json, const std::string& key, bool fallback)
-	{
-		const auto value = parse_json_value(json, key);
-		if (!value)
-			return fallback;
-		return *value == "true" || *value == "1";
-	}
-
 	template <typename Integer>
 	std::optional<Integer> parse_integer(const std::optional<std::string>& value)
 	{

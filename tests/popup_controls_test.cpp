@@ -5,6 +5,7 @@
 #include "../src/ui/item_icon.hpp"
 #include <cassert>
 #include <cmath>
+#include <cstring>
 #include <filesystem>
 #include <iostream>
 

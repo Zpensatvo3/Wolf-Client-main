@@ -151,7 +151,7 @@ void modules::sky::render_overlay()
     jni::frame frame{64};
     auto& state=*state_;
     const auto config=settings_.read();
-    const bool reduced=gui::aegis::get_preferences().reduce_motion;
+    const bool reduced=gui::ui_state::get_preferences().reduce_motion;
     bool panorama_ready=false,colors_ready=false;
     int sky_rgb=0,fog_rgb=0;
     struct publish_panorama

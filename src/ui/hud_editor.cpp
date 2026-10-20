@@ -23,7 +23,7 @@ namespace
 {
     namespace layout = gui::hud_editor_layout;
     constexpr int overlay_count = 4;
-    using snapshot = std::array<gui::aegis::hud_placement, overlay_count>;
+    using snapshot = std::array<gui::ui_state::hud_placement, overlay_count>;
     constexpr const char* ids[] = { "watermark", "arraylist", "spotify_hud", "target_hud" };
     constexpr const char* names[] = { "Watermark", "ArrayList", "Spotify", "Target HUD" };
     int selected = 0, dragging = -1;
@@ -64,9 +64,9 @@ namespace
     }
     void save()
     {
-        auto& preferences = gui::aegis::get_preferences();
+        auto& preferences = gui::ui_state::get_preferences();
         preferences.hud_layout = capture(); preferences.has_hud_layout = true;
-        gui::aegis::mark_preferences_dirty();
+        gui::ui_state::mark_preferences_dirty();
     }
     void remember()
     {
@@ -84,7 +84,7 @@ namespace
         remember();
         auto value = capture();
         const bool visible = value[selected].visible;
-        value[selected] = gui::aegis::preferences{}.hud_layout[selected];
+        value[selected] = gui::ui_state::preferences{}.hud_layout[selected];
         value[selected].visible = visible;
         apply(value); save();
     }
@@ -137,7 +137,7 @@ void gui::hud_editor::restore_saved_layout()
 {
     if (restored || !modules::find_module_by_id(ids[2]) || !modules::find_module_by_id(ids[3])) return;
     restored = true;
-    const auto& preferences = gui::aegis::get_preferences();
+    const auto& preferences = gui::ui_state::get_preferences();
     if (preferences.has_hud_layout) apply(preferences.hud_layout);
 }
 
@@ -145,7 +145,7 @@ void gui::hud_editor::close()
 {
     dragging = -1;
     gui::hud_layout_editor_active = false; gui::hud_editor_active = false;
-    gui::aegis::flush_preferences(true);
+    gui::ui_state::flush_preferences(true);
 }
 
 void gui::hud_editor::render_page()

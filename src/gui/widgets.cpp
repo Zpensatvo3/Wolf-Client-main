@@ -51,7 +51,7 @@ namespace
 
     float approach(float current, float target, float speed = 12.0f)
     {
-        if (gui::aegis::get_preferences().reduce_motion) return target;
+        if (gui::ui_state::get_preferences().reduce_motion) return target;
         const float dt = std::clamp(ImGui::GetIO().DeltaTime, 0.0001f, 0.05f);
         const float diff = target - current;
         if (std::abs(diff) < 0.0005f)
@@ -271,28 +271,6 @@ ImVec2 gui::page_header(const char* title, const char* subtitle)
     return start;
 }
 
-bool gui::begin_surface(const char* id, const ImVec2& size, const ImVec2& padding, bool transparent)
-{
-    ImVec4 border = ImGui::GetStyleColorVec4(ImGuiCol_CheckMark);
-    border.w = 0.045f;
-    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 10.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, padding);
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, transparent
-        ? ImVec4(0.0f, 0.0f, 0.0f, 0.0f)
-        : ImVec4(0.010f, 0.010f, 0.014f, 0.38f));
-    ImGui::PushStyleColor(ImGuiCol_Border, transparent
-        ? ImVec4(0.0f, 0.0f, 0.0f, 0.0f)
-        : border);
-    return ImGui::BeginChild(id, size, ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar);
-}
-
-void gui::end_surface()
-{
-    ImGui::EndChild();
-    ImGui::PopStyleColor(2);
-    ImGui::PopStyleVar(2);
-}
-
 bool gui::action_button(const char* label, const ImVec2& size, action_tone tone)
 {
     ImVec4 normal(0.038f, 0.038f, 0.050f, 0.64f);
@@ -374,7 +352,7 @@ void gui::render_notifications()
     style.font = gui::ui_font;
     style.accent = gui::get_dynamic_color().Value;
     style.secondary = gui::get_dynamic_color(40).Value;
-    style.reduce_motion = gui::aegis::get_preferences().reduce_motion;
+    style.reduce_motion = gui::ui_state::get_preferences().reduce_motion;
     notification_renderer.render(services::notifications::collect(), *ImGui::GetMainViewport(), style);
 }
 
@@ -683,18 +661,18 @@ void gui::option_section(const char* label)
     ImGui::Dummy(ImVec2(0.0f, 17.0f));
 }
 
-bool ImGui::ThedoriusCheckbox(const char* label, bool* value) { return gui::option_toggle(label, value); }
-bool ImGui::ThedoriusSliderFloat(const char* label, float* value, float minimum, float maximum, const char* format, ImGuiSliderFlags flags)
+bool ImGui::OneStepCheckbox(const char* label, bool* value) { return gui::option_toggle(label, value); }
+bool ImGui::OneStepSliderFloat(const char* label, float* value, float minimum, float maximum, const char* format, ImGuiSliderFlags flags)
 { return gui::option_slider(label, value, minimum, maximum, format, flags); }
-bool ImGui::ThedoriusSliderInt(const char* label, int* value, int minimum, int maximum, const char* format, ImGuiSliderFlags flags)
+bool ImGui::OneStepSliderInt(const char* label, int* value, int minimum, int maximum, const char* format, ImGuiSliderFlags flags)
 { return gui::option_slider(label, value, minimum, maximum, format, flags); }
-bool ImGui::ThedoriusSliderFloat2(const char* label, float value[2], float minimum, float maximum, const char* format, ImGuiSliderFlags flags)
+bool ImGui::OneStepSliderFloat2(const char* label, float value[2], float minimum, float maximum, const char* format, ImGuiSliderFlags flags)
 { return gui::option_range(label, value, minimum, maximum, format, flags); }
-bool ImGui::ThedoriusSliderInt2(const char* label, int value[2], int minimum, int maximum, const char* format, ImGuiSliderFlags flags)
+bool ImGui::OneStepSliderInt2(const char* label, int value[2], int minimum, int maximum, const char* format, ImGuiSliderFlags flags)
 { return gui::option_range(label, value, minimum, maximum, format, flags); }
-bool ImGui::ThedoriusCombo(const char* label, int* current_item, const char* const items[], int item_count, int popup_max_height_in_items)
+bool ImGui::OneStepCombo(const char* label, int* current_item, const char* const items[], int item_count, int popup_max_height_in_items)
 { return gui::option_combo(label, current_item, items, item_count, popup_max_height_in_items); }
-bool ImGui::ThedoriusColorEdit4(const char* label, float color[4], ImGuiColorEditFlags flags)
+bool ImGui::OneStepColorEdit4(const char* label, float color[4], ImGuiColorEditFlags flags)
 { return gui::option_color(label, color, flags); }
-void ImGui::ThedoriusSeparatorText(const char* label) { gui::option_section(label); }
-void ImGui::ThedoriusStaticDescription(const char*, ...) {}
+void ImGui::OneStepSeparatorText(const char* label) { gui::option_section(label); }
+void ImGui::OneStepStaticDescription(const char*, ...) {}

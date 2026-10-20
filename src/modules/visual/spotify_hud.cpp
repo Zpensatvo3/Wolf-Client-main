@@ -260,7 +260,7 @@ namespace
 		const modules::spotify::now_playing& info, float size_scale)
 	{
 		if (!draw) return;
-		const bool reduce_motion = gui::aegis::get_preferences().reduce_motion;
+		const bool reduce_motion = gui::ui_state::get_preferences().reduce_motion;
 		static int last_frame = -1;
 		static float phase = 0.f;
 		static std::array<float, 6> heights{};
@@ -765,7 +765,7 @@ void modules::spotify_hud::render_options()
 	const float max_x = display.x > 100.0f ? display.x : 1920.0f;
 	const float max_y = display.y > 100.0f ? display.y : 1080.0f;
 
-	// All controls below are redirected to Thedorius widgets via ui_redirect.hpp,
+	// All controls below are redirected to OneStep widgets via ui_redirect.hpp,
 	// ensuring identical styling, colors, and animations with the rest of the client modules.
 	ImGui::SliderFloat("Position X", &candidate.position_x, 0.0f, max_x, "%.0f px");
 	ImGui::SliderFloat("Position Y", &candidate.position_y, 0.0f, max_y, "%.0f px");

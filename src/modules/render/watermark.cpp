@@ -3,7 +3,7 @@
 #define NOMINMAX
 #endif
 
-#include "hud.hpp"
+#include "watermark.hpp"
 #include "../../gui/watermark_draw.hpp"
 #include "../../cache/cache.hpp"
 #include "../../platform/jni/jni_context.hpp"
@@ -16,87 +16,10 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 #include <mutex>
 #include <string>
 
-namespace
-{
-ImU32 color_with_alpha(const ImColor& color, float alpha)
-    {
-        ImVec4 value = color.Value;
-        value.w *= std::clamp(alpha, 0.0f, 1.0f);
-        return ImGui::ColorConvertFloat4ToU32(value);
-    }
-
-    void draw_glow_border(
-        ImDrawList* draw_list,
-        const ImVec2& minimum,
-        const ImVec2& maximum,
-        float rounding,
-        float scale)
-    {
-        if (!draw_list)
-            return;
-
-        const ImColor accent = gui::get_dynamic_color(25);
-
-        // Several low-alpha outlines approximate a soft blur without requiring
-        // an extra OpenGL shader or render target.
-        for (int layer = 7; layer >= 1; --layer)
-        {
-            const float expansion = static_cast<float>(layer) * 1.35f * scale;
-            const float alpha = 0.012f + static_cast<float>(8 - layer) * 0.010f;
-            draw_list->AddRect(
-                ImVec2(minimum.x - expansion, minimum.y - expansion),
-                ImVec2(maximum.x + expansion, maximum.y + expansion),
-                color_with_alpha(accent, alpha),
-                rounding + expansion,
-                ImDrawFlags_RoundCornersAll,
-                std::max(1.0f, 2.4f * scale));
-        }
-
-        draw_list->AddRect(
-            minimum,
-            maximum,
-            color_with_alpha(accent, 0.78f),
-            rounding,
-            ImDrawFlags_RoundCornersAll,
-            std::max(1.0f, 1.15f * scale));
-    }
-
-    void draw_separator(
-        ImDrawList* draw_list,
-        float x,
-        float center_y,
-        float height,
-        float scale)
-    {
-        draw_list->AddRectFilled(
-            ImVec2(std::floor(x), std::floor(center_y - height * 0.5f)),
-            ImVec2(std::ceil(x + std::max(1.0f, scale)), std::ceil(center_y + height * 0.5f)),
-            IM_COL32(255, 255, 255, 42),
-            1.0f);
-    }
-
-    void draw_thedorius_mark(ImDrawList* draw_list, const ImVec2& center, float size, const ImColor& accent)
-    {
-        const ImVec2 shield[] = {
-            ImVec2(center.x - size, center.y - size * 0.82f),
-            ImVec2(center.x + size, center.y - size * 0.82f),
-            ImVec2(center.x + size * 0.70f, center.y + size * 0.64f),
-            ImVec2(center.x, center.y + size),
-            ImVec2(center.x - size * 0.70f, center.y + size * 0.64f)
-        };
-        draw_list->AddConvexPolyFilled(shield, IM_ARRAYSIZE(shield), color_with_alpha(accent, 0.16f));
-        draw_list->AddPolyline(shield, IM_ARRAYSIZE(shield), color_with_alpha(accent, 0.96f), ImDrawFlags_Closed, std::max(1.0f, size * 0.13f));
-        draw_list->AddLine(ImVec2(center.x - size * 0.48f, center.y - size * 0.34f), ImVec2(center.x + size * 0.48f, center.y - size * 0.34f), IM_COL32(242, 242, 247, 245), std::max(1.0f, size * 0.16f));
-        draw_list->AddLine(ImVec2(center.x, center.y - size * 0.34f), ImVec2(center.x, center.y + size * 0.52f), IM_COL32(242, 242, 247, 245), std::max(1.0f, size * 0.16f));
-    }
-}
-
-
-void modules::hud::run(::cache& cache)
+void modules::watermark::run(::cache& cache)
 {
     const auto now = std::chrono::steady_clock::now();
     if (now < next_status_refresh) return;
@@ -171,7 +94,7 @@ void modules::hud::run(::cache& cache)
     latency_ms = current_latency;
 }
 
-void modules::hud::render_overlay()
+void modules::watermark::render_overlay()
 {
 	if (gui::hud_editor_active) return;
 	const ImVec2 size = gui::watermark_draw::size();
@@ -181,14 +104,14 @@ void modules::hud::render_overlay()
 	gui::watermark_draw::draw(ImGui::GetForegroundDrawList(), x, y);
 }
 
-void modules::hud::render_options()
+void modules::watermark::render_options()
 {
     ImGui::TextDisabled("%s", "Displays onestep logo watermark");
     ImGui::Spacing();
-    gui::settings::render(gui::watermark_settings, module_settings::hud::schema());
+    gui::settings::render(gui::watermark_settings, module_settings::watermark::schema());
 }
 
-std::pair<std::string, int> modules::hud::status_snapshot() const
+std::pair<std::string, int> modules::watermark::status_snapshot() const
 {
 	std::lock_guard lock(status_mutex);
 	return { player_name, latency_ms };

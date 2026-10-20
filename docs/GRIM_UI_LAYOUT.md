@@ -1,63 +1,143 @@
-# GrimUI grid and right-side settings
+# GrimUI, HUD ve Keybinds
 
-The active entry remains `gui::grim::render` from `src/gui/gui.cpp`.
-`src/gui/` owns Windows/OpenGL integration and shared controls; `src/ui/` owns
-application pages. Both directories remain in use.
+Güncel giriş `src/gui/gui.cpp` → `gui::grim::render` →
+`src/ui/grim_ui.cpp` şeklindedir. `src/gui/` platform/render altyapısını ve ortak
+kontrolleri; `src/ui/` uygulama sayfalarını yönetir. İki dizin de aktiftir.
 
-## Layout and interaction
+## Menü ve modül kartları
 
-- Feature/search results use registry order, left to right, in two columns.
-  Cards are 62 pixels high, with an 8-pixel gap; narrow viewports fall back to
-  one column. No module IDs, gameplay categories or config fields are changed.
-- The main surface retains its 960-by-620 default, shared with Other pages.
-  Settings open in a separate 304-pixel window to its right, not in a reserved
-  blank strip. The group is centered/clamped including open auxiliary panels.
-  On smaller displays the main surface narrows to accommodate the settings.
-- The settings window has its own hit-test bounds. The transparent root never
-  covers it: otherwise clicking a card could bring the root above the settings
-  and swallow wheel input. Only the settings content scrolls, without scrollbars.
-- Cards contain only the name and description; clicking a configurable module
-  selects its right-side panel without toggling it. Enabled is its first row, above
-  Keybind, with no hover background. The keybind badge has its own 8-pixel corner
-  radius rather than inheriting a potentially square page style.
-  Modules with no custom controls instead toggle directly, including search/Enter;
-  their bindings remain managed in Other > Keybinds. Full Bright inherits the
-  base's empty panel; No Jump Delay and Fast Stop explicitly opt out because
-  their old renderers only contain explanatory text. Click GUI and Friends
-  Manager retain their actual non-config UI controls. The legacy height is the
-  default custom-options capability; informational renderers can override it.
-  Panic remains an immediate unload action. The obsolete card toggle renderer
-  and its animation cache were removed.
-- Module-specific child IDs isolate settings scroll position. Other pages dismiss the panel. Search, keybinds and Escape
-  remain available; pending autocomplete is cancelled when the field loses focus.
-- Context shutdown clears GrimUI and shared widget animation state before
-  destroying ImGui, avoiding stale pointers, measurements and color-picker state.
+- Features ve Other aynı ana pencereyi kullanır; normal boyut 960×620'dir.
+  Kategori/arama/HUD geçişi konumu değiştirmez. Sürükleme ekrana sınırlıdır;
+  odak kaybında durur, küçültülmüş pencere konumu ezmez.
+- Modüller registry sırasıyla soldan sağa iki sütuna dizilir; dar alanda tek
+  sütuna geçer. Kart yüksekliği artık sarılan ad/açıklamadan hesaplanır:
+  17 px başlık ve 14 px açıklama kullanılır. Eski sabit 62 px ölçüsü güncel değildir.
+- Ayarı olan kart sağdaki ayrı ayar panelini seçer; ana pencere yer değiştirmez.
+  Yer daralırsa panel ana pencerenin sağ tarafına bindirilir.
+  Oyuncu önizlemesi yalnızca yeterli alan varsa gösterilir.
+- Kart üzerinde dişli veya toggle yoktur. Enabled, ayar panelinde Keybind'in
+  üstündedir ve tam satır hover zemini çizmez. Etkin ad tema rengini kullanır;
+  seçili kart çerçevesi Reduce Motion kapalıysa animasyonludur.
+- Full Bright gibi keybind dışında kontrolü olmayan kartlar doğrudan açılır/
+  kapanır. No Jump Delay/Fast Stop'un açıklama-only panelleri de bu kapsamdadır.
+  Click GUI/Friends Manager'ın özel kontrolleri korunur. Panic anlık unload'dur.
+  Arama/Enter ile seçim aynı davranışı uygular.
+- Ayar panelinin hit-test alanı ayrıdır; modüle özgü child ID'si kaydırma
+  konumunu ayırır. Kart/metin/filtre ölçümleri uygun anahtarla önbelleklenir;
+  görünmeyen kartlar çizilmez. Modül ID/kategori/config alanları değiştirilmez.
+- Arayüz İngilizcedir. Eski `language` tercihi yok sayılır; Unicode kullanıcı
+  metni korunur. Listeler çubuksuz kayar; taşan native popup'larda geçerli
+  scrollbar ölçüsü tutulması gerekir.
 
-## Verified cleanup
+## Arama, profil ve giriş sahipliği
 
-Repository-wide symbol/call-site searches, including tests and build inputs,
-found no callers, callback bindings or exported entry points for:
+Arama sol altta profilin üstündedir. Yarı saydam kutuya doğrudan yazılır;
+ayrı sonuç paneli açılmaz. Oklar/Enter, otomatik tamamlama ve X ile temizleme
+korunur. Tamamlama odak kaybında iptal edilir. Profilde yerel skin kafası ve adı,
+doğrulanmış lisans süresi veya `Lifetime` gösterilir; bilinmeyen süre lifetime
+sayılmaz. Bu etiket oturum yetkisi sağlamaz.
 
-- `settings_stepper`, `settings_coordinate_row` and their declarations;
-- `surface_style::module_card`, its private `selected_fill`/`mix` chain;
-- `status_badge` and its declaration;
-- `consume_geometry_reset`, `geometry_reset_pending` and their unread flag.
+ESC önce açık arama/popup/onayı kapatır; sonra ana menüyü kapatır.
+Eski keybind yakalayıcısında ESC atamayı siler, menüyü kapatmaz.
+HUD yerleştirmede ESC menüye döner. Kapatma ESC'sinin tekrarı oyuna iletilmez.
 
-These were removed, along with a duplicate declaration, unused GrimUI includes
-and redundant skin refresh timer. The live surface configuration remains.
-Two forwarding wrappers were inlined at their sole caller: config rendering and
-the direct HUD editor. Their underlying pages are unchanged.
+Menü açılışında vanilla tuş/kuyruk durumu nötrlenir, fare kilidi bırakılır.
+Açık menü oyun girdisini engeller; fiziksel tuşlara sentetik bırakma gönderilmez.
+Kapanışta kilit yalnızca aynı dünya/oyuncu etkinse, oyun odaktaysa ve başka
+Minecraft ekranı yoksa geri alınır. Alt+Tab/Windows pencereye iletilir;
+arka plan girdileri ve dönüşte önceden basılı tuşlar yeni basış sayılmaz.
 
-Historical layout/energy/window geometry preference fields were deliberately
-preserved: they still participate in parsing, normalization and serialization.
-Compatibility widget names (`ImGui::Thedorius*`) remain used by module renderers;
-they are not dead code. Authentication, texture/font ownership, theme selection,
-input hooks, HUD editing, Friends and Configs were not replaced.
+## Other sayfaları
 
-Other now also exposes the interactive Keybinds page; its registry/config/input
-integration and compatibility policy are documented in [KEYBINDS.md](KEYBINDS.md).
+| Sayfa | Kapsam |
+| --- | --- |
+| Friends | Mevcut orta tık ayarı, Name/Server players seçimi, ekleme/çıkarma; arkadaş listesi oturumluk kalır. Yarıçap/ESP override eklenmedi. |
+| Configs | İsim yazılınca aşağı açılan oluşturma alanı; My Configs/Public Configs/Favourites, yükle/güncelle/sil ve onaylar. İndirme/modül sayacı yoktur. |
+| Themes | Sekiz vurgu paleti, klasik/hazır/özel menü arka planları; yoğunluk ve karartma. |
+| Hud | Watermark/ArrayList/Target HUD Scale, sabit Spotify ölçeği ve tek Edit girişi; modüllerin diğer ayarları mevcut kategoridedir. |
+| Keybinds | Etkileşimli ANSI klavye ve gerçek modül atamaları. |
 
-## Validation and previews
+HUD yerleştirme Grid/Snap, Alt ile serbest sürükleme, oklar/Shift, Ctrl+Z,
+Undo/Reset ve yerel kaydı korur. Kontroller dar alanda küçülmek yerine alt satıra geçer.
+Spotify logosu kullanıcı PNG'sinin özgün saydamlığını/renklerini korur;
+eski SVG/mesh araçları kullanılmayan kaynak referanslarıdır, bu temizlikte silinmez.
+
+Menü arka planları: Classic, Citadel, Candy Dusk, Nebula, Aurora ve Custom image.
+PNG/JPG içe aktarma 16 MB, kenar başına 8192 ve toplam 16 megapiksel ile sınırlıdır.
+Görüntü oranı korunarak ortadan kırpılır. Yerel kopya
+`%LOCALAPPDATA%/onestep/menu-background.image` içindedir; kaynak dosya değişmez.
+Seçim UI tercihlerine aittir, public config'e eklenmez. Kayıp görselde klasik
+zemin kullanılır. Disk yazımı son değişiklikten sonra bekler; hata her karede denenmez.
+
+## Keybinds
+
+104 gerçek ImGui hit target'ı vardır: F1–F12, ANSI ana blok, navigation/arrows ve
+ayrı numpad. Geometri `platform/input/key_codes.hpp`, okunabilir legend/ölçü
+`ui/keyboard_layout.hpp` içindedir. Dar pencerede en az 29 birimlik tuşlar
+korunur; yalnızca klavye yatay kayar. Harf/rakam 15 px, diğer etiketler 12.5 px;
+tam ad tooltip'te görünür. Statik klavye resmi kullanılmaz.
+
+Tuş seçilince altında aranabilir/kaydırılabilir modül listesi açılır.
+Modüller registry'den dinamik gelir; sunum kategorileri menüyle ortaktır:
+Movement/Player/World, Misc'te birleşir. Friends yönetim grubu ve sabit Right
+Shift kullanan Click GUI atama listesinde yoktur. Ek ayarı olmayan modüller
+desteklenir; ayar sayısı keybind yeteneğini belirlemez.
+
+Satıra tıklamak atar/taşır; aynı tuştaki satıra tekrar tıklamak kaldırır.
+X mevcut mouse/legacy bağını da temizler. Seçili/atanmış/hover durumları tema
+rengiyle ayrılır; çoklu atamalar başlıkta ve satırlarda görünür.
+Aynı tuşun yükselen kenarı mevcut sistemde tüm atanmış modülleri tetikler;
+atama işlemi modülün enabled durumunu değiştirmez. Aramanın sağındaki büyüteç
+odağı aynı alana verir; kategori etiketi/oku tek zemindir. Başarı yazısı gizlidir,
+kayıt hatası görünürdür. Reduce Motion tüm sayfa geçişlerine uygulanır.
+
+Ayrılmış tuşlar seçilip incelenebilir ama yeni atama alamaz:
+
+- ESC: yakalayıcı temizleme veya menü kapatma.
+- Right Shift: sabit menü kısayolu.
+- End: acil unload; Windows tuşları: işletim sistemi.
+
+Eski/import edilmiş ayrılmış atamalar zorla göç ettirilmez; temizlenebilir.
+
+## Keybind uyumluluğu ve kayıt
+
+Tüm yazmalar mevcut `modules::module::set_keybind` alanına gider;
+`module_loop` / `key_edge` tek tetikleme motorudur. Atomic değer ve revision
+yalnızca eşzamanlı örnekleme/kaydetmeye hizmet eder. Menüde yazmak, kapatırken
+basılı tutmak veya basılı tuşu yeniden atamak fazladan tetikleme üretmemelidir.
+
+Eski Windows VK 0–255 değerleri değişmez; **269 (0x10d)** numpad Enter'ı
+E0 1C ile ana Enter 1C'den ayıran tek ek değerdir. NumLock kapalı keypad ile
+navigation scan'leri de ayrılır; numpad 1, End unload'u üretmez.
+Etiketler ANSI US yerleşimidir; otomatik OS dil algılama değildir.
+Aynı adlandırma eski yakalayıcı ve HUD keybind etiketlerinde kullanılır.
+
+Public config'in `modules/id/enabled/keybind/settings` biçimi korunur.
+**Eski DLL'ler 269 içeren config'i reddedebilir**; eski build'e paylaşmadan
+önce bu bağı kaldır veya güncel DLL kullan. Yerel binding-only export/apply aynı
+JSON parser ve stable ID'leri kullanır; gameplay ayarı veya enabled yüklemez.
+
+Yerel profil `%LOCALAPPDATA%/onestep/keybinds.json` içindedir ve DLL hedefleri
+arasında ortaktır. Registry sonrası, hook/tick öncesi yüklenir. Bilinmeyen ID
+atlanır; geçersiz/tekrarlı kayıt tüm yüklemeyi değişiklik yapmadan reddeder.
+Bozuk dosya yeni bir kullanıcı değişikliği olana kadar ezilmez.
+Yeni sayfa hemen, eski yakalayıcı/public import 400 ms debounce ve shutdown flush
+ile yazar. Temp dosyanın atomic değişimi başarısızsa eski profil korunur.
+Hata toast/metinle bildirilir; cloud yüklemesi veya ikinci dispatch sistemi yoktur.
+
+## Temizlik ve uyumluluk
+
+Çağrı/başvuru denetiminde kullanılmayan eski stepper, coordinate row, status badge,
+module-card çizici zinciri ve okunmayan geometry-reset flag'i kaldırılmıştır.
+Config/HUD forwarding wrapper'ları tek çağrı noktasına indirildi.
+Historical preference alanları parser/serialization kullandığı için korunur;
+Widget uyumluluk girişleri `ImGui::OneStep*`, tercih servisi `gui::ui_state`
+olarak adlandırılır. Eski kullanıcı klasörü ve `##ThedoriusGrimUI` pencere kimliği
+uyumluluk için korunur. Font/texture sahipliği, authentication kapıları ve
+mevcut platform hooks değişmez.
+Kapanış GrimUI ve ortak widget animasyon önbelleklerini ImGui'den önce temizler.
+
+## Doğrulama
 
 ```sh
 python scripts/Test-Infrastructure.py
@@ -67,24 +147,14 @@ python scripts/Test-GrimUI.py --preview-dir out/ui-preview
 git diff --check
 ```
 
-The Linux headless test compiles the shipping GrimUI, shared widgets, module
-base/keybind UI, schema renderer and Dear ImGui. Only game/platform services are
-inert fixtures. It exercises column order, full-card selection, Enabled above
-Keybind, modules without custom options and Panic,
-long settings/wheel input, per-module scroll, search/Enter, Other pages, viewport
-bounds, Escape and runtime reset. It also runs preference parser/normalization
-tests without accessing user preferences. It is included in offline CI.
-The same test exercises actual keyboard assignment/removal and local profile
-load/save/failure handling, as described in the Keybinds document.
+Gerçek ImGui testi kartlar/ayarlar, HUD kontrolleri, keybind atama/taşıma/silme,
+104 tuşun hit target'ları, shared key, arama/popup/ESC, çubuksuz kaydırma,
+yerel dosya yeniden yükleme/bozulma/I/O hatası ve dar viewport'ları denetler.
+Oyun, auth ve platform bağımlılıkları test karşılıklarıdır; gerçek oyuna bağlanmaz.
+Tercih parser'ı gerçek kullanıcı dosyasına erişmeden ayrıca test edilir.
 
-Optional captures rasterize actual ImGui triangles and the real font atlas to
-PPM at 2x resolution, re-rasterizing the fonts at matching density and using
-bilinear texel-center sampling like the OpenGL backend. A separately rendered
-settings close-up is also exported; existing images are not upscaled/sharpened.
-This changes preview fidelity, not the game's font or render pipeline.
-If Pillow is already available, the existing helmet texture is decoded and
-PNG copies are exported too. Preview output stays ignored under `out/`; no
-image library is added to the application or required for ordinary tests.
-Fixture license/name/settings are illustrative, not data from a live session.
-These are renderer previews, **not in-game screenshots**. Windows MSVC linking,
-live OpenGL/input hooks and gameplay have not been verified in this Linux run.
+Önizlemeler gerçek ImGui üçgenleri/font atlasından 2× yoğunlukla rasterize edilir;
+eski görsel büyütülüp keskinleştirilmez. Pillow yalnızca opsiyonel PNG export içindir.
+Çıktılar ignored `out/` altında kalır; uygulamaya bağımlılık eklenmez.
+**Bunlar oyun içi ekran görüntüsü değildir.** Windows linking, Win32 giriş
+teslimi, OpenGL, dosya seçicisi ve Minecraft davranışı ayrıca doğrulanmalıdır.

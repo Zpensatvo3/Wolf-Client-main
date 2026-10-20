@@ -45,21 +45,21 @@
     },
     {
       "id": "legit_click_aim_assist",
-      "owner": "src/modules/combat/aimassist.hpp",
+      "owner": "src/modules/combat/legit_click_aim_assist.hpp",
       "model": "src/modules/combat/legit_aim_config.hpp",
       "ownership": "client_thread_config",
       "panel": "src/modules/combat/legit_aim_engine.cpp"
     },
     {
       "id": "blatant_click_aim_assist",
-      "owner": "src/modules/combat/blatant_clickaimassist.hpp",
+      "owner": "src/modules/combat/blatant_click_aim_assist.hpp",
       "model": "src/modules/combat/blatant_aim_config.hpp",
       "ownership": "existing_runtime",
       "panel": "src/modules/combat/blatant_aim_engine.cpp"
     },
     {
       "id": "aim_assist",
-      "owner": "src/modules/combat/clickaimassist.hpp",
+      "owner": "src/modules/combat/aim_assist.hpp",
       "model": "src/modules/combat/legit_aim_config.hpp",
       "ownership": "client_thread_config",
       "panel": "src/modules/combat/legit_aim_engine.cpp"
@@ -108,10 +108,10 @@
     },
     {
       "id": "watermark",
-      "owner": "src/modules/render/hud.hpp",
-      "model": "src/modules/render/settings/hud_settings.hpp",
+      "owner": "src/modules/render/watermark.hpp",
+      "model": "src/modules/render/settings/watermark_settings.hpp",
       "ownership": "render_preferences",
-      "panel": "src/modules/render/hud.cpp"
+      "panel": "src/modules/render/watermark.cpp"
     },
     {
       "id": "arraylist",
