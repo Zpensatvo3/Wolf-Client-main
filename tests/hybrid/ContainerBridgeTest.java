@@ -11,6 +11,7 @@ public final class ContainerBridgeTest {
         return new InventoryBridge(ContainerBridgeTest.class.getClassLoader(), 12111);
     }
     private static class_310 setup() {
+        org.lwjgl.glfw.GLFW.reset();
         class_310 c = new class_310(); class_310.field_1700 = c;
         class_465 s = new class_465(); c.field_1755 = s;
         class_1703 h = s.field_2797; c.field_1724.field_7512 = h; h.simulate = h.detailed = true;
@@ -57,40 +58,60 @@ public final class ContainerBridgeTest {
         class_1792 item = new class_1792();
         h.carried = new class_1799(item); h.carried.stackCount = 8;
         slot(c, 0).stack = new class_1799(null);
-        p = b.captureContainer(5);
-        check(b.containerAct(p, 1, 0, -1, false, true, false), "one right-click item");
-        check(h.carried.stackCount == 7 && slot(c, 0).stack.stackCount == 1, "RMB places exactly one");
-        p = b.captureContainer(5);
-        check(!b.containerAct(p, 1, 0, -1, false, false, false), "right physical release");
-        p = b.captureContainer(5); h.carried.components++;
-        check(!b.containerAct(p, 1, 0, -1, false, true, false), "cursor component mutation");
-        h.carried.components = 0; slot(c, 0).insertable = false;
-        check(!b.containerAct(b.captureContainer(5), 1, 0, -1, false, true, false), "slot insertion rule");
-        slot(c, 0).insertable = true; slot(c, 0).stack.stackCount = 64;
-        check(!b.containerAct(b.captureContainer(5), 1, 0, -1, false, true, false), "stack capacity");
-        slot(c, 0).stack.stackCount = 5;
-        p = b.captureContainer(5); int before = c.field_1761.inventoryClicks;
-        check(b.containerAct(p, 3, 0, -1, true, false, false), "LMB merged stack returns to cursor");
-        check(c.field_1761.inventoryClicks == before + 2 && h.carried.stackCount == 12 && slot(c, 0).stack.method_7960(), "two validated merge clicks");
-        slot(c, 0).stack = new class_1799(item); slot(c, 0).stack.stackCount = 3; slot(c, 0).insertable = false;
-        before = c.field_1761.inventoryClicks;
-        check(b.containerAct(b.captureContainer(5), 3, 0, -1, true, false, false), "output slot collection");
-        check(c.field_1761.inventoryClicks == before + 1 && h.carried.stackCount == 15, "output slot one click");
-        slot(c, 0).stack = new class_1799(item); slot(c, 0).stack.stackCount = 60;
-        check(!b.containerAct(b.captureContainer(5), 3, 0, -1, true, false, false), "whole-stack merge capacity");
-        slot(c, 0).stack.stackCount = 1;
-        check(b.containerAct(b.captureContainer(5), 2, 0, -1, true, false, true), "shift quick move");
-        slot(c, 0).stack = new class_1799(item); p = b.captureContainer(5);
-        ((class_465) c.field_1755).field_2787 = slot(c, 1);
-        check(!b.containerAct(p, 2, 0, -1, true, false, true), "hover rechecked");
-        p = b.captureContainer(5); c.field_1687 = new class_638();
-        check(!b.containerAct(p, 1, 0, -1, false, true, false), "world identity rechecked");
+        b.tickMouse(true, true, true, true);
+        org.lwjgl.glfw.GLFW.buttons[1] = 1;
+        b.tickMouse(true, true, true, true);
+        check(c.field_1761.inventoryClicks == 0, "RMB starts without duplicating vanilla initial click");
+        ((class_465)c.field_1755).field_2787 = slot(c, 1);
+        b.tickMouse(true, true, true, true);
+        check(h.carried.stackCount == 6 && slot(c, 0).stack.stackCount == 1 && slot(c, 1).stack.stackCount == 1,
+            "Java RMB leaves one in original and hovered slots immediately");
+        ((class_465)c.field_1755).field_2787 = slot(c, 0);
+        b.tickMouse(true, true, true, true);
+        check(h.carried.stackCount == 5 && slot(c, 0).stack.stackCount == 2, "RMB revisits are not throttled or deduplicated");
+        org.lwjgl.glfw.GLFW.buttons[1] = 0;
+        int before = c.field_1761.inventoryClicks;
+        ((class_465)c.field_1755).field_2787 = slot(c, 2); b.tickMouse(true, true, true, true);
+        check(c.field_1761.inventoryClicks == before, "physical RMB release ends dragging");
+
+        c = setup(); b = bridge(); h = c.field_1724.field_7512;
+        b.tickMouse(true, true, true, true);
+        org.lwjgl.glfw.GLFW.buttons[1] = 1; b.tickMouse(true, true, true, true);
+        // Vanilla picks up half only after the initial empty-cursor right press.
+        h.carried = new class_1799(item); h.carried.stackCount = 4;
+        ((class_465)c.field_1755).field_2787 = slot(c, 1); b.tickMouse(true, true, true, true);
+        check(c.field_1761.inventoryClicks == 0, "vanilla half-stack pickup is not converted into RMB drag");
+
+        c = setup(); b = bridge(); h = c.field_1724.field_7512;
+        slot(c, 0).stack = new class_1799(item); slot(c, 0).stack.stackCount = 3;
+        slot(c, 1).stack = new class_1799(item); slot(c, 1).stack.stackCount = 5;
+        b.tickMouse(true, true, true, true);
+        org.lwjgl.glfw.GLFW.buttons[0] = 1; b.tickMouse(true, true, true, true);
+        h.carried = slot(c, 0).stack; slot(c, 0).stack = new class_1799(null); // Vanilla initial pickup.
+        ((class_465)c.field_1755).field_2787 = slot(c, 1); b.tickMouse(true, true, true, true);
+        check(c.field_1761.inventoryClicks == 2 && h.carried.stackCount == 8 && slot(c, 1).stack.method_7960(),
+            "Java LMB merges and returns a matching stack with two clicks");
+        slot(c, 2).stack = new class_1799(item); slot(c, 2).stack.stackCount = 60;
+        ((class_465)c.field_1755).field_2787 = slot(c, 2); b.tickMouse(true, true, true, true);
+        check(c.field_1761.inventoryClicks == 2, "whole-stack merge capacity enforced");
+        slot(c, 3).stack = new class_1799(item); slot(c, 3).stack.stackCount = 2; slot(c, 3).insertable = false;
+        ((class_465)c.field_1755).field_2787 = slot(c, 3); b.tickMouse(true, true, true, true);
+        check(c.field_1761.inventoryClicks == 3 && h.carried.stackCount == 10, "output slot collection uses one click");
+        slot(c, 4).stack = new class_1799(item); org.lwjgl.glfw.GLFW.keys[340] = 1;
+        ((class_465)c.field_1755).field_2787 = slot(c, 4); b.tickMouse(true, true, true, true);
+        check(c.field_1761.inventoryClicks == 4 && slot(c, 4).stack.method_7960(), "shift drag quick-moves matching stacks");
+        c.field_1687 = new class_638(); slot(c, 5).stack = new class_1799(item);
+        ((class_465)c.field_1755).field_2787 = slot(c, 5); b.tickMouse(true, true, true, true);
+        check(c.field_1761.inventoryClicks == 4, "world identity change clears the drag gesture");
+        b.tickMouse(false, true, true, true);
+        ((class_465)c.field_1755).field_2787 = slot(c, 6); b.tickMouse(true, true, true, true);
+        check(c.field_1761.inventoryClicks == 4, "disabled controller releases its gesture without clicks");
         c = setup(); b = bridge(); p = b.captureContainer(4); c.field_1761.failInventory = true;
         boolean failed = false;
         try { b.containerAct(p, 0, 0, 27, false, false, false); } catch (ReflectiveOperationException expected) { failed = true; }
         check(failed && !b.containerAct(p, 0, 0, 27, false, false, false) && c.field_1761.inventoryClicks == 1,
             "failure after mutation cannot replay");
-        b.stop(); check(b.captureContainer(5) == null, "shutdown rejects work");
+        b.stop(); check(b.captureContainer(4) == null, "shutdown rejects work");
         c = setup();
         InventoryBridge isolated = new InventoryBridge(new ClassLoader(ContainerBridgeTest.class.getClassLoader()) {
             @Override protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
@@ -100,7 +121,8 @@ public final class ContainerBridgeTest {
         }, 12111);
         failed = false;
         try { isolated.prepare(4); } catch (ClassNotFoundException expected) { failed = true; }
-        check(failed && isolated.captureContainer(5) != null, "refill binding failure isolated from mouse");
+        isolated.prepare(5); isolated.tickMouse(true, true, true, true);
+        check(failed && c.field_1761.inventoryClicks == 0, "refill binding failure isolated from mouse controller");
         System.out.println("PASS container bridge: " + checks + " checks (" + args[0] + ")");
     }
 }

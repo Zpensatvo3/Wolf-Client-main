@@ -7,7 +7,7 @@ namespace modules
 class panic : public module
 	{
 	public:
-		panic() : module("panic", "Client") {}
+		panic() : module("Self Destruct", "Client", "panic") {}
 		void run(::cache& cache) override;
 	};
 }

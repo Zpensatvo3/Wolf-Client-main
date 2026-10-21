@@ -1,7 +1,7 @@
 # OneStep
 
 Minecraft Fabric için Windows x64 üzerinde çalışan C++20 istemci.
-OpenGL/ImGui arayüzü, 61 kayıtlı modül, HUD düzenleyicisi, public config servisi
+OpenGL/ImGui arayüzü, 60 kayıtlı modül, HUD düzenleyicisi, public config servisi
 ve sürüme özel Java köprüleri aynı kaynak ağacında geliştirilir.
 
 ## Başlangıç
@@ -10,6 +10,7 @@ ve sürüme özel Java köprüleri aynı kaynak ağacında geliştirilir.
 2. Kullanım ve paketleme: [Launcher rehberi](launcher/README.md).
 3. Derleme hedefleri: [Minecraft sürümleri](docs/MINECRAFT_TARGETS.md).
 4. Modüllerin kapsam ve sınırları: [Modül notları](docs/MODULES.md).
+5. Hit Crystal / Triggerbot Java geçişi için Argon kaynak notları: [Argon referansı](docs/ARGON_REFERENCE.md).
 
 Üretim API'si: `https://onestep-auth.gogogamesas.workers.dev`.
 Depodaki [yayın kaydı](server/deployment.json) 20 Ekim 2026 launcher-only v2
@@ -55,6 +56,14 @@ GitHub Actions, offline kontrollerden sonra yedi DLL hedefini ve launcher'ı
 derler. Başarılı artifact üretimi, canlı yayın veya oyun içi doğrulama değildir.
 Kimlik doğrulaması üretim derlemesinde zorunludur;
 [public build ayarları](server/SECURITY_SETUP.md) eksikse derleme durur.
+
+Yerel oyun denemesi için `./Build-Test.ps1` launcher gerektirmeyen, imzasız
+Fabric 1.21.11 x64 test DLL'i üretir. Çıktı:
+`build/local-test/1.21.11/Onestep-TEST-NO-LAUNCHER.dll`.
+`-MinecraftVersion` ile başka desteklenen hedef seçilebilir.
+Bu yol açık test işaretleriyle Debug yapılandırmasını ve hız optimizasyonlarını
+kullanır; ekranda `TEST DLL - NO LAUNCHER` etiketi görünür. Launcher oturumu ve
+sunucu config erişimi açılmaz. Üretim DLL'leri ve ara dosyaları ayrı tutulur.
 
 ## Doğrulama
 

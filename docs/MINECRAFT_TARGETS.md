@@ -8,7 +8,8 @@ offline signature check does not establish gameplay compatibility.
 This is the canonical target/build guide. The
 [26.x audit](MINECRAFT_26_PORT.md) retains version-specific evidence and fixture
 pins; [hybrid migration](HYBRID_MIGRATION.md) describes the 1.21.11 Java I/O
-exceptions. The catalog currently has 61 modules; historical audit counts are
+groups and the Hit Crystal / Triggerbot Java controllers across all seven exact targets.
+The catalog currently has 60 modules; historical audit counts are
 dated results, not the current test inventory.
 
 ## Architecture
@@ -27,8 +28,9 @@ dated results, not the current test inventory.
   fields and constructors on unrelated classes cannot share an incompatible ID.
   JNI resolution runs outside the cache lock to allow Java class initialization.
 - `src/bridge/`: version-scoped NameProtect/Sky/View Model integration and the
-  documented 1.21.11 hybrid I/O groups. C++ still owns module decisions/UI;
-  this is not a conversion of all modules to Java.
+  documented 1.21.11 hybrid I/O groups. Hit Crystal / Triggerbot decisions, timers and
+  game operations also execute in Java on every exact target. C++ retains
+  UI/config, physical input and permission/lifecycle boundaries.
 
 The runtime reads the Minecraft mod version from Fabric Loader metadata before
 registering modules, initializing auth, or installing rendering hooks. An unknown

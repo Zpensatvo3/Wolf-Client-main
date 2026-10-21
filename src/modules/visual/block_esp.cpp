@@ -10,7 +10,6 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
-#include <limits>
 #include <unordered_set>
 #include <vector>
 #include <array>
@@ -82,41 +81,183 @@ namespace
         return true;
     }
 
-	bool camera_snapshot(const services::game::client_context& context, double& x, double& y, double& z,
-		float& yaw, float& pitch, float& fov)
-	{
-		const auto& instance = context.instance;
-		const auto& player = context.player;
-		auto& adapter = platform::adapter::get();
-		float tick_delta = adapter.get_tick_delta(instance);
-		auto cam = adapter.get_camera_data(instance, player, tick_delta);
-		if (platform::jni_context::clear_exception() || !cam.valid) return false;
-		x = cam.pos.x;
-		y = cam.pos.y;
-		z = cam.pos.z;
-		yaw = cam.yaw;
-		pitch = cam.pitch;
-		fov = cam.fov;
-		return true;
-	}
+    struct view_point { double x, y, z; };
+    view_point operator+(view_point a, view_point b) { return {a.x+b.x, a.y+b.y, a.z+b.z}; }
+    view_point operator-(view_point a, view_point b) { return {a.x-b.x, a.y-b.y, a.z-b.z}; }
+    view_point operator*(view_point a, double scale) { return {a.x*scale, a.y*scale, a.z*scale}; }
+    double dot(view_point a, view_point b) { return a.x*b.x+a.y*b.y+a.z*b.z; }
+    bool finite(view_point p) { return std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z); }
 
-	bool project(double wx, double wy, double wz, double cx, double cy, double cz,
-		float yaw, float pitch, float width, float height, float fov, float& sx, float& sy)
-	{
-		constexpr double pi = 3.14159265358979323846;
-		const double rx = wx - cx, ry = wy - cy, rz = wz - cz;
-		const double yaw_r = yaw * pi / 180.0, pitch_r = pitch * pi / 180.0;
-		const double syaw = std::sin(yaw_r), cyaw = std::cos(yaw_r);
-		const double sp = std::sin(pitch_r), cp = std::cos(pitch_r);
-		const double vx = rx * -cyaw + rz * -syaw;
-		const double vy = rx * -syaw * sp + ry * cp + rz * cyaw * sp;
-		const double vz = rx * -syaw * cp - ry * sp + rz * cyaw * cp;
-		if (vz < 0.08) return false;
-		const double focal = (height * .5) / std::tan(std::clamp(fov, 1.0f, 179.0f) * pi / 360.0);
-		sx = static_cast<float>(width * .5 + vx * focal / vz);
-		sy = static_cast<float>(height * .5 - vy * focal / vz);
-		return std::isfinite(sx) && std::isfinite(sy);
-	}
+    struct view_plane
+    {
+        view_point normal;
+        double offset;
+        double box_radius = 0.;
+        double distance(view_point p) const { return dot(normal, p)+offset; }
+    };
+
+    struct block_view
+    {
+        view_point camera, axis_x, axis_y, axis_z;
+        ImVec2 origin, size;
+        double focal = 0.;
+        std::array<view_point, 8> corner_offsets;
+        std::array<view_plane, 5> planes;
+
+        view_point to_view(view_point p) const
+        {
+            p = p-camera;
+            return axis_x*p.x+axis_y*p.y+axis_z*p.z;
+        }
+
+        ImVec2 project(view_point p) const
+        {
+            return {static_cast<float>(origin.x+size.x*.5+p.x*focal/p.z),
+                static_cast<float>(origin.y+size.y*.5-p.y*focal/p.z)};
+        }
+    };
+
+    bool camera_snapshot(const services::game::client_context& context, block_view& view)
+    {
+        auto& adapter = platform::adapter::get();
+        const float delta = adapter.get_tick_delta(context.instance);
+        if (platform::jni_context::clear_exception() || !std::isfinite(delta)) return false;
+        const auto camera = adapter.get_camera_data(context.instance, context.player, std::clamp(delta, 0.f, 1.f));
+        if (platform::jni_context::clear_exception() || !camera.valid ||
+            !std::isfinite(camera.yaw) || !std::isfinite(camera.pitch) ||
+            !std::isfinite(camera.fov) || camera.fov <= 1.f || camera.fov >= 179.f) return false;
+        view.camera = {camera.pos.x, camera.pos.y, camera.pos.z};
+        const auto* viewport = ImGui::GetMainViewport();
+        view.origin = viewport->Pos;
+        view.size = viewport->Size;
+        if (!finite(view.camera) || !std::isfinite(view.origin.x) || !std::isfinite(view.origin.y) ||
+            !std::isfinite(view.size.x) || !std::isfinite(view.size.y) ||
+            view.size.x <= 0.f || view.size.y <= 0.f) return false;
+
+        // One camera transform per frame; each block is an axis-aligned unit cube.
+        constexpr double pi = 3.14159265358979323846;
+        const double yaw = camera.yaw*pi/180., pitch = camera.pitch*pi/180.;
+        const double sy = std::sin(yaw), cy = std::cos(yaw), sp = std::sin(pitch), cp = std::cos(pitch);
+        view.axis_x = {-cy, -sy*sp, -sy*cp};
+        view.axis_y = {0., cp, -sp};
+        view.axis_z = {-sy, cy*sp, cy*cp};
+        const double tangent_y = std::tan(camera.fov*pi/360.);
+        const double tangent_x = tangent_y*view.size.x/view.size.y;
+        view.focal = view.size.y/(2.*tangent_y);
+        view.planes = {{{{0., 0., 1.}, -.08}, {{1., 0., tangent_x}, 0.},
+            {{-1., 0., tangent_x}, 0.}, {{0., 1., tangent_y}, 0.}, {{0., -1., tangent_y}, 0.}}};
+        for (auto& plane : view.planes)
+            plane.box_radius = .5*(std::abs(dot(plane.normal, view.axis_x))+
+                std::abs(dot(plane.normal, view.axis_y))+std::abs(dot(plane.normal, view.axis_z)));
+        for (int i = 0; i < 8; ++i)
+            view.corner_offsets[i] = view.axis_x*((i & 4) ? .5 : -.5)+
+                view.axis_y*((i & 2) ? .5 : -.5)+view.axis_z*((i & 1) ? .5 : -.5);
+        return true;
+    }
+
+    struct visible_block
+    {
+        view_point center;
+        unsigned clip_mask = 0;
+    };
+
+    // A quad gains at most one vertex at each of the five clipping planes.
+    // Fixed storage avoids per-face allocations when many blocks are selected.
+    struct clipped_face
+    {
+        std::array<view_point, 10> points{};
+        int count = 0;
+    };
+
+    clipped_face clip_face(const clipped_face& input, const view_plane& plane)
+    {
+        clipped_face output;
+        if (!input.count) return output;
+        view_point a = input.points[input.count-1];
+        double da = plane.distance(a);
+        for (int i = 0; i < input.count; ++i)
+        {
+            const view_point b = input.points[i];
+            const double db = plane.distance(b);
+            if ((da >= 0.) != (db >= 0.)) output.points[output.count++] = a+(b-a)*(da/(da-db));
+            if (db >= 0.) output.points[output.count++] = b;
+            a = b;
+            da = db;
+        }
+        return output;
+    }
+
+    bool clip_edge(view_point& a, view_point& b, const block_view& view, unsigned clip_mask)
+    {
+        for (std::size_t i = 0; i < view.planes.size(); ++i)
+        {
+            if (!(clip_mask & (1u << i))) continue;
+            const double da = view.planes[i].distance(a), db = view.planes[i].distance(b);
+            if (da < 0. && db < 0.) return false;
+            if ((da < 0.) != (db < 0.))
+            {
+                const view_point intersection = a+(b-a)*(da/(da-db));
+                if (da < 0.) a = intersection; else b = intersection;
+            }
+        }
+        return true;
+    }
+
+    void draw_block(ImDrawList* draw, const block_view& view, const visible_block& block,
+        ImVec4 color, float fill_opacity, float line_thickness)
+    {
+        std::array<view_point, 8> corners;
+        for (std::size_t i = 0; i < corners.size(); ++i) corners[i] = block.center+view.corner_offsets[i];
+        static constexpr int faces[6][4] = {
+            {0, 1, 3, 2}, {4, 6, 7, 5}, // -X, +X
+            {0, 4, 5, 1}, {2, 3, 7, 6}, // -Y, +Y
+            {0, 2, 6, 4}, {1, 5, 7, 3}  // -Z, +Z
+        };
+        if (fill_opacity > 0.f)
+        {
+            struct face_order { int index; double depth; };
+            std::array<face_order, 6> order;
+            for (int i = 0; i < 6; ++i)
+                order[i] = {i, corners[faces[i][0]].z+corners[faces[i][1]].z+
+                    corners[faces[i][2]].z+corners[faces[i][3]].z};
+            std::sort(order.begin(), order.end(), [](const auto& a, const auto& b) { return a.depth > b.depth; });
+            static constexpr float shade[6] = {.82f, .82f, .65f, 1.f, .92f, .92f};
+            for (const auto& face : order)
+            {
+                clipped_face polygon;
+                polygon.count = 4;
+                for (int i = 0; i < 4; ++i) polygon.points[i] = corners[faces[face.index][i]];
+                for (std::size_t i = 0; i < view.planes.size() && polygon.count >= 3; ++i)
+                    if (block.clip_mask & (1u << i)) polygon = clip_face(polygon, view.planes[i]);
+                if (polygon.count < 3) continue;
+                std::array<ImVec2, 10> points;
+                for (int i = 0; i < polygon.count; ++i) points[i] = view.project(polygon.points[i]);
+                double area = 0.;
+                for (int i = 0; i < polygon.count; ++i)
+                {
+                    const auto a = points[i], b = points[(i+1)%polygon.count];
+                    area += static_cast<double>(a.x)*b.y-static_cast<double>(b.x)*a.y;
+                }
+                if (std::abs(area) < 1.e-6) continue;
+                // ImGui's antialiased convex fill requires clockwise screen vertices.
+                if (area < 0.) std::reverse(points.begin(), points.begin()+polygon.count);
+                const float light = shade[face.index];
+                const ImVec4 fill(color.x*light, color.y*light, color.z*light, color.w*fill_opacity);
+                draw->AddConvexPolyFilled(points.data(), polygon.count, ImGui::ColorConvertFloat4ToU32(fill));
+            }
+        }
+        static constexpr int edges[12][2] = {
+            {0, 1}, {0, 2}, {0, 4}, {1, 3}, {1, 5}, {2, 3},
+            {2, 6}, {3, 7}, {4, 5}, {4, 6}, {5, 7}, {6, 7}
+        };
+        const ImU32 line = ImGui::ColorConvertFloat4ToU32(color);
+        for (const auto& edge : edges)
+        {
+            auto a = corners[edge[0]], b = corners[edge[1]];
+            if (clip_edge(a, b, view, block.clip_mask))
+                draw->AddLine(view.project(a), view.project(b), line, line_thickness);
+        }
+    }
 
 	std::string display_block_name(const std::string& identifier)
 	{
@@ -255,12 +396,11 @@ void modules::block_esp::render_overlay()
     jni::frame render_frame{96};
     services::game::client_context context;
     if (!services::game::capture_client_context(context, true, false)) { clear_snapshot(); return; }
-	double cx = 0.0, cy = 0.0, cz = 0.0;
-	float yaw = 0.0f, pitch = 0.0f, fov = 70.0f;
-	{
-		jni::frame frame{ 48 };
-		if (!camera_snapshot(context, cx, cy, cz, yaw, pitch, fov)) { clear_snapshot(); return; }
-	}
+    block_view view;
+    {
+        jni::frame frame{48};
+        if (!camera_snapshot(context, view)) { clear_snapshot(); return; }
+    }
 
 	std::vector<marker> draw_markers;
 	{
@@ -272,42 +412,36 @@ void modules::block_esp::render_overlay()
 	}
 	if (draw_markers.empty()) return;
 
-	const ImVec2 display = ImGui::GetIO().DisplaySize;
-	const ImColor accent = gui::get_dynamic_color();
-	ImDrawList* draw = ImGui::GetBackgroundDrawList();
-	for (const marker& entry : draw_markers)
-	{
-        if (std::find(settings_snapshot.selected_blocks.begin(), settings_snapshot.selected_blocks.end(),
-            entry.key) == settings_snapshot.selected_blocks.end()) continue;
-		const float alpha = 0.92f;
-		ImVec4 line_value = accent.Value;
-		line_value.w = alpha;
-		ImVec4 fill_value = accent.Value;
-		fill_value.w = std::clamp(settings_snapshot.fill_opacity, 0.0f, 0.35f) * alpha;
-
-		float min_x = (std::numeric_limits<float>::max)();
-		float min_y = (std::numeric_limits<float>::max)();
-		float max_x = (std::numeric_limits<float>::lowest)();
-		float max_y = (std::numeric_limits<float>::lowest)();
-		int projected = 0;
-		for (int x = 0; x <= 1; ++x) for (int y = 0; y <= 1; ++y) for (int z = 0; z <= 1; ++z)
-		{
-			float sx = 0.0f, sy = 0.0f;
-			if (project(entry.x + x, entry.y + y, entry.z + z,
-				cx, cy, cz, yaw, pitch, display.x, display.y, fov, sx, sy))
-			{
-				min_x = std::min(min_x, sx); min_y = std::min(min_y, sy);
-				max_x = std::max(max_x, sx); max_y = std::max(max_y, sy); ++projected;
-			}
-		}
-		if (projected < 4 || max_x - min_x < 1.0f || max_y - min_y < 1.0f ||
-			max_x < 0.0f || min_x > display.x || max_y < 0.0f || min_y > display.y)
-			continue;
-		draw->AddRectFilled(ImVec2(min_x, min_y), ImVec2(max_x, max_y),
-			ImGui::ColorConvertFloat4ToU32(fill_value), 1.0f);
-		draw->AddRect(ImVec2(min_x, min_y), ImVec2(max_x, max_y),
-			ImGui::ColorConvertFloat4ToU32(line_value), 1.0f, 0, settings_snapshot.line_thickness);
-	}
+    if (!std::isfinite(settings_snapshot.fill_opacity) || !std::isfinite(settings_snapshot.line_thickness)) return;
+    const std::unordered_set<std::string> selected(settings_snapshot.selected_blocks.begin(), settings_snapshot.selected_blocks.end());
+    std::vector<visible_block> visible;
+    visible.reserve(draw_markers.size());
+    for (const marker& entry : draw_markers)
+    {
+        if (!selected.contains(entry.key)) continue;
+        const auto center = view.to_view({entry.x+.5, entry.y+.5, entry.z+.5});
+        if (!finite(center)) continue;
+        unsigned clip_mask = 0;
+        bool outside = false;
+        for (std::size_t i = 0; i < view.planes.size(); ++i)
+        {
+            const auto& plane = view.planes[i];
+            const double distance = plane.distance(center);
+            if (distance < -plane.box_radius) { outside = true; break; }
+            if (distance < plane.box_radius) clip_mask |= 1u << i;
+        }
+        if (!outside) visible.push_back({center, clip_mask});
+    }
+    // Painter's order lets nearer translucent boxes cover farther boxes.
+    std::sort(visible.begin(), visible.end(), [](const auto& a, const auto& b) { return a.center.z > b.center.z; });
+    ImVec4 color = gui::get_dynamic_color().Value;
+    color.w = .92f;
+    const float fill_opacity = std::clamp(settings_snapshot.fill_opacity, 0.f, .35f);
+    const float line_thickness = std::clamp(settings_snapshot.line_thickness, .5f, 3.f);
+    ImDrawList* draw = ImGui::GetBackgroundDrawList();
+    draw->PushClipRect(view.origin, ImVec2(view.origin.x+view.size.x, view.origin.y+view.size.y), true);
+    for (const auto& block : visible) draw_block(draw, view, block, color, fill_opacity, line_thickness);
+    draw->PopClipRect();
 }
 
 void modules::block_esp::clear_snapshot()

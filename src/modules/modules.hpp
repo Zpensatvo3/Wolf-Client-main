@@ -33,7 +33,6 @@
 #include "misc/trajectories.hpp"
 #include "misc/right_clicker.hpp"
 #include "misc/left_clicker.hpp"
-#include "misc/inventory_clicker.hpp"
 #include "misc/fast_place.hpp"
 #include "misc/fast_exp.hpp"
 #include "misc/mouse_tweaks.hpp"

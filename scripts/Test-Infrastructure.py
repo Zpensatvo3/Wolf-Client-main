@@ -173,7 +173,7 @@ def validate_anti_bot():
         errors.append("AntiBot must default on without overriding imported module state")
     consumers = {
         "modules/combat/legit_aim_engine.cpp": 1, "modules/combat/blatant_aim_engine.cpp": 2,
-        "modules/combat/trigger_adapter.cpp": 1, "modules/vape/vape_module.cpp": 1,
+        "services/game/world_bridge.cpp": 1, "modules/vape/vape_module.cpp": 1,
         "modules/visual/player_esp.cpp": 2, "modules/visual/glow_esp.cpp": 1,
         "modules/visual/chams.cpp": 1, "modules/visual/nametag.cpp": 1,
         "modules/visual/radar.cpp": 1, "services/game/target_service.cpp": 1,

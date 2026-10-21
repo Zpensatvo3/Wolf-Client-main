@@ -9,9 +9,7 @@
 #include <imgui/imgui.h>
 
 #include "mouse_tweaks.hpp"
-#include "mouse_tweaks_logic.hpp"
 #include "../../services/game/inventory_bridge.hpp"
-#include "../../services/input/input_service.hpp"
 #include "../../ui/settings_renderer.hpp"
 #include "../ui_redirect.hpp"
 #include "../../gui/gui.hpp"
@@ -219,88 +217,26 @@ void reset_state(bool release_screen)
 	}
 }
 
-struct modules::mouse_tweaks::runtime
-{
-    maps::Object player{nullptr, true}, world{nullptr, true}, screen{nullptr, true}, handler{nullptr, true};
-    int sync = -1;
-    mouse_tweaks_logic::gestures gestures;
-    void reset() { player = {}; world = {}; screen = {}; handler = {}; sync = -1; gestures = {}; }
-    bool matches(const services::game::inventory_bridge::container_snapshot& s) const {
-        auto env = jni::get_env();
-        return sync == s.sync_id && player && env->IsSameObject(player.object_instance, s.player) &&
-            env->IsSameObject(world.object_instance, s.world) && env->IsSameObject(screen.object_instance, s.screen) &&
-            env->IsSameObject(handler.object_instance, s.handler);
-    }
-    void remember(const services::game::inventory_bridge::container_snapshot& s) {
-        player = maps::Object{s.player, false}; world = maps::Object{s.world, false};
-        screen = maps::Object{s.screen, false}; handler = maps::Object{s.handler, false}; sync = s.sync_id;
-    }
-};
-
-modules::mouse_tweaks::mouse_tweaks() : module("mouse tweaks", "Player"), runtime_(std::make_unique<runtime>()) {}
+modules::mouse_tweaks::mouse_tweaks() : module("mouse tweaks", "Player") {}
 modules::mouse_tweaks::~mouse_tweaks() = default;
 
 void modules::mouse_tweaks::render_overlay()
 {
     if constexpr (mc::target.build_id != 12111) return;
-    if (native_fallback_.load(std::memory_order_acquire) || !platform::jni_context::bind_current_thread()) return;
-    namespace bridge = services::game::inventory_bridge;
-    if (reset_requested_.exchange(false, std::memory_order_acq_rel) || !enabled) {
-        on_render_shutdown(); if (!enabled) return;
-    }
-    try {
-        jni::frame frame{160};
-        bridge::container_snapshot observed;
-        const auto backend = bridge::capture_container(bridge::feature::mouse, observed);
-        if (backend == services::game::hybrid::result::native_fallback) {
-            on_render_shutdown(); native_fallback_.store(true, std::memory_order_release); return;
-        }
-        if (backend != services::game::hybrid::result::ready) { on_render_shutdown(); return; }
-        if (!runtime_->matches(observed)) { runtime_->reset(); runtime_->remember(observed); }
-        const bool left = services::input::physical_button_down(services::input::mouse_button::left);
-        const bool right = services::input::physical_button_down(services::input::mouse_button::right);
-        const bool shift = services::input::physical_key_down(VK_LSHIFT) || services::input::physical_key_down(VK_RSHIFT);
-        const auto settings = settings_.read();
-        const auto changes = runtime_->gestures.update(settings, {observed.hover, left, right, observed.cursor_empty});
-        const auto refresh = [&] {
-            bridge::container_snapshot fresh;
-            if (bridge::capture_container(bridge::feature::mouse, fresh) != services::game::hybrid::result::ready ||
-                !runtime_->matches(fresh)) return false;
-            observed = std::move(fresh); return true;
-        };
-        for (int id : changes.right) {
-            if (id < 0 || id >= static_cast<int>(observed.slots.size())) continue;
-            const auto& slot = observed.slots[id];
-            if (observed.cursor_empty || !slot.enabled || !slot.can_insert || !slot.compatible ||
-                (!slot.empty && slot.count >= std::min(slot.limit, observed.cursor_limit))) continue;
-            if (!bridge::container_act(observed, 1, id) || !refresh()) { on_render_shutdown(); return; }
-        }
-        const int id = changes.left;
-        if (id < 0 || id >= static_cast<int>(observed.slots.size())) return;
-        const auto& slot = observed.slots[id];
-        if (!slot.enabled || slot.empty) return;
-        int action = -1;
-        if (observed.cursor_empty) {
-            if (shift && settings.left_click_without_item) action = 2;
-        } else if (settings.left_click_with_item && slot.compatible) {
-            if (shift) action = 2;
-            else if (observed.cursor_count > 0 && slot.count > 0 &&
-                static_cast<long long>(observed.cursor_count) + slot.count <= observed.cursor_limit) action = 3;
-        }
-        if (action >= 0 && !bridge::container_act(observed, action, id)) on_render_shutdown();
-    } catch (...) { platform::jni_context::clear_exception(); on_render_shutdown(); }
+    if (reset_requested_.exchange(false, std::memory_order_acq_rel)) on_render_shutdown();
+    const auto settings = settings_.read();
+    services::game::inventory_bridge::tick_mouse(enabled, settings.right_click_tweak,
+        settings.left_click_with_item, settings.left_click_without_item);
 }
 
 void modules::mouse_tweaks::on_render_shutdown()
 {
-    runtime_->reset();
     services::game::inventory_bridge::cancel(services::game::inventory_bridge::feature::mouse);
 }
 
 void modules::mouse_tweaks::run(::cache& cache)
 {
-    if constexpr (mc::target.build_id == 12111)
-        if (!native_fallback_.load(std::memory_order_acquire)) return;
+	if constexpr (mc::target.build_id == 12111) return;
 	const auto settings_snapshot = settings_.read();
 	if (gui::draw || !cache.is_valid() || !cache.player || !cache.instance || !jni::get_env())
 	{
@@ -493,7 +429,7 @@ void modules::mouse_tweaks::on_disable(::cache& cache)
 {
     if constexpr (mc::target.build_id == 12111) {
         reset_requested_.store(true, std::memory_order_release);
-        if (!native_fallback_.load(std::memory_order_acquire)) return;
+        return;
     }
 	(void)cache;
 	reset_state(true);

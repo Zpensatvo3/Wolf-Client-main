@@ -127,10 +127,26 @@ namespace {
     }
 }
 
-bool auth::permitted(scope capability){return live(authority.load(std::memory_order_acquire),unsigned(capability));}
+#if !ONESTEP_AUTH_REQUIRED
+namespace { std::atomic_bool local_test_active{false}; }
+#endif
+bool auth::permitted(scope capability){
+#if !ONESTEP_AUTH_REQUIRED
+    constexpr unsigned local_scopes=unsigned(scope::modules)|unsigned(scope::input)|unsigned(scope::bridge)|unsigned(scope::render);
+    const auto mask=unsigned(capability);
+    return local_test_active.load(std::memory_order_acquire)&&mask!=0&&(mask&local_scopes)==mask;
+#else
+    return live(authority.load(std::memory_order_acquire),unsigned(capability));
+#endif
+}
 bool auth::is_authenticated(){auto state=authority.load();return state&&live(state,state->capabilities);}
 int auth::get_active_epoch(){auto state=authority.load();return state?state->epoch:0;}
-void auth::configure_config_service(const std::string&) { /* Config access requires a verified runtime lease. */ }
+void auth::configure_config_service(const std::string&) {
+#if !ONESTEP_AUTH_REQUIRED
+    local_test_active.store(true,std::memory_order_release);
+#endif
+    // Remote config access still requires a verified runtime lease.
+}
 
 void auth::stop_heartbeat_monitor() {
     {std::lock_guard lock(g_heartbeat_mutex);
@@ -139,7 +155,12 @@ void auth::stop_heartbeat_monitor() {
     g_heartbeat_running=false;g_heartbeat_cv.notify_all();
     if(g_heartbeat_thread.joinable())g_heartbeat_thread.join();
 }
-void auth::controlled_shutdown(){revoke_authority();stop_heartbeat_monitor();}
+void auth::controlled_shutdown(){
+#if !ONESTEP_AUTH_REQUIRED
+    local_test_active.store(false,std::memory_order_release);
+#endif
+    revoke_authority();stop_heartbeat_monitor();
+}
 
 auth::auth_result auth::authenticate(const std::string& key,const std::string& domain) {
     auth_result result;

@@ -3,7 +3,7 @@
 Bu belge README'deki tekrarlanan özellik kayıtlarını tek yerde toplar.
 Tam kayıt listesi ve stable ID'ler için kaynak otoritesi
 `src/modules/module_catalog.cpp` ile `src/modules/settings_manifest.json`'dır.
-Mevcut katalog 61 modül içerir; bu sayı oyun içi kabul testi sayısı değildir.
+Mevcut katalog 60 modül içerir; bu sayı oyun içi kabul testi sayısı değildir.
 Arayüz gruplaması [UI rehberinde](GRIM_UI_LAYOUT.md), Java I/O kapsamı
 [hibrit geçiş belgesinde](HYBRID_MIGRATION.md) açıklanır.
 
@@ -15,7 +15,7 @@ Arayüz gruplaması [UI rehberinde](GRIM_UI_LAYOUT.md), Java I/O kapsamı
 - Combat/utility/visual ayarları kilitli snapshot depolarını kullanır. Vape/Chams
   mevcut kilitlerini, Jump Reset revision/iptal sahipliğini, Aim/Trigger/Anchor
   kendi runtime sınırlarını korur. HUD/ArrayList tercihleri render katmanındadır.
-- Friends Manager, Click GUI, Panic, Full Bright, No Jump Delay ve Fast Stop'un
+- Friends Manager, Click GUI, Self Destruct, Full Bright, No Jump Delay ve Fast Stop'un
   modüle özel config alanı yoktur. Arkadaş listesi ve UI tercihleri ayrı sahiptedir.
 - Yeni public config kökü `modules`; her kayıt `id`, `enabled`, `keybind`,
   `settings` taşır. Eski sürüm etiketi okunur, yeni çıktıya yazılmaz.
@@ -63,6 +63,14 @@ Normal ve seçilen profilin tuşu alınır. Yeni birleşik kayıt önceliklidir.
   bekler; ardından 40 tick kayıtsız kalan oyuncuyu ortak hedef/görsel filtresinden
   çıkarır. Görünmezlik, isim veya hareketsizlik tek başına kanıt değildir.
   Tab listesi güvenilmezse elemez; dünya/sunucu değişiminde geçmiş temizlenir.
+- **Triggerbot:** hedef/silah ve kritik kontrolleri, rastgele cooldown/reaction,
+  güncel ray sorgusu ve vanilla saldırı Java WorldBridge'dedir. Arkadaş/bot
+  filtreleri ile Shield Breaker/Mace Swap hazırlıkları ortak native servislere
+  bağlanır. On Click Only, Java tarafında GLFW ile sol tuşu okur. Varsayılan
+  açık Swing Hand seçeneği el sallamayı yönetir. Click Simulation (varsayılan
+  kapalı), saldırı sonrası oyunun mouse callback'ine bir basma/bırakma çifti
+  yollar; eklenen vanilla press kuyruğunu temizler. Eski config anahtarları korunur. Menü, odak, oturum,
+  manuel slot veya ayar değişimi döngüyü iptal eder; Windows click üretilmez.
 - **Crystal Aura:** en yakın uygun hedefe kilitlenir; arkadaşları, izleyicileri
   ve Anti Bot adaylarını dışlar. Kılıç, havalanma, uygun obsidyen/kristal
   yerleştirme ve kırma aşamalarını izler; hedef kaybında sıradakine geçer.
@@ -76,6 +84,13 @@ Normal ve seçilen profilin tuşu alınır. Yeni birleşik kayıt önceliklidir.
   Clicker'lar ortak saldırı sahipliğine uyar; Triggerbot önceliklidir.
   Diğer slot/blok makrolarıyla eşzamanlı kullanım doğrulanmamıştır.
 - **Vape:** yalnızca Aim Assist (Simple/Adaptive), Left Clicker, Right Clicker.
+- **Hit Crystal:** fiziksel sağ tuş basılıyken bakılan obsidyen/bedrock üzerinde
+  kristal yerleştirip kırar; mevcut kristal hedefinden de başlayabilir. Kararlar,
+  slot sahipliği, gecikmeler ve etkileşimler tamamen WorldBridge Java denetleyicisindedir.
+  Auto Switch, Restore Slot ve milisaniye gecikmeleri korunur. Boşluk, gerçek
+  erişim ve görüş denetlenir; spawn/kaybolma gözlenir, tekrarlar sınırlıdır.
+  Menü, odak/izin kaybı ve manuel slot değişimi döngüyü iptal eder.
+  [Java geçiş kapsamı ve kaynak kontrolleri](HYBRID_MIGRATION.md#hit-crystal-tam-java-denetleyicisi).
 - **No Jump Delay:** tekrar zıplama cooldown'unu kaldırır; jump basışı üretmez.
 - **Fast Stop:** yerde hareket girdisi kesilince yatay kaymayı bir kez durdurur;
   düşey hızı korur. Hava, sıvı, tırmanma, uçuş, araç ve hurt koşullarında durur;
@@ -100,6 +115,11 @@ ESP/Chams/Storage ESP/Block ESP/Nametag için ayrı mesafe seçimi yoktur.
 Yalnızca oyunun yüklediği/verdiği nesneler görülebilir. Block ESP'nin 10.000
 işaret sınırı korunur; tarama bütçelidir. İkon seçicisi görünür blok item
 modellerini kare başına iki okuma bütçesiyle hazırlar; item'i olmayan blok küple gösterilir.
+Block ESP seçilen blok hücrelerini dünya koordinatlarına oturan 3D kutularla
+gösterir: 12 kenar ve altı yarı saydam yüzey kullanılır; dolgu sıfırsa yalnız
+kenarlar çizilir. Kutu ve yüzeyler uzaktan yakına sıralanır, kamera yakın düzlemi
+ve ekran sınırlarında kesilir. Çizgi kalınlığı ve dolgu ayarları geçerlidir.
+Görüş dışındaki kutular çizilmez; ek bir mesafe veya minimum piksel boyutu sınırı yoktur.
 Item ESP yüklenmiş düşen eşyaların kutu/isim/adet/mesafesini gösterir.
 Dünya/oyuncu kimliğine bağlı overlay snapshot'ları geçersiz oturumda temizlenir;
 önceki worker sonuçları yeni sunucunun üstüne yazılamaz.

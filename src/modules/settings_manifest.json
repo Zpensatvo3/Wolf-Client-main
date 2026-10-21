@@ -366,13 +366,6 @@
       "panel": "src/modules/misc/left_clicker.cpp"
     },
     {
-      "id": "inventory_clicker",
-      "owner": "src/modules/misc/inventory_clicker.hpp",
-      "model": "src/modules/misc/settings/inventory_clicker_settings.hpp",
-      "ownership": "snapshot_store",
-      "panel": "src/modules/misc/inventory_clicker.cpp"
-    },
-    {
       "id": "fast_place",
       "owner": "src/modules/misc/fast_place.hpp",
       "model": "src/modules/misc/settings/fast_place_settings.hpp",

@@ -18,7 +18,8 @@ bool trigger_engine::same_config(const config& a, const config& b)
 {
     return a.cooldown[0] == b.cooldown[0] && a.cooldown[1] == b.cooldown[1] &&
         a.reaction[0] == b.reaction[0] && a.reaction[1] == b.reaction[1] &&
-        a.targets == b.targets && a.weapon == b.weapon && a.criticals == b.criticals && a.on_click == b.on_click;
+        a.targets == b.targets && a.weapon == b.weapon && a.criticals == b.criticals && a.on_click == b.on_click && a.swing_hand == b.swing_hand &&
+        a.click_simulation == b.click_simulation;
 }
 bool trigger_engine::weapon_allowed(weapon_type held, weapon_mode mode)
 {

@@ -10,7 +10,6 @@
 #include "../src/modules/combat/settings/auto_totem_settings.hpp"
 #include "../src/modules/misc/settings/left_clicker_settings.hpp"
 #include "../src/modules/misc/settings/right_clicker_settings.hpp"
-#include "../src/modules/misc/settings/inventory_clicker_settings.hpp"
 #include "../src/modules/misc/settings/fast_exp_settings.hpp"
 #include "../src/modules/misc/settings/trajectories_settings.hpp"
 #include "../src/modules/visual/settings/glow_esp_settings.hpp"
@@ -228,7 +227,6 @@ int main()
         "legit_reaction_delay_ms","legit_action_delay_ms","legit_timing_variation_ms","legit_confirmation_timeout_ms","legit_hotbar_slot","legit_health_threshold","legit_fill_offhand","legit_fill_hotbar","legit_offhand_first","legit_low_health_only","legit_cursor_guided_swap","legit_cursor_travel_ms","legit_pause_with_cursor_item","legit_preserve_hotbar"});
     check_contract<left_clicker>({"min_cps","max_cps","jitter_percent","jitter_camera","jitter_amount","fatigue_enabled","fatigue_factor","glfw_input"});
     check_contract<right_clicker>({"min_cps","max_cps","jitter_percent","jitter_camera","jitter_amount","fatigue_enabled","fatigue_factor","glfw_input","only_blocks"});
-    check_contract<inventory_clicker>({"min_cps","max_cps","click_delay"});
     check_contract<fast_exp>({"min_cps","max_cps","cps"});
     check_contract<trajectories>({"show_bows","show_throwables","show_potions","show_landing_marker","show_flight_time","line_thickness","max_ticks"});
     check_contract<glow_esp>({"box_thickness","show_names","show_health","show_distance","fov","use_game_fov"});
@@ -276,8 +274,6 @@ int main()
     assert(exp.settings.read().min_cps == 22 && exp.settings.read().max_cps == 26 && exp.settings.read().legacy_cps == 0);
     assert(exp.apply_config_settings(R"({"min_cps":10,"max_cps":12,"cps":30})"));
     assert(exp.settings.read().min_cps == 10 && exp.settings.read().max_cps == 12);
-    settings_fixture<inventory_clicker> inventory;
-    assert(inventory.apply_config_settings(R"({"click_delay":135})") && inventory.settings.read().click_delay == 135);
     assert(exp.apply_config_settings(R"({"min_cps":1,"max_cps":50})"));
     assert(exp.settings.read().min_cps == 1 && exp.settings.read().max_cps == 50);
     settings_fixture<auto_totem> totem;

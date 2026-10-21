@@ -22,7 +22,7 @@ chams china_hat wings cape sky trails hit_particles jump_circles block_highlight
 view_model player_esp item_esp storage_esp block_esp radar spotify_hud target_hud
 full_bright nametag jump_reset shield_breaker auto_totem pearl_macro chest_stealer
 elytra_swapper auto_tool auto_armor sprint no_jump_delay fast_stop inv_walk trajectories
-bridge_assist right_clicker left_clicker inventory_clicker fast_place fast_exp
+bridge_assist right_clicker left_clicker fast_place fast_exp
 pot_refill mouse_tweaks vape_aim_assist vape_left_clicker vape_right_clicker
 """.split()
 

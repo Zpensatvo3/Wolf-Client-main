@@ -1,6 +1,10 @@
 #pragma once
+#include <atomic>
+#include <cstdint>
 #include "hybrid_bridge.hpp"
 #include "../../platform/adapter/target_version.hpp"
+
+namespace trigger_engine { struct config; }
 
 namespace services::game::world_bridge
 {
@@ -19,5 +23,10 @@ namespace services::game::world_bridge
     bool begin_pearl(const pearl_snapshot& observed, int slot);
     bool use_pearl();
     bool release_pearl();
+    // Hit Crystal's decisions, timers, world reads and writes all execute in Java.
+    void tick_crystal(bool active, bool auto_switch, bool restore_slot, int place_delay, int break_delay);
+    void cancel_crystal(); // Client-thread ownership cleanup; no new interaction.
+    void tick_trigger(const trigger_engine::config& settings, bool active, const std::atomic<std::uint64_t>& generation);
+    void cancel_trigger();
     void shutdown();
 }

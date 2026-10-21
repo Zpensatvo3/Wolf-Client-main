@@ -40,38 +40,18 @@ public final class ClickerBridgeTest {
         check(!bridge.click(click, false, true), "dead player"); p.alive = true;
 
         class_465 screen = new class_465(); client.field_1755 = screen;
-        p.field_7512 = screen.field_2797;
-        class_1735 slot = new class_1735(0);
-        screen.field_2787 = slot; screen.field_2797.field_7761.add(slot);
         check(bridge.captureClick(3, false) == null, "clickers disabled in inventory");
-        Object[] inventory = bridge.captureInventory();
-        check(bridge.pickup(inventory, true) && client.field_1761.inventoryClicks == 1, "one PICKUP transaction");
-        check(!bridge.pickup(inventory, true), "inventory packet single use");
-        inventory = bridge.captureInventory();
-        check(!bridge.pickup(inventory, false), "inventory physical release");
-        inventory = bridge.captureInventory(); screen.field_2787 = null;
-        check(!bridge.pickup(inventory, true), "mouse left focused slot");
-        inventory = bridge.captureInventory();
-        check(((double[]) inventory[6])[4] == -1 && !bridge.pickup(inventory, true), "no slot keeps screen snapshot, no click");
-        screen.field_2787 = slot;
-        inventory = bridge.captureInventory(); ++screen.field_2797.field_7763;
-        check(!bridge.pickup(inventory, true), "handler sync changed");
-        inventory = bridge.captureInventory(); client.field_1755 = new class_465();
-        check(!bridge.pickup(inventory, true), "screen replaced"); client.field_1755 = screen;
-        p.field_7512 = new class_1703();
-        check(bridge.captureInventory() == null, "player/screen handler mismatch"); p.field_7512 = screen.field_2797;
-        screen.field_2787 = new class_1735(0);
-        check(bridge.captureInventory() == null, "foreign slot with same numeric id rejected"); screen.field_2787 = slot;
-        inventory = bridge.captureInventory(); Object[] heldInventory = inventory;
+        client.field_1755 = null;
+        Object[] heldClick = bridge.captureClick(3, false);
         Throwable[] error = {null};
         Thread worker = new Thread(() -> {
-            try { check(bridge.captureInventory() == null && !bridge.pickup(heldInventory, true), "wrong thread"); }
+            try { check(bridge.captureClick(3, false) == null && !bridge.click(heldClick, false, true), "wrong thread"); }
             catch (Throwable failure) { error[0] = failure; }
         });
         worker.start(); worker.join(); if (error[0] != null) throw new AssertionError(error[0]);
-        check(bridge.pickup(inventory, true), "worker didn't consume main-thread packet");
-        inventory = bridge.captureInventory(); bridge.stop();
-        check(!bridge.pickup(inventory, true) && bridge.captureClick(3, false) == null, "shutdown");
+        check(bridge.click(heldClick, false, true), "worker didn't consume main-thread packet");
+        click = bridge.captureClick(3, false); bridge.stop();
+        check(!bridge.click(click, false, true) && bridge.captureClick(3, false) == null, "shutdown");
         System.out.println("PASS clicker bridge: " + checks + " checks (" + args[0] + ")");
     }
 }

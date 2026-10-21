@@ -148,6 +148,8 @@ class class_310 extends class_1255 {
     int field_1752;
     class_636 field_1761 = new class_636();
     class_239 field_1765;
+    final class_1041 window = new class_1041();
+    public class_1041 method_22683() { return window; }
     int useCount;
     int attackCount;
     private boolean method_1536() { ++attackCount; return true; }
@@ -156,6 +158,9 @@ class class_310 extends class_1255 {
         ++useCount; field_1752 = 4;
         if (failUse) { failUse = false; throw new IllegalStateException("Fixture failure after item use"); }
     }
+}
+class class_1041 {
+    public long method_4490() { return 1L; }
 }
 class class_1255 {
     private final Thread owner = Thread.currentThread();

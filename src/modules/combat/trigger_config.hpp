@@ -17,7 +17,9 @@ namespace trigger_engine
             d::enumeration<&config::targets>("targets", {"Targets"}, targets),
             d::enumeration<&config::weapon>("weapon", {"Starting Weapon"}, weapons),
             d::enumeration<&config::criticals>("criticals", {"Criticals"}, criticals),
-            d::toggle("on_click", {"On Click Only"}, &config::on_click)
+            d::toggle("on_click", {"On Click Only"}, &config::on_click),
+            d::toggle("swing_hand", {"Swing Hand"}, &config::swing_hand),
+            d::toggle("click_simulation", {"Click Simulation"}, &config::click_simulation)
         };
         return fields;
     }

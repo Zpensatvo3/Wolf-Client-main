@@ -3,6 +3,7 @@
 
 #include "trigger_engine.hpp"
 #include "triggerbot.hpp"
+#include "../../services/game/world_bridge.hpp"
 #include "../ui_redirect.hpp"
 void modules::triggerbot::run(::cache&)
 {
@@ -27,4 +28,9 @@ void modules::triggerbot::on_disable(::cache&)
 void modules::triggerbot::on_enable(::cache&)
 {
 	trigger_engine::request_reset(state);
+}
+
+void modules::triggerbot::cancel_on_client_thread()
+{
+    services::game::world_bridge::cancel_trigger();
 }

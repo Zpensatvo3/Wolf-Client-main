@@ -20,7 +20,7 @@ kontrolleri; `src/ui/` uygulama sayfalarını yönetir. İki dizin de aktiftir.
   seçili kart çerçevesi Reduce Motion kapalıysa animasyonludur.
 - Full Bright gibi keybind dışında kontrolü olmayan kartlar doğrudan açılır/
   kapanır. No Jump Delay/Fast Stop'un açıklama-only panelleri de bu kapsamdadır.
-  Click GUI/Friends Manager'ın özel kontrolleri korunur. Panic anlık unload'dur.
+  Click GUI/Friends Manager'ın özel kontrolleri korunur. Self Destruct anlık unload'dur.
   Arama/Enter ile seçim aynı davranışı uygular.
 - Ayar panelinin hit-test alanı ayrıdır; modüle özgü child ID'si kaydırma
   konumunu ayırır. Kart/metin/filtre ölçümleri uygun anahtarla önbelleklenir;

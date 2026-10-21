@@ -38,7 +38,6 @@ TESTS = {
     "fast_stop_engine": ["tests/fast_stop_engine_test.cpp"],
     "auto_tool_scoring": ["tests/auto_tool_scoring_test.cpp"],
     "gear_policy": ["tests/gear_policy_test.cpp"],
-    "mouse_tweaks_logic": ["tests/mouse_tweaks_logic_test.cpp"],
     "bridge_assist_logic": ["tests/bridge_assist_logic_test.cpp"],
     "inv_walk_engine": ["tests/inv_walk_engine_test.cpp"],
     "pot_refill_engine": ["tests/pot_refill_engine_test.cpp"],

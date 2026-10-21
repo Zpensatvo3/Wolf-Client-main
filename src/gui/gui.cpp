@@ -25,6 +25,8 @@
 #include "../modules/combat/mace_swap.hpp"
 #include "../modules/combat/shield_breaker.hpp"
 #include "../modules/combat/jump_reset.hpp"
+#include "../modules/combat/hit_crystal.hpp"
+#include "../modules/combat/triggerbot.hpp"
 #include "../modules/misc/fast_exp.hpp"
 #include "../modules/misc/left_clicker.hpp"
 #include "../modules/misc/right_clicker.hpp"
@@ -913,6 +915,9 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 		ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Right, accept_buttons && right_down);
 	}
 	ImGui::NewFrame();
+#if defined(ONESTEP_AUTH_INSECURE_TEST_BUILD) && ONESTEP_AUTH_INSECURE_TEST_BUILD == 1
+	ImGui::GetForegroundDrawList()->AddText(ImVec2(12.f, 12.f), IM_COL32(255, 190, 60, 255), "OneStep TEST DLL - NO LAUNCHER");
+#endif
 	if (auth::permitted(auth::scope::render)) platform::client_dispatcher::drain();
 	else platform::client_dispatcher::clear();
 
@@ -988,6 +993,10 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 			jump->cancel_on_client_thread();
 		if (auto* walk = dynamic_cast<modules::inv_walk*>(modules::find_module_by_id("inv_walk")))
 			walk->cancel_on_client_thread();
+        if (auto* crystal = dynamic_cast<modules::hit_crystal*>(modules::find_module_by_id("hit_crystal")))
+            crystal->cancel_on_client_thread();
+        if (auto* trigger = dynamic_cast<modules::triggerbot*>(modules::find_module_by_id("triggerbot")))
+            trigger->cancel_on_client_thread();
 	}
 
 	if (gui::draw && !gui::loader_visible && auth::permitted(auth::scope::render))

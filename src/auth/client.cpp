@@ -16,6 +16,11 @@ namespace {
 void auth::client::initialize() {
     std::lock_guard lock(state_mutex);
     state={};stopping=false;
+    if constexpr (!config::required) {
+        state.configured=true;state.status=phase::authorized;
+        state.message="LOCAL TEST DLL - NO LAUNCHER";
+        return;
+    }
     state.configured=policy::valid_domain(config::server_domain)&&config::public_key[0];
     state.status=phase::verifying;state.message="Waiting for the OneStep launcher...";
     if(!state.configured){state.status=phase::error;state.message="Client authentication is not configured.";return;}

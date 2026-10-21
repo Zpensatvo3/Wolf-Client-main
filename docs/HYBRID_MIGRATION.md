@@ -1,14 +1,14 @@
-# C++ / Java hibrit geçişi — ilk sekiz grup
+# C++ / Java hibrit geçişi — ilk sekiz grup, Hit Crystal ve Triggerbot
 
 ## Kapsam
 
-Yalnızca Fabric **1.21.11**:
+İlk sekiz grup yalnızca Fabric **1.21.11** içindir:
 
 - No Jump Delay ve Fast Stop: `src/bridge/GameBridge.java`.
 - Fast Place, Sprint ve Full Bright: `src/bridge/UtilityBridge.java`.
 - Auto Tool ve Fast EXP: `src/bridge/ItemBridge.java`.
-- Left Clicker, Right Clicker ve Inventory Clicker: ItemBridge'in bağımsız, lazy
-  hazırlanan 3/4/5 özellikleri; önceki iki özellik değişmeden korunur.
+- Left Clicker ve Right Clicker: ItemBridge'in bağımsız, lazy hazırlanan 3/4
+  özellikleri; önceki iki özellik değişmeden korunur. Inventory Clicker kaldırıldı.
 - Chest Stealer, Auto Armor ve Elytra Swapper: `src/bridge/InventoryBridge.java`.
 - Pot Refill ve Mouse Tweaks: InventoryBridge'in bağımsız 4/5 container özellikleri.
 - Bridge Assist ve Pearl Macro: `src/bridge/WorldBridge.java`.
@@ -17,8 +17,13 @@ Yalnızca Fabric **1.21.11**:
 No Jump Delay politikası ve Fast Stop release-edge hesaplama motoru C++'ta
 aynen korunur. Fast Place'ın gecikme ayarı, Sprint'in eşya kullanımı tercihi ve
 Full Bright'ın 16.0 hedefi değişmez. UI, module ID, config, keybind, launcher,
-lisans ve kalan modüller değişmez. Diğer altı hedef mevcut native yolu kullanır.
+lisans ve kalan modüller değişmez. Bu sekiz grubun diğer altı hedefi mevcut native yolu kullanır.
 Bu aşama bütün modüllerin Java'ya taşındığı anlamına gelmez.
+
+**Hit Crystal** ayrı bir tam Java denetleyicisidir: WorldBridge'in 3 numaralı
+özelliği desteklenen yedi tam hedef için kaynakta bağlanır. Kararlar, zamanlama,
+hedef takibi, slot ve oyun işlemleri Java'dadır; C++ UI/config, fiziksel giriş,
+izin/odak kapısı ve çağrı yaşam döngüsünü sağlar. Ayrıntılar [Hit Crystal](#hit-crystal-tam-java-denetleyicisi) bölümündedir.
 
 Kullanıcı ilk üç gruptaki yedi modülün oyun içinde çalıştığını doğruladı.
 Dördüncü–sekizinci grupların kaynak/offline kontrolleri vardır; oyun içi doğrulama bekliyor.
@@ -46,7 +51,7 @@ Sürüm kapsamı yalnızca 1.21.11'dir; durum tablosu yeni bir oyun testi iddias
 | 1 | [No Jump Delay, Fast Stop](#ilk-grup-karar-snapshotı) | Kullanıcı doğruladı |
 | 2 | [Fast Place, Sprint, Full Bright](#ikinci-grup-utility-yaşam-döngüsü) | Kullanıcı doğruladı |
 | 3 | [Auto Tool, Fast EXP](#üçüncü-grup-eşya-snapshotı-ve-tek-kullanımlık-işlem) | Kullanıcı doğruladı |
-| 4 | [Left/Right/Inventory Clicker](#dördüncü-grup-clickerlar) | Offline; oyun testi bekliyor |
+| 4 | [Left/Right Clicker](#dördüncü-grup-clickerlar) | Offline; oyun testi bekliyor |
 | 5 | [Chest Stealer, Auto Armor, Elytra Swapper](#beşinci-grup-envanter-işlemleri) | Offline; oyun testi bekliyor |
 | 6 | [Pot Refill, Mouse Tweaks](#altıncı-grup-iksir-doldurma-ve-sürükleme) | Offline; oyun testi bekliyor |
 | 7 | [Bridge Assist, Pearl Macro](#yedinci-grup-kenar-desteği-ve-pearl-makrosu) | Offline; oyun testi bekliyor |
@@ -155,15 +160,7 @@ Minecraft Mouse callback yolunu kullanır. Bu aşama input servisinin tamamını
 Java'ya taşındığı anlamına gelmez. Left Clicker'ın `trigger_owns_attack` ve
 `try_unowned_attack` koordinasyonu C++'ta aynen korunur; Triggerbot önceliği değişmez.
 
-Inventory Clicker'ın 1–20 CPS / ±10 ms jitter / minimum 25 ms hesabı da korunur.
-1.21.11'de normal worker yolu pasiftir. Render tarafı fiziksel ilk tıklamaya
-öncelik verir; ekran/handler değişince gecikmeyi yeniden başlatır. Tutulan ekran
-ve handler referansları global JNI ref'tir; disable, odak/ekran kaybı ve render
-kapanışında temizlenir. Java güncel HandledScreen, player.currentScreenHandler,
-syncId, hovered Slot ve slot listesindeki **aynı nesne** eşleşmesini kontrol eder.
-Yazmadan önce bu kimlikler yeniden doğrulanır, yalnızca bir PICKUP gönderilir.
-Masaüstü SendInput'u veya bekleyen envanter işi eklenmez. Eski/yenilenmiş slot
-numarasıyla başka pencereye tıklanmaz. Mevcut ayarlar ve config kimlikleri korunur.
+Inventory Clicker modülü ve ona ait envanter tıklama köprüsü kaldırılmıştır.
 
 ### Beşinci grup: envanter işlemleri
 
@@ -212,20 +209,19 @@ kaynağın boş, aynı hedefin beklenen stack/adette olması yerel tüketim gös
 sunucu ACK'i değildir. Engine hazır olmadan ikinci işlem gönderilmez. Timeout
 sonrası envanter oturumu yenilenene kadar tekrar denenmez.
 
-Mouse Tweaks'in slot-geçiş durumu `mouse_tweaks_logic.hpp` içinde C++'ta kalır:
-RMB elde önceden eşya varken başlar, ilk ayrılışta eski/yeni slota dağıtır ve geri
-dönülen slota tekrar bir adet bırakır. LMB boş imleçle başlar; uyumlu stack toplama,
-Shift quick-move ve crafting output davranışı korunur. Sabit tıklama zamanlayıcısı
-eklenmez. Sentetik mouse olayları fiziksel basış sayılmaz.
+Mouse Tweaks'in 1.21.11 yolunda sürükleme durumu, tuş okuması ve yuva işlemleri
+Java'dadır. Her çizim karesinde tek köprü çağrısı yapılır; Java yalnızca üstündeki
+yuva, imleçteki stack ve etkin oturum nesnelerini okur. Tüm envanteri kopyalayan
+snapshot turu ve C++ gesture motoru kullanılmaz. RMB dağıtımı, geri dönülen yuvaya
+tekrar bir adet koyma, LMB uyumlu stack toplama, Shift quick-move ve crafting
+output davranışı korunur. Tıklama aralığı zamanlayıcısı eklenmez.
 
-Java her işlemde imleç/slot kopyaları ve izinleri yeniden doğrular. Normal LMB
-birleştirmede ilk PICKUP sonrası aynı bağlam, boş imleç ve beklenen toplam stack
-görülmeden ikinci PICKUP yapılmaz; output slotunda yalnızca ilk tıklama vardır.
-RMB'nin iki slot adımı arasında snapshot yenilenir. Yeni yollar normalde worker
-üzerinden oyun okumaz/yazmaz; disable yalnızca atomik iptal ister, cleanup render
-thread'indedir. Focus/UI/oturum/handler değişimi sürükleme durumunu sıfırlar.
-Kurulum/binding hatasında eski native yol korunur; runtime exception'ında yalnızca
-ilgili özellik askıya alınır ve kısmi işlem başka backend ile tekrarlanmaz.
+LMB birleştirmede ikinci PICKUP öncesi imlecin boşaldığı ve yuvadaki stack'in
+beklenen sayıya ulaştığı kontrol edilir; crafting output için ikinci tıklama yoktur.
+Java, oyun durumuna yalnızca client/render thread'inde erişir. UI, odak, ekran,
+oyuncu, dünya veya handler değişince sürükleme durumu sıfırlanır. Kurulum/binding
+başarısız olursa özellik 1.21.11 oturumunda askıya alınır; kısmi işlem başka bir
+backend ile tekrarlanmaz. Diğer oyun hedefleri mevcut native yollarını korur.
 Mevcut ayarlar, UI ve bildirim tercihleri değiştirilmedi.
 
 ### Yedinci grup: kenar desteği ve pearl makrosu
@@ -306,6 +302,44 @@ ilgili özelliği bu yükleme boyunca askıya alır; kendi durumunu cleanup etme
 eder, başka backend üzerinden mutasyonu tekrarlamaz. Renderer cleanup sonrası
 Java stop yalnızca referansları bırakır. UI/config/modül kimlikleri değişmez.
 
+## Hit Crystal: tam Java denetleyicisi
+
+`src/modules/combat/hit_crystal.cpp` yalnızca ayarları aktarır ve yaşam döngüsünü
+bildirir. Native karar motoru veya oyun işlemi kalmadı. WorldBridge özelliği 3,
+1.21.1/1.21.4/1.21.8/1.21.11/26.1/26.1.1/26.1.2 için tam sürüme ait class/member
+adlarını C++ profilinden alır; isim/tip uyuşmazlığında yakın eşleşme yapılmaz.
+İlk iki WorldBridge özelliği yalnızca 1.21.11 olarak kalır ve ayrı hazırlanır.
+
+Fiziksel sağ tuş basılıyken obsidyen/bedrock veya ona bağlı mevcut kristal
+hedefinden başlanır. Otomatik seçim ve isteğe bağlı geri dönüş, ayrı milisaniye
+yerleştirme/kırma gecikmeleri ve bütün döngü Java'dadır. Reflection üyeleri bir
+kez çözülür; entity sorgusu yalnızca tabanın üstündeki 1×2 blok hacmindedir.
+Kırma onayında dünya üzerinde ID ile aynı entity aranır; menzil dışına çıkmak
+silinme onayı sayılmaz. ID tekrar kullanılırsa yeni entity'ye saldırılmaz.
+
+Yerleştirmeden önce taban, hava, entity boşluğu, el/slot, oturum ve vanilla
+erişim mesafesi yeniden okunur. Kırmada gerçek entity menzili ve blok raycast'i
+kontrol edilir. `interactBlock` kabul sonucu okunur; `attackEntity` ve main-hand
+swing vanilla yollarıdır. Yerel entity silinmez, paket veya Windows tıklaması üretilmez.
+Spawn için 480 ms, kırma onayı için 360 ms beklenir; en fazla üç yerleştirme
+denemesi ve ilk saldırıdan sonra üç kırma tekrarı vardır. Kare başına bir
+etkileşim yapılır; çağrıdan sonra hata olduysa aynı işlem yeniden yürütülmez.
+
+Makro kullanım bindinginin basılı/queued durumunu sahiplenerek ikinci bir
+vanilla yerleştirmesini engeller. Gerçek binding descriptor'ı native fiziksel
+giriş servisiyle doğrulanır; bırakmada aynı world/player/options/key/boundKey
+üzerinde hâlâ geçerli manuel basış devredilir. Yeni atamaya eski tuş yazılmaz.
+Slot elle değiştirilirse veya world/player/inventory/manager değişirse döngü
+iptal edilir. Restore yalnızca aynı oturum ve hâlâ sahip olunan slot için yapılır.
+Odak/menü/izin kaybı ve disable cleanup'ı client thread'indedir; worker sadece
+atomik iptal ister. `stop()` renderer katıldıktan sonra yalnızca referans bırakır.
+
+[Argon inceleme kaydı](ARGON_REFERENCE.md) davranış kökenini ve kapsamı açıklar.
+`tests/hit_crystal/HitCrystalBridgeTest.java` izole kaynak senaryolarını içerir;
+gerçek Minecraft sürüm desteği ve oyun içi davranış ayrıca doğrulanmalıdır.
+Bu değişiklikte build alınmadı; gömülü WorldBridge.class sonraki normal build'de
+mevcut Java kaynak bağımlılığı üzerinden yeniden üretilir.
+
 ## Derleme ve sınırlı kontroller
 
 - JDK 17+ ile `scripts/Build-GameBridge.ps1`; sınıf bytecode hedefi Java 17'dir.
@@ -321,8 +355,7 @@ Java stop yalnızca referansları bırakır. UI/config/modül kimlikleri değiş
 - `auto_tool_scoring` offline testi eski uygunluk/hız/epsilon kuralını korur.
 - `gear_policy` offline testi eski zırh puanı, elytra koruması, slot eşleme ve
   ana envanter/hotbar önceliğini korur.
-- `mouse_tweaks_logic` ve mevcut `pot_refill_engine` offline kontrolleri
-  sürükleme geçişleri ile iksir motorunun mevcut kurallarını doğrular.
+- `pot_refill_engine` offline kontrolü iksir motorunun mevcut kurallarını doğrular.
 - `bridge_assist_logic` offline kontrolü geometri, yönlü tahmin, iki edge/üç
   safe örneği, manuel sneak ve bırakma gecikmesi kurallarını doğrular.
 - Mevcut `inv_walk_engine` ve `anti_bot_engine` offline testleri ekran/hareket
@@ -387,3 +420,42 @@ Items/PlayerInventory ve vanilla kullanım mappinglerinden alınmıştır. Günc
 sneak seçeneği ayrıca GameOptions API belgesiyle kontrol edildi:
 
 - https://maven.fabricmc.net/docs/yarn-1.21.11+build.6/net/minecraft/client/option/GameOptions.html
+
+## Triggerbot: Java denetleyicisi
+
+WorldBridge'in lazy hazırlanan 4 numaralı özelliğidir. Yedi tam hedef için
+sürüm profiline göre exact adlar kullanır: eski hedeflerde renderer ray sorgusu,
+1.21.11/26.1.x'te client player static ray sorgusu; eski SwordItem veya yeni
+sword tag'i ve sürüme uygun float/double fallDistance. Bu bağlamaların kaynakta
+bulunması oyun içi uyumluluk kabulü değildir.
+
+Hedef/silah filtreleri, güncel ray sorgusu, cooldown/reaction örneklemesi,
+Smart/Only critical, kalkan yönü, manuel saldırı ve slot değişiminde yeniden
+başlama, helper sonrası tick bekleme ve vanilla attackEntity/swing Java'dadır.
+Hedef, dünya, oyuncu, manager, inventory, slot ve ayar nesli saldırı öncesinde
+tekrar doğrulanır. Menü/odak/disable/unload iptali client thread'de yapılır.
+Mutasyon hatasında özellik askıya alınır; başka backend'e geçilip vuruş tekrarlanmaz.
+
+C++ UI/config/reset, izin ve manuel giriş neslini taşır; On Click Only sol tuşu
+Java tarafında GLFW'den okur. Java'nın dar native callback'i yalnızca
+ortak Friends/Anti Bot, combat ownership ve mevcut Shield Breaker/Mace Swap
+hazırlama/bitirme servislerini çağırır. Bu servislerin kendi politikaları korunur.
+`trigger_adapter` artık native hedef/saldırı motoru çalıştırmaz ve Windows click
+ticket'i üretmez. Eski saf C++ model ve fixture'ları tarihsel regresyon referansı
+olarak kalır; canlı modül o modeli kullanmaz. Eski config alanları ve stable ID korunur.
+
+Kaynak Java/C++ derleme kontrolleri oyun içi test değildir. Bu geçişten sonra
+DLL yeniden üretilmeden önceki test DLL'i yeni Triggerbot'u içermez.
+
+Triggerbot `swing_hand` seçeneğini config'e yazar (varsayılan true); vanilla
+saldırıdan sonraki ek el sallama çağrısı bu seçeneğe bağlıdır. GLFW metotları ve
+window erişimi lazy feature hazırlığında bir kez çözülür; tuş yalnızca client
+thread'de, sıfır olmayan güncel handle ile okunur. On Click Only açıkken tuşun
+bırakılması helper hazırlığını da iptal eder. Windows click üretilmez; isteğe bağlı Click Simulation oyunun Java mouse callback'ini kullanır.
+
+`click_simulation` varsayılan false'tur; açıkken Java callback pulse'u doğrudan
+saldırıdan sonra üretilir. Pulse senkrondur; worker/timer/release kuyruğu yoktur.
+Mouse'a bağlı bütün KeyBinding'lerin press kuyruğu/basılı halleri korunarak ikinci
+vanilla saldırı önlenir. Pencere/odak/oturum kaybında eski basılı hal geri yazılmaz.
+1.21.11 ve sonraki hedeflerde MouseButtonInfo, eskilerde dört argümanlı mouse
+callback imzası kullanılır; lazy çözümleme yalnızca seçenek açıkken yapılır.

@@ -15,7 +15,7 @@ namespace
 {
     jobject bridge = nullptr;
     jmethodID prepare_method = nullptr, capture_method = nullptr, act_method = nullptr, cancel_method = nullptr, stop_method = nullptr;
-    jmethodID container_capture_method = nullptr, container_act_method = nullptr;
+    jmethodID container_capture_method = nullptr, container_act_method = nullptr, mouse_tick_method = nullptr;
     bool setup_failed = false;
     std::array<bool, 6> prepared{}, rejected{}, suspended{};
     bool permitted()
@@ -59,6 +59,7 @@ namespace
             act_method = checked(env, env->GetMethodID(type, "act", "([Ljava/lang/Object;IIIZ)Z"));
             container_capture_method = checked(env, env->GetMethodID(type, "captureContainer", "(I)[Ljava/lang/Object;"));
             container_act_method = checked(env, env->GetMethodID(type, "containerAct", "([Ljava/lang/Object;IIIZZZ)Z"));
+            mouse_tick_method = checked(env, env->GetMethodID(type, "tickMouse", "(ZZZZ)V"));
             cancel_method = checked(env, env->GetMethodID(type, "cancel", "(I)V"));
             stop_method = checked(env, env->GetMethodID(type, "stop", "()V"));
             auto instance = checked(env, env->NewObject(type, constructor, parent, static_cast<jint>(mc::target.build_id)));
@@ -78,7 +79,7 @@ services::game::hybrid::result services::game::inventory_bridge::capture_contain
     if (!auth::permitted(auth::scope::bridge)) return hybrid::result::unavailable;
     if constexpr (mc::target.build_id != 12111) return hybrid::result::native_fallback;
     const auto f = static_cast<unsigned>(operation);
-    if ((f != 4 && f != 5) || !permitted() || !platform::jni_context::bind_current_thread()) return hybrid::result::unavailable;
+    if (f != 4 || !permitted() || !platform::jni_context::bind_current_thread()) return hybrid::result::unavailable;
     if (suspended[f]) return hybrid::result::unavailable;
     if (rejected[f] || !connect(jni::get_env())) return hybrid::result::native_fallback;
     auto env = jni::get_env();
@@ -138,7 +139,7 @@ bool services::game::inventory_bridge::container_act(const container_snapshot& o
 {
     if (!bridge || !observed.packet || !permitted()) return false;
     const auto f = static_cast<unsigned>(observed.operation);
-    if (f < 4 || f > 5 || suspended[f]) return false;
+    if (f != 4 || suspended[f]) return false;
     const bool left = services::input::physical_button_down(services::input::mouse_button::left);
     const bool right = services::input::physical_button_down(services::input::mouse_button::right);
     const bool shift = services::input::physical_key_down(VK_LSHIFT) || services::input::physical_key_down(VK_RSHIFT);
@@ -151,6 +152,26 @@ bool services::game::inventory_bridge::container_act(const container_snapshot& o
         return false;
     }
     return applied;
+}
+
+void services::game::inventory_bridge::tick_mouse(bool active, bool right_tweak, bool left_with_item, bool left_without_item)
+{
+    if constexpr (mc::target.build_id != 12111) return;
+    if (suspended[static_cast<unsigned>(feature::mouse)]) return;
+    if (!permitted() || !platform::jni_context::bind_current_thread()) {
+        cancel(feature::mouse);
+        return;
+    }
+    if (!connect(jni::get_env())) return;
+    auto env = jni::get_env();
+    env->CallVoidMethod(bridge, mouse_tick_method, static_cast<jboolean>(active),
+        static_cast<jboolean>(right_tweak), static_cast<jboolean>(left_with_item),
+        static_cast<jboolean>(left_without_item));
+    if (platform::jni_context::clear_exception()) {
+        suspended[static_cast<unsigned>(feature::mouse)] = true;
+        cancel(feature::mouse);
+        OutputDebugStringW(L"[OneStep] Mouse Tweaks Java path failed; feature suspended for this session.\n");
+    }
 }
 
 services::game::hybrid::result services::game::inventory_bridge::capture(feature operation, bool allow_closed, snapshot& out)
@@ -247,6 +268,6 @@ void services::game::inventory_bridge::shutdown()
         jni::get_env()->DeleteGlobalRef(bridge);
     }
     bridge = nullptr; prepare_method = capture_method = act_method = cancel_method = stop_method = nullptr;
-    container_capture_method = container_act_method = nullptr;
+    container_capture_method = container_act_method = mouse_tick_method = nullptr;
     setup_failed = false; prepared = {}; rejected = {}; suspended = {};
 }

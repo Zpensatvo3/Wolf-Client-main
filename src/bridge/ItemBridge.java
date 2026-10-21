@@ -8,16 +8,16 @@ import java.util.List;
 
 /** Original OneStep item I/O. Decisions/timers stay native; packets are frame-local and single-use. */
 public final class ItemBridge {
-    public static final int AUTO_TOOL = 1, FAST_EXP = 2, LEFT_CLICKER = 3, RIGHT_CLICKER = 4, INVENTORY_CLICKER = 5;
+    public static final int AUTO_TOOL = 1, FAST_EXP = 2, LEFT_CLICKER = 3, RIGHT_CLICKER = 4;
     private final ClassLoader loader;
     private final Class<?> clientType, playerType;
     private final Field instance, player, world, screen;
     private final Method onThread, alive;
-    private final boolean[] prepared = new boolean[6];
-    private final long[] clickSequence = new long[6], completedClick = new long[6];
-    private Method usingItem, attack, count, clickSlot;
-    private Field yaw, pitch, focusedSlot, screenHandler, currentHandler, syncId, slotId, slots, pickup;
-    private Class<?> handledScreenType, blockItemType;
+    private final boolean[] prepared = new boolean[5];
+    private final long[] clickSequence = new long[5], completedClick = new long[5];
+    private Method usingItem, attack, count;
+    private Field yaw, pitch;
+    private Class<?> blockItemType;
     private Field manager, crosshair, blockType, selected, main, expItem, useCooldown;
     private Method inventory, hitType, blockPosition, blockState, air, speed, suitable, empty;
     private Method syncSlot, mainHand, offHand, getItem, useItem;
@@ -67,7 +67,7 @@ public final class ItemBridge {
         return object != null && (boolean) method.invoke(object);
     }
     public void prepare(int feature) throws ReflectiveOperationException {
-        if (stopped || feature < 1 || feature > 5) throw new IllegalArgumentException("Invalid item feature/lifecycle");
+        if (stopped || feature < 1 || feature > 4) throw new IllegalArgumentException("Invalid item feature/lifecycle");
         if (prepared[feature]) return;
         Class<?> stack = load("class_1799");
         empty = method(stack, "method_7960", boolean.class);
@@ -108,20 +108,6 @@ public final class ItemBridge {
                 useCooldown = field(clientType, "field_1752", int.class, false);
                 useItem = method(clientType, "method_1583", void.class);
             }
-        } else {
-            Class<?> handler = load("class_1703"), slot = load("class_1735"), interaction = load("class_636");
-            Class<?> action = load("class_1713");
-            handledScreenType = load("class_465");
-            focusedSlot = field(handledScreenType, "field_2787", slot, false);
-            screenHandler = field(handledScreenType, "field_2797", handler, false);
-            currentHandler = field(playerType, "field_7512", handler, false);
-            syncId = field(handler, "field_7763", int.class, false);
-            slots = field(handler, "field_7761", load("class_2371"), false);
-            slotId = field(slot, "field_7874", int.class, false);
-            manager = field(clientType, "field_1761", interaction, false);
-            pickup = field(action, "field_7790", action, true);
-            clickSlot = method(interaction, "method_2906", void.class,
-                int.class, int.class, int.class, action, load("class_1657"));
         }
         prepared[feature] = true;
     }
@@ -288,39 +274,6 @@ public final class ItemBridge {
         if (!Float.isFinite(y) || !Float.isFinite(p) || !Float.isFinite(y + yawDelta)) return false;
         yaw.setFloat(packet[1], y + yawDelta);
         pitch.setFloat(packet[1], Math.max(-90, Math.min(90, p + pitchDelta)));
-        return true;
-    }
-    /** {owner, player, world, screen, handler, slot (nullable), double[5]: schema/feature/nonce/sync/slot}. */
-    public Object[] captureInventory() throws ReflectiveOperationException {
-        Object client = clientOnThread();
-        if (client == null) return null;
-        clickSequence[INVENTORY_CLICKER] = 0;
-        prepare(INVENTORY_CLICKER);
-        Object p = player.get(client), w = world.get(client), s = screen.get(client);
-        if (p == null || w == null || !yes(alive, p) || !handledScreenType.isInstance(s)) return null;
-        Object handler = screenHandler.get(s), slot = focusedSlot.get(s);
-        if (handler == null || currentHandler.get(p) != handler || manager.get(client) == null) return null;
-        int id = slot == null ? -1 : slotId.getInt(slot);
-        if (slot != null && (!(slots.get(handler) instanceof List<?> list) || id < 0 || id >= list.size() || list.get(id) != slot))
-            return null;
-        double[] values = {1, INVENTORY_CLICKER, clickSequence[INVENTORY_CLICKER] = nextSequence(), syncId.getInt(handler), id};
-        return stopped ? null : new Object[]{this, p, w, s, handler, slot, values};
-    }
-    public boolean pickup(Object[] packet, boolean physicalHeld) throws ReflectiveOperationException {
-        if (clientOnThread() == null || packet == null || packet.length != 7 || packet[0] != this ||
-            !(packet[6] instanceof double[] values) || values.length != 5 || values[0] != 1 || values[1] != INVENTORY_CLICKER ||
-            values[2] <= 0 || values[2] != clickSequence[INVENTORY_CLICKER]) return false;
-        clickSequence[INVENTORY_CLICKER] = 0;
-        if (!physicalHeld || values[4] < 0) return false;
-        Object[] now = captureInventory();
-        clickSequence[INVENTORY_CLICKER] = 0;
-        if (now == null) return false;
-        for (int i = 1; i <= 5; ++i) if (now[i] != packet[i]) return false;
-        double[] current = (double[]) now[6];
-        if (values[3] != current[3] || values[4] != current[4]) return false;
-        Object client = clientOnThread();
-        if (client == null) return false;
-        clickSlot.invoke(manager.get(client), (int) current[3], (int) current[4], 0, pickup.get(null), now[1]);
         return true;
     }
     public void stop() {

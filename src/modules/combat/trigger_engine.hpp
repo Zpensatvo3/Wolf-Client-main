@@ -16,10 +16,14 @@ namespace trigger_engine
         weapon_mode weapon = weapon_mode::any;
         critical_mode criticals = critical_mode::smart;
         bool on_click = false;
+        bool swing_hand = true;
+        bool click_simulation = false;
     };
     bool normalize(config& value);
     bool same_config(const config& a, const config& b);
     bool weapon_allowed(weapon_type held, weapon_mode mode);
+    // Legacy pure model retained for existing regression fixtures only.
+    // The live Triggerbot controller and timers are in WorldBridge.java.
     struct sampler
     {
         virtual ~sampler() = default;

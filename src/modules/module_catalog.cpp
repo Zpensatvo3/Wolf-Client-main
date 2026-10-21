@@ -74,7 +74,6 @@ namespace
         { "bridge_assist", &create_module<modules::bridge_assist> },
         { "right_clicker", &create_module<modules::right_clicker> },
         { "left_clicker", &create_module<modules::left_clicker> },
-        { "inventory_clicker", &create_module<modules::inventory_clicker> },
         { "fast_place", &create_module<modules::fast_place> },
         { "fast_exp", &create_module<modules::fast_exp> },
         { "pot_refill", &create_module<modules::pot_refill> },

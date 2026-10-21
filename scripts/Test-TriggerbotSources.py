@@ -35,9 +35,11 @@ engine = (ROOT / sources[1]).read_text(encoding="utf-8")
 assert "now + 180" in engine and "now + 250" in engine and "< 150" in engine
 assert "std::max(now, state.confirmation_deadline) + 250" in engine
 adapter = (ROOT / "src/modules/combat/trigger_adapter.cpp").read_text(encoding="utf-8")
-assert "invalidate(state.engine, now_ms())" in adapter
-assert "reset(state.engine)" not in adapter
-assert "fresh_crosshair_entity" in adapter and "validate_delivery(settings, state, confirmed" in adapter
+assert "world_bridge::tick_trigger(settings, enabled, state.reset_generation)" in adapter
+assert "submit_trigger_click" not in adapter and "fresh_crosshair_entity" not in adapter
+bridge = (ROOT / "src/bridge/WorldBridge.java").read_text(encoding="utf-8")
+assert all(token in bridge for token in ("tickTrigger", "triggerFresh", "triggerAttack.invoke", "triggerPreparedSlot", "triggerService(8"))
+assert "triggerFailed = true" in bridge
 inputs = (ROOT / "src/services/input/input_service.cpp").read_text(encoding="utf-8")
 assert "restore_ticket_tag(id, held)" in inputs and "ledger.needs_validation" in inputs
 assert "mouse_button_state(mouse_button::left" not in inputs

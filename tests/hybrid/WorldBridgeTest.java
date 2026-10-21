@@ -6,7 +6,15 @@ import net.onestep.hybrid.WorldBridge;
 public final class WorldBridgeTest {
     private static int checks;
     private static void check(boolean value, String message) { ++checks; if (!value) throw new AssertionError(message); }
-    private static WorldBridge bridge() throws Exception { return new WorldBridge(WorldBridgeTest.class.getClassLoader(), 12111); }
+    private static WorldBridge bridge() throws Exception {
+        // Exercise the exact constructor used by the native connector, including
+        // the class-name coverage needed by the original two capabilities.
+        String cpp = java.nio.file.Files.readString(java.nio.file.Path.of("src/services/game/world_bridge.cpp"));
+        var matches = java.util.regex.Pattern.compile("\\{\"((?:net/minecraft/class_|field_|method_)[^\"]+)\", ").matcher(cpp);
+        var names = new java.util.TreeSet<String>(); while (matches.find()) names.add(matches.group(1));
+        var pairs = new java.util.ArrayList<String>(); for (String name : names) { pairs.add(name); pairs.add(name); }
+        return new WorldBridge(WorldBridgeTest.class.getClassLoader(), 12111, pairs.toArray(String[]::new));
+    }
     private static Field field(String name) throws Exception { Field f = class_1661.class.getDeclaredField(name); f.setAccessible(true); return f; }
     private static class_310 setup() throws Exception {
         class_310 c = new class_310(); class_310.field_1700 = c;

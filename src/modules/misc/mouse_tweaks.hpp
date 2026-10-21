@@ -4,7 +4,6 @@
 #include "../core/settings_store.hpp"
 #include "settings/mouse_tweaks_settings.hpp"
 #include "../../platform/adapter/target_version.hpp"
-#include <memory>
 
 namespace modules
 {
@@ -25,9 +24,7 @@ class mouse_tweaks : public module
 		{ settings_.visit(v, module_settings::mouse_tweaks::schema()); }
 
 	private:
-        struct runtime;
-        std::unique_ptr<runtime> runtime_;
-        std::atomic_bool reset_requested_{true}, native_fallback_{false};
+		std::atomic_bool reset_requested_{true};
 		modules::settings::store<module_settings::mouse_tweaks> settings_;
 	};
 }

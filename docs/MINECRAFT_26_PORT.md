@@ -3,8 +3,9 @@
 Status: **26.1/26.1.1/26.1.2 source integration and static SDK/JNI audits complete;
 exact DLL development targets enabled. Windows MSVC builds and in-game acceptance remain.**
 The original audit covered 57 registrations; its config IDs/gameplay decisions
-were preserved. The current catalog has 61 modules. These 26.1 targets retain
-native gameplay; the later 1.21.11 hybrid work is a separate scope. These three exact releases
+were preserved. The current catalog has 60 modules. These 26.1 targets retain
+native gameplay except the later Java Hit Crystal controller; the first eight
+1.21.11 hybrid I/O groups are a separate scope. These three exact releases
 share a verified layout; do not treat `26.x` or later patches as one compatible ABI.
 
 This document preserves the **17–18 October 2026** fixture/audit evidence.

@@ -30,13 +30,14 @@
   <PropertyGroup>
     <AuthRequired Condition="'$(AuthRequired)' == ''">true</AuthRequired>
     <AuthRuntimeDefines Condition="'$(AuthRequired)' == 'true'">ONESTEP_AUTH_REQUIRED=1;</AuthRuntimeDefines>
+    <AuthRuntimeDefines Condition="'$(LocalTestDll)' == 'true' and '$(AuthRequired)' == 'false'">ONESTEP_AUTH_REQUIRED=0;ONESTEP_AUTH_INSECURE_TEST_BUILD=1;</AuthRuntimeDefines>
     <AuthRuntimeDefines Condition="'$(AuthServerDomain)' != ''">$(AuthRuntimeDefines)ONESTEP_AUTH_SERVER_DOMAIN=&quot;$(AuthServerDomain)&quot;;</AuthRuntimeDefines>
     <!-- Public key only: pass /p:AuthPublicKeySpkiBase64=... when producing a release DLL. -->
     <AuthPublicKeyDefine Condition="'$(AuthPublicKeySpkiBase64)' != ''">ONESTEP_AUTH_PUBLIC_KEY_SPKI_BASE64=&quot;$(AuthPublicKeySpkiBase64)&quot;;</AuthPublicKeyDefine>
   </PropertyGroup>
   <Target Name="ValidateAuthConfiguration" BeforeTargets="PrepareForBuild">
     <Error Condition="'$(AuthRequired)' != 'true' and '$(AuthRequired)' != 'false'" Text="AuthRequired must be true or false." />
-    <Error Condition="'$(AuthRequired)' != 'true'" Text="DLL builds always require authentication. Use isolated, explicitly marked test probes instead." />
+    <Error Condition="'$(AuthRequired)' != 'true' and ('$(LocalTestDll)' != 'true' or '$(Configuration)' != 'Debug' or '$(Platform)' != 'x64' or '$(TargetName)' != 'Onestep-TEST-NO-LAUNCHER')" Text="Launcher-free DLLs require the isolated Debug x64 test build. Use Build-Test.ps1." />
     <Error Condition="'$(AuthRequired)' == 'true' and '$(Platform)' != 'x64'" Text="Authenticated builds require the supported x64 platform." />
     <Error Condition="'$(AuthRequired)' == 'true' and ('$(AuthServerDomain)' == '' or '$(AuthPublicKeySpkiBase64)' == '')" Text="Auth builds require explicit AuthServerDomain and AuthPublicKeySpkiBase64 properties. See server/SECURITY_SETUP.md." />
   </Target>
@@ -109,6 +110,11 @@
     <OutDir>$(MinecraftOutputDir)</OutDir>
     <IntDir>$(ProjectDir)build\etc\$(MinecraftVersion)\$(Configuration)\$(Platform)\</IntDir>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(LocalTestDll)' == 'true'">
+    <TargetName>Onestep-TEST-NO-LAUNCHER</TargetName>
+    <OutDir>$(ProjectDir)build\local-test\$(MinecraftVersion)\</OutDir>
+    <IntDir>$(ProjectDir)build\etc\local-test\$(MinecraftVersion)\</IntDir>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
@@ -147,7 +153,7 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>$(MinecraftDefines)$(AuthRuntimeDefines)$(AuthPublicKeyDefine)_DEBUG;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>$(MinecraftDefines)$(AuthRuntimeDefines)$(AuthPublicKeyDefine)NOMINMAX;WIN32_LEAN_AND_MEAN;_DEBUG;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
@@ -191,6 +197,15 @@
       <AdditionalDependencies>$(ProjectDir)include\jni\jvm.lib;opengl32.lib;windowscodecs.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(LocalTestDll)' == 'true'">
+    <ClCompile>
+      <Optimization>MaxSpeed</Optimization>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.hpp</PrecompiledHeaderFile>
+      <ForcedIncludeFiles>pch.hpp;%(ForcedIncludeFiles)</ForcedIncludeFiles>
+    </ClCompile>
+  </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="src\ui\grim_ui.hpp" />
     <ClInclude Include="src\ui\menu_background.hpp" />
@@ -210,7 +225,7 @@
     <ClCompile Include="include\minhook\hook.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><ForcedIncludeFiles></ForcedIncludeFiles></ClCompile>
     <ClCompile Include="include\minhook\mem\mem.cpp"><PrecompiledHeader>NotUsing</PrecompiledHeader><ForcedIncludeFiles></ForcedIncludeFiles></ClCompile>
     <ClCompile Include="include\minhook\trampoline.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><ForcedIncludeFiles></ForcedIncludeFiles></ClCompile>
-    <ClCompile Include="src\pch.cpp"><PrecompiledHeader>Create</PrecompiledHeader></ClCompile>
+    <ClCompile Include="src\pch.cpp"><PrecompiledHeader Condition="'$(Configuration)' == 'Release' or '$(LocalTestDll)' == 'true'">Create</PrecompiledHeader></ClCompile>
     <ClCompile Include="src\cache\cache.cpp" />
     <ClCompile Include="src\loader\loader_ui.cpp" />
     <ClCompile Include="src\friends\friends.cpp" />
