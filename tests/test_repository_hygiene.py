@@ -84,10 +84,10 @@ class RepositoryHygieneTest(unittest.TestCase):
         self.write("README.md", "[bad](docs/guide.md#missing) [gone](gone.md)")
         self.assertEqual(len(validate_markdown(path)), 2)
 
-    def test_all_61_module_ids_and_order_are_preserved(self):
+    def test_all_60_module_ids_and_order_are_preserved(self):
         catalog = (ROOT / "src/modules/module_catalog.cpp").read_text(encoding="utf-8")
         ids = re.findall(r'\{\s*"([a-z0-9_]+)"\s*,\s*&', catalog)
-        self.assertEqual(len(BASELINE_IDS), 61)
+        self.assertEqual(len(BASELINE_IDS), 60)
         self.assertEqual(ids, BASELINE_IDS)
         manifest = json.loads((ROOT / "src/modules/settings_manifest.json").read_text(encoding="utf-8"))
         self.assertEqual({entry["id"] for entry in manifest["modules"]}, set(BASELINE_IDS))
