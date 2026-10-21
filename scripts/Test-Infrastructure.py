@@ -291,9 +291,17 @@ def validate_anchor_macro():
     source = (ROOT / "src/modules/combat/anchor_macro.cpp").read_text(encoding="utf-8")
     engine = (ROOT / "src/modules/combat/anchor_engine.cpp").read_text(encoding="utf-8")
     if '"blatant_anchor_macro"' in catalog or catalog.count('"anchor_macro"') != 1:
-        errors.append("Anchor must have one catalog entry with Legit/Blatant settings, not two modules")
-    if "settings_.read()" not in source or "reset_requested_.store" not in source or "render_when_disabled() const override { return true; }" not in header:
+        errors.append("Anchor must have one stable catalog entry")
+    if "settings_.read()" not in source or "generation_.fetch_add" not in header or "render_when_disabled() const override { return true; }" not in header:
         errors.append("Unified Anchor must use settings snapshots and client-frame cancellation")
+    bridge = (ROOT / "src/bridge/WorldBridge.java").read_text(encoding="utf-8")
+    if "anchor_engine::run_overlay" in source or "world_bridge::tick_anchor" not in source:
+        errors.append("Anchor Macro must delegate its live controller to Java")
+    for guard in ("anchorCharge(anchorTarget)", "anchorPermitted(generation)", "suppressAnchorUse(c)",
+                  "anchorSelected.getInt(anchorInv) == anchorOwnedSlot", "anchorInventory.invoke(anchorPlayer) == anchorInv",
+                  "anchorWindow(c) == anchorWindowHandle", "anchorGlfwMouse.invoke", "resetAnchorSlot()"):
+        if guard not in bridge: errors.append(f"Missing Java Anchor ownership/confirmation guard: {guard}")
+    # Safe Anchor still uses the native engine and retains its original guards.
     for guard in ("sequence_delay(settings,stage,random_engine)", "const int transition_budget = 1",
                   "state.session.matches({world,player})", "state.session.observe({world,player})",
                   "restore_if_owned", "selected != state.owned_slot", "charges >= 1 &&",

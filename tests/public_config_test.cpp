@@ -133,10 +133,11 @@ int main()
     };
     assert(modules::apply_public_config(document(old_legit,old_blatant),message));
     auto merged = anchor.settings.read();
-    assert(anchor.enabled && anchor.get_keybind() == 66 && merged.mode == 1);
+    assert(anchor.enabled && anchor.get_keybind() == 66 && merged.mode == 1 && merged.execution_mode == 0);
     assert(merged.legit_switch_delay == 31 && merged.legit_place_delay == 42 && merged.legit_charge_delay == 42 && merged.legit_detonate_delay == 42);
     assert(merged.legit_variance == 12 && merged.legit_randomize && !merged.legit_camera_movement);
     assert(merged.blatant_switch_delay == 7 && merged.blatant_place_delay == 9 && merged.blatant_return_delay == 4 && !merged.blatant_randomize);
+    assert(merged.switch_delay == 1 && merged.glowstone_delay == 1 && merged.explode_delay == 1);
     const auto migrated = modules::export_public_config();
     assert(migrated.find("blatant_anchor_macro") == std::string::npos);
     assert(modules::apply_public_config(document(old_blatant,old_legit),message));
@@ -150,6 +151,21 @@ int main()
     const std::string modern = R"({"id":"anchor_macro","enabled":false,"keybind":71,"settings":{"mode":1,"blatant_place_delay":123}})";
     assert(modules::apply_public_config(document(old_blatant,modern),message));
     assert(!anchor.enabled && anchor.get_keybind() == 71 && anchor.settings.read().blatant_place_delay == 123);
+    const std::string argon_style = R"({"id":"anchor_macro","enabled":false,"keybind":71,"settings":{"while_use":false,"switch_delay":4,"glowstone_delay":6,"explode_delay":8,"explode_slot":7,"only_own":true,"only_charge":true}})";
+    assert(modules::apply_public_config("{\"modules\":["+argon_style+"]}",message));
+    const auto java_anchor = anchor.settings.read();
+    assert(!java_anchor.while_use && java_anchor.switch_delay == 4 && java_anchor.glowstone_delay == 6 && java_anchor.explode_delay == 8);
+    assert(java_anchor.explode_slot == 7 && java_anchor.only_own && java_anchor.only_charge);
+    assert(modules::apply_public_config(modules::export_public_config(),message));
+    assert(anchor.settings.read() == java_anchor);
+    assert(modules::apply_public_config(R"({"modules":[{"id":"anchor_macro","enabled":false,"keybind":71,
+        "settings":{"execution_mode":1,"while_use":true,"switch_delay":7}}]})",message));
+    assert(anchor.settings.read().execution_mode == 1 && anchor.settings.read().switch_delay == 7);
+    const auto legit_export = modules::export_public_config();
+    assert(modules::apply_public_config(legit_export,message));
+    assert(anchor.settings.read().execution_mode == 1);
+    assert(modules::apply_public_config("{\"modules\":["+old_blatant+"]}",message));
+    assert(anchor.settings.read().execution_mode == 0); // Historical mode=1 never becomes new Legit.
     const auto before_bad_anchor = modules::export_public_config();
     assert(!modules::apply_public_config(R"({"modules":[
         {"id":"sample","enabled":true,"keybind":1,"settings":{"count":99}},

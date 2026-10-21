@@ -9,7 +9,14 @@
 #include <Windows.h>
 #include <cmath>
 #include <stdexcept>
+#include <cstring>
+#include <jvmti.h>
+
+extern JavaVM* jvm;
 #include "../../modules/combat/trigger_engine.hpp"
+#include "../../modules/combat/jump_reset_config.hpp"
+#include "../../modules/combat/settings/anchor_macro_settings.hpp"
+#include "../../modules/combat/settings/auto_totem_settings.hpp"
 #include "../../modules/combat/shield_breaker.hpp"
 #include "../../modules/combat/mace_swap.hpp"
 #include "../../friends/friends.hpp"
@@ -24,15 +31,133 @@ namespace
     jmethodID pearl_id = nullptr, begin_id = nullptr, use_id = nullptr, release_pearl_id = nullptr, stop_id = nullptr;
     jmethodID crystal_tick_id = nullptr, crystal_cancel_id = nullptr, crystal_input_id = nullptr;
     jmethodID trigger_tick_id = nullptr, trigger_cancel_id = nullptr;
-    std::array<bool, 5> prepared{}, rejected{}, suspended{};
+    jmethodID jump_tick_id = nullptr, jump_cancel_id = nullptr;
+    const std::atomic<std::uint64_t>* jump_reset_source = nullptr;
+    std::uint64_t jump_expected_generation = 0;
+    jmethodID anchor_tick_id = nullptr, anchor_cancel_id = nullptr;
+    const std::atomic<std::uint64_t>* anchor_reset_source = nullptr;
+    std::uint64_t anchor_expected_generation = 0;
+    jmethodID totem_tick_id = nullptr, totem_cancel_id = nullptr;
+    const std::atomic<std::uint64_t>* totem_reset_source = nullptr;
+    std::uint64_t totem_expected_generation = 0;
+    std::array<bool, 8> prepared{}, rejected{}, suspended{};
     const std::atomic<std::uint64_t>* trigger_reset_source = nullptr;
     std::uint64_t trigger_expected_generation = 0;
     int trigger_helper = 0;
     bool failed = false;
+    jvmtiEnv* anchor_tooling = nullptr;
+    jclass anchor_client_class = nullptr, anchor_transformer_class = nullptr;
+    jmethodID anchor_transform_id = nullptr, anchor_install_events_id = nullptr;
+    std::atomic_bool anchor_transforming{false};
+    bool anchor_hooks_installed = false, anchor_hooks_failed = false, anchor_hook_changed = false;
+    void JNICALL anchor_class_bytes(jvmtiEnv* tooling, JNIEnv* env, jclass redefining, jobject,
+        const char* name, jobject, jint size, const unsigned char* bytes, jint* new_size, unsigned char** new_bytes)
+    {
+        if (!anchor_transforming.load(std::memory_order_acquire) || !redefining || !name ||
+            std::strcmp(name,ONESTEP_MC_NAME("net/minecraft/class_310")) != 0 || !env->IsSameObject(redefining,anchor_client_class)) return;
+        if (env->PushLocalFrame(8) != JNI_OK) { if (env->ExceptionCheck()) env->ExceptionClear(); return; }
+        auto original = env->NewByteArray(size);
+        if (original) env->SetByteArrayRegion(original,0,size,reinterpret_cast<const jbyte*>(bytes));
+        auto result = original && !env->ExceptionCheck() ? static_cast<jbyteArray>(env->CallStaticObjectMethod(
+            anchor_transformer_class,anchor_transform_id,original,static_cast<jint>(mc::target.build_id))) : nullptr;
+        if (result && !env->ExceptionCheck()) {
+            const auto count = env->GetArrayLength(result); unsigned char* copy = nullptr;
+            if (count > 0 && count < size*4+65536 && tooling->Allocate(count,&copy) == JVMTI_ERROR_NONE) {
+                env->GetByteArrayRegion(result,0,count,reinterpret_cast<jbyte*>(copy));
+                if (!env->ExceptionCheck()) { *new_size=count; *new_bytes=copy; anchor_hook_changed=true; }
+                else tooling->Deallocate(copy);
+            }
+        }
+        if (env->ExceptionCheck()) env->ExceptionClear();
+        env->PopLocalFrame(nullptr);
+    }
+    void shutdown_anchor_hooks(JNIEnv* env)
+    {
+        anchor_transforming.store(false,std::memory_order_release);
+        if (anchor_tooling) {
+            anchor_tooling->SetEventNotificationMode(JVMTI_DISABLE,JVMTI_EVENT_CLASS_FILE_LOAD_HOOK,nullptr);
+            if (anchor_hook_changed && anchor_client_class) anchor_tooling->RetransformClasses(1,&anchor_client_class);
+            anchor_tooling->DisposeEnvironment(); anchor_tooling=nullptr;
+        }
+        platform::jni_context::clear_exception();
+        for (auto* ref : {&anchor_client_class,&anchor_transformer_class}) if (*ref) { env->DeleteGlobalRef(*ref); *ref=nullptr; }
+        anchor_transform_id=nullptr; anchor_hooks_installed=anchor_hook_changed=false;
+    }
+    template<class T> T anchor_checked(JNIEnv* env,T value) {
+        if (!value || env->ExceptionCheck()) throw std::runtime_error("Anchor event binding");
+        return value;
+    }
+    jclass define_anchor_class(JNIEnv* env,jobject loader,const char* binary,int resource_id)
+    {
+        HMODULE owner=nullptr;
+        if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            reinterpret_cast<LPCWSTR>(&define_anchor_class),&owner)) throw std::runtime_error("Anchor resource owner");
+        auto resource=FindResourceW(owner,MAKEINTRESOURCEW(resource_id),RT_RCDATA);
+        auto size=resource ? SizeofResource(owner,resource) : 0;
+        auto loaded=resource ? LoadResource(owner,resource) : nullptr;
+        auto bytes=loaded ? LockResource(loaded) : nullptr;
+        if (!bytes || !size || size > 0x7fffffffU) throw std::runtime_error("Anchor event resource");
+        return anchor_checked(env,env->DefineClass(binary,loader,static_cast<const jbyte*>(bytes),static_cast<jsize>(size)));
+    }
+    bool install_anchor_hooks(JNIEnv* env)
+    {
+        if (anchor_hooks_installed) return true;
+        if (anchor_hooks_failed || !jvm) return false;
+        try {
+            auto client=anchor_checked(env,jni::get_cached_jclass<maps::MinecraftClient>());
+            auto klass=anchor_checked(env,env->FindClass("java/lang/Class"));
+            auto get_loader=anchor_checked(env,env->GetMethodID(klass,"getClassLoader","()Ljava/lang/ClassLoader;"));
+            auto parent=anchor_checked(env,env->CallObjectMethod(client,get_loader));
+            auto for_name=anchor_checked(env,env->GetStaticMethodID(klass,"forName","(Ljava/lang/String;ZLjava/lang/ClassLoader;)Ljava/lang/Class;"));
+            auto events_name=anchor_checked(env,env->NewStringUTF("net.onestep.hybrid.AnchorEvents"));
+            auto events=static_cast<jclass>(env->CallStaticObjectMethod(klass,for_name,events_name,JNI_TRUE,parent));
+            if (platform::jni_context::clear_exception()) events=nullptr;
+            if (!events) define_anchor_class(env,parent,"net/onestep/hybrid/AnchorEvents",IDR_ANCHOR_EVENTS);
+            auto bridge_type=anchor_checked(env,env->GetObjectClass(bridge));
+            auto loader=anchor_checked(env,env->CallObjectMethod(bridge_type,get_loader));
+            auto transformer=define_anchor_class(env,loader,"net/onestep/hybrid/AnchorTransformer",IDR_ANCHOR_TRANSFORMER);
+            anchor_transformer_class=static_cast<jclass>(anchor_checked(env,env->NewGlobalRef(transformer)));
+            anchor_client_class=static_cast<jclass>(anchor_checked(env,env->NewGlobalRef(client)));
+            anchor_transform_id=anchor_checked(env,env->GetStaticMethodID(transformer,"transform","([BI)[B"));
+            if (jvm->GetEnv(reinterpret_cast<void**>(&anchor_tooling),JVMTI_VERSION_1_2) != JNI_OK || !anchor_tooling)
+                throw std::runtime_error("Anchor JVMTI environment");
+            jvmtiCapabilities caps{}; caps.can_retransform_classes=1;
+            if (anchor_tooling->AddCapabilities(&caps) != JVMTI_ERROR_NONE) throw std::runtime_error("Anchor retransform capability");
+            jboolean modifiable=JNI_FALSE;
+            if (anchor_tooling->IsModifiableClass(client,&modifiable) != JVMTI_ERROR_NONE || !modifiable) throw std::runtime_error("Anchor client modifiability");
+            jvmtiEventCallbacks callbacks{}; callbacks.ClassFileLoadHook=&anchor_class_bytes;
+            if (anchor_tooling->SetEventCallbacks(&callbacks,sizeof(callbacks)) != JVMTI_ERROR_NONE) throw std::runtime_error("Anchor callback");
+            anchor_transforming.store(true,std::memory_order_release);
+            auto result=anchor_tooling->SetEventNotificationMode(JVMTI_ENABLE,JVMTI_EVENT_CLASS_FILE_LOAD_HOOK,nullptr);
+            if (result == JVMTI_ERROR_NONE) result=anchor_tooling->RetransformClasses(1,&anchor_client_class);
+            anchor_tooling->SetEventNotificationMode(JVMTI_DISABLE,JVMTI_EVENT_CLASS_FILE_LOAD_HOOK,nullptr);
+            anchor_transforming.store(false,std::memory_order_release);
+            if (result != JVMTI_ERROR_NONE || !anchor_hook_changed) throw std::runtime_error("Anchor client hooks");
+            env->CallVoidMethod(bridge,anchor_install_events_id);
+            if (env->ExceptionCheck()) throw std::runtime_error("Anchor Java event handlers");
+            anchor_hooks_installed=true; return true;
+        } catch (...) {
+            platform::jni_context::clear_exception(); shutdown_anchor_hooks(env); anchor_hooks_failed=true;
+            OutputDebugStringW(L"[OneStep] Combat event hooks unavailable; Auto Totem and Legit Anchor inactive. Normal Anchor remains available.\n");
+            return false;
+        }
+    }
     bool permitted() {
         const HWND window = gui::get_window();
         return auth::permitted(auth::scope::bridge) && window && GetForegroundWindow() == window &&
             !gui::draw && !gui::loader_visible && !gui::should_unload;
+    }
+    jboolean JNICALL jump_permitted(JNIEnv*, jobject, jlong generation) {
+        return permitted() && jump_reset_source && static_cast<std::uint64_t>(generation) == jump_expected_generation &&
+            jump_reset_source->load(std::memory_order_acquire) == jump_expected_generation ? JNI_TRUE : JNI_FALSE;
+    }
+    jboolean JNICALL anchor_permitted(JNIEnv*, jobject, jlong generation) {
+        return permitted() && anchor_reset_source && static_cast<std::uint64_t>(generation) == anchor_expected_generation &&
+            anchor_reset_source->load(std::memory_order_acquire) == anchor_expected_generation ? JNI_TRUE : JNI_FALSE;
+    }
+    jboolean JNICALL totem_permitted(JNIEnv*, jobject, jlong generation) {
+        return permitted() && totem_reset_source && static_cast<std::uint64_t>(generation) == totem_expected_generation &&
+            totem_reset_source->load(std::memory_order_acquire) == totem_expected_generation ? JNI_TRUE : JNI_FALSE;
     }
     void finish_trigger_helper(jobject p, jobject w, bool consumed) {
         if (trigger_helper == 0) return;
@@ -104,6 +229,105 @@ namespace
     {
         struct binding { const char* source; const char* runtime; };
         static constexpr binding names[]{
+#if ONESTEP_MINECRAFT_26_1
+            {"net/minecraft/class_9323", "net/minecraft/core/component/DataComponentMap"},
+            {"net/minecraft/class_1269$class_9860", "net/minecraft/world/InteractionResult$Success"},
+            {"net/minecraft/class_1269$class_9861", "net/minecraft/world/InteractionResult$SwingSource"},
+            {"comp_2909", "swingSource"},
+            {"field_52427", "CLIENT"},
+            {"method_45474", "canBeReplaced"},
+            {"method_29504", "isDeadOrDying"},
+            {"method_57347", "components"},
+            {"method_57832", "has"},
+#else
+            {"net/minecraft/class_9323", "net/minecraft/class_9323"},
+            {"net/minecraft/class_1269$class_9860", "net/minecraft/class_1269$class_9860"},
+            {"net/minecraft/class_1269$class_9861", "net/minecraft/class_1269$class_9861"},
+            {"comp_2909", "comp_2909"},
+            {"field_52427", "field_52427"},
+            {"method_45474", "method_45474"},
+            {"method_29504", "method_29504"},
+            {"method_57347", "method_57347"},
+            {"method_57832", "method_57832"},
+#endif
+#if ONESTEP_MINECRAFT_26_1
+            {"method_2383", "slotClicked"},
+            {"method_25402", "mouseClicked"},
+#else
+            {"method_2383", "method_2383"},
+            {"method_25402", "method_25402"},
+#endif
+            {"net/minecraft/class_465", ONESTEP_MC_NAME("net/minecraft/class_465")},
+            {"field_2797", ONESTEP_MC_NAME("field_2797")},
+            {"net/minecraft/class_490", ONESTEP_MC_NAME("net/minecraft/class_490")},
+            {"net/minecraft/class_1703", ONESTEP_MC_NAME("net/minecraft/class_1703")},
+            {"net/minecraft/class_1713", ONESTEP_MC_NAME("net/minecraft/class_1713")},
+            {"field_8288", ONESTEP_MC_NAME("field_8288")},
+            {"field_7791", ONESTEP_MC_NAME("field_7791")},
+            {"field_7512", ONESTEP_MC_NAME("field_7512")},
+            {"field_7763", ONESTEP_MC_NAME("field_7763")},
+            {"method_34255", ONESTEP_MC_NAME("method_34255")},
+            {"method_2906", ONESTEP_MC_NAME("method_2906")},
+            {"method_6032", ONESTEP_MC_NAME("method_6032")},
+            {"method_7876", ONESTEP_MC_NAME("method_7876")},
+#if ONESTEP_MINECRAFT_26_1
+            {"net/minecraft/class_1723", "net/minecraft/world/inventory/InventoryMenu"},
+            {"field_7498", "inventoryMenu"},
+            {"method_1507", "setScreen"},
+            {"method_25419", "onClose"},
+            {"field_22789", "width"},
+            {"field_22790", "height"},
+#else
+            {"net/minecraft/class_1723", "net/minecraft/class_1723"},
+            {"field_7498", "field_7498"},
+            {"method_1507", "method_1507"},
+            {"method_25419", "method_25419"},
+            {"field_22789", "field_22789"},
+            {"field_22790", "field_22790"},
+#endif
+            {"method_23666", "method_23666"},
+
+            {"net/minecraft/class_1819", ONESTEP_MC_NAME("net/minecraft/class_1819")},
+            {"net/minecraft/class_9331", ONESTEP_MC_NAME("net/minecraft/class_9331")},
+            {"net/minecraft/class_9334", ONESTEP_MC_NAME("net/minecraft/class_9334")},
+            {"field_50075", ONESTEP_MC_NAME("field_50075")},
+            {"method_6047", ONESTEP_MC_NAME("method_6047")},
+            {"method_6079", ONESTEP_MC_NAME("method_6079")},
+            {"method_57824", ONESTEP_MC_NAME("method_57824")},
+            {"method_58694", ONESTEP_MC_NAME("method_58694")},
+
+            {"net/minecraft/class_4969", ONESTEP_MC_NAME("net/minecraft/class_4969")},
+            {"net/minecraft/class_2758", ONESTEP_MC_NAME("net/minecraft/class_2758")},
+            {"net/minecraft/class_2769", ONESTEP_MC_NAME("net/minecraft/class_2769")},
+            {"field_23141", ONESTEP_MC_NAME("field_23141")},
+            {"field_8801", ONESTEP_MC_NAME("field_8801")},
+            {"field_23152", ONESTEP_MC_NAME("field_23152")},
+            {"field_23153", ONESTEP_MC_NAME("field_23153")},
+            {"field_11033", ONESTEP_MC_NAME("field_11033")},
+            {"field_11043", ONESTEP_MC_NAME("field_11043")},
+            {"field_11035", ONESTEP_MC_NAME("field_11035")},
+            {"field_11039", ONESTEP_MC_NAME("field_11039")},
+            {"field_11034", ONESTEP_MC_NAME("field_11034")},
+            {"field_1788", ONESTEP_MC_NAME("field_1788")},
+            {"method_11654", ONESTEP_MC_NAME("method_11654")},
+            {"method_17780", ONESTEP_MC_NAME("method_17780")},
+            {"method_10148", ONESTEP_MC_NAME("method_10148")},
+            {"method_10164", ONESTEP_MC_NAME("method_10164")},
+            {"method_10165", ONESTEP_MC_NAME("method_10165")},
+            {"method_18456", ONESTEP_MC_NAME("method_18456")},
+
+            {"net/minecraft/class_1656", ONESTEP_MC_NAME("net/minecraft/class_1656")},
+            {"net/minecraft/class_1282", ONESTEP_MC_NAME("net/minecraft/class_1282")},
+            {"field_1903", ONESTEP_MC_NAME("field_1903")},
+            {"field_6235", ONESTEP_MC_NAME("field_6235")},
+            {"field_6012", ONESTEP_MC_NAME("field_6012")},
+            {"field_6228", ONESTEP_MC_NAME("field_6228")},
+            {"field_7478", ONESTEP_MC_NAME("field_7478")},
+            {"field_7479", ONESTEP_MC_NAME("field_7479")},
+            {"method_6113", ONESTEP_MC_NAME("method_6113")},
+            {"method_31549", ONESTEP_MC_NAME("method_31549")},
+            {"method_6081", ONESTEP_MC_NAME("method_6081")},
+            {"method_5529", ONESTEP_MC_NAME("method_5529")},
             {"net/minecraft/class_312", ONESTEP_MC_NAME("net/minecraft/class_312")},
             {"field_1729", ONESTEP_MC_NAME("field_1729")},
             {"field_1791", ONESTEP_MC_NAME("field_1791")},
@@ -315,9 +539,19 @@ namespace
             if (!bytes || !size || size > 0x7fffffffU) throw std::runtime_error("World resource");
             auto type = checked(env, env->DefineClass("net/onestep/hybrid/WorldBridge", loader, static_cast<const jbyte*>(bytes), static_cast<jsize>(size)));
             JNINativeMethod callbacks[]{
-                {const_cast<char*>("triggerService"), const_cast<char*>("(ILjava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;IJ)J"), reinterpret_cast<void*>(&trigger_service)}
+                {const_cast<char*>("triggerService"), const_cast<char*>("(ILjava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;IJ)J"), reinterpret_cast<void*>(&trigger_service)},
+                {const_cast<char*>("jumpPermitted"), const_cast<char*>("(J)Z"), reinterpret_cast<void*>(&jump_permitted)},
+                {const_cast<char*>("anchorPermitted"), const_cast<char*>("(J)Z"), reinterpret_cast<void*>(&anchor_permitted)},
+                {const_cast<char*>("totemPermitted"), const_cast<char*>("(J)Z"), reinterpret_cast<void*>(&totem_permitted)}
             };
-            if (env->RegisterNatives(type, callbacks, 1) != JNI_OK || env->ExceptionCheck()) throw std::runtime_error("Trigger native service binding");
+            if (env->RegisterNatives(type, callbacks, static_cast<jint>(std::size(callbacks))) != JNI_OK || env->ExceptionCheck()) throw std::runtime_error("World native service binding");
+            totem_tick_id = checked(env,env->GetMethodID(type,"tickTotem","(ZJ[IZ)V"));
+            totem_cancel_id = checked(env,env->GetMethodID(type,"cancelTotem","()V"));
+            anchor_install_events_id = checked(env,env->GetMethodID(type,"installAnchorEvents","()V"));
+            anchor_tick_id = checked(env, env->GetMethodID(type, "tickAnchor", "(ZJI[Z[I)V"));
+            anchor_cancel_id = checked(env, env->GetMethodID(type, "cancelAnchor", "()V"));
+            jump_tick_id = checked(env, env->GetMethodID(type, "tickJump", "(ZJIIIZ)V"));
+            jump_cancel_id = checked(env, env->GetMethodID(type, "cancelJump", "()V"));
             trigger_tick_id = checked(env, env->GetMethodID(type, "tickTrigger", "(ZJJFFIIIIIZZZ)V"));
             trigger_cancel_id = checked(env, env->GetMethodID(type, "cancelTrigger", "()V"));
             auto create = checked(env, env->GetMethodID(type, "<init>", "(Ljava/lang/ClassLoader;I[Ljava/lang/String;)V"));
@@ -345,7 +579,7 @@ namespace
     services::game::hybrid::result prepare(unsigned feature) {
         using services::game::hybrid::result;
         if (!auth::permitted(auth::scope::bridge)) return result::unavailable;
-        if (feature < 1 || feature > 4) return result::unavailable;
+        if (feature < 1 || feature > 7) return result::unavailable;
         if constexpr (mc::target.build_id != 12111) if (feature < 3) return result::native_fallback;
         if (!permitted() || !platform::jni_context::bind_current_thread() || suspended[feature]) return result::unavailable;
         if (rejected[feature] || !connect(jni::get_env())) return result::native_fallback;
@@ -544,10 +778,97 @@ void services::game::world_bridge::cancel_trigger()
         suspended[4] = true;
     }
 }
+void services::game::world_bridge::tick_jump(const jump_reset_config::config& settings, bool active,
+    const std::atomic<std::uint64_t>& generation)
+{
+    if (!active || !permitted()) { cancel_jump(); return; }
+    if (!platform::jni_context::bind_current_thread()) return;
+    jni::frame frame{128};
+    if (prepare(5) != hybrid::result::ready) { cancel_jump(); return; }
+    jump_expected_generation = generation.load(std::memory_order_acquire);
+    jump_reset_source = &generation;
+    jni::get_env()->CallVoidMethod(bridge, jump_tick_id, JNI_TRUE,
+        static_cast<jlong>(jump_expected_generation), static_cast<jint>(settings.mode),
+        static_cast<jint>(settings.chance), static_cast<jint>(settings.jump_delay_ms), static_cast<jboolean>(settings.only_combat));
+    if (!checked_result(5, true)) cancel_jump();
+}
+void services::game::world_bridge::cancel_jump()
+{
+    jump_reset_source = nullptr; jump_expected_generation = 0;
+    if (!bridge || !jump_cancel_id || !platform::jni_context::bind_current_thread()) return;
+    jni::frame frame{96};
+    jni::get_env()->CallVoidMethod(bridge, jump_cancel_id);
+    if (platform::jni_context::clear_exception()) suspended[5] = true;
+}
+void services::game::world_bridge::tick_anchor(const module_settings::anchor_macro& settings, bool active,
+    const std::atomic<std::uint64_t>& generation, std::uint64_t expected_generation)
+{
+    if (!active || !permitted() || generation.load(std::memory_order_acquire) != expected_generation) { cancel_anchor(); return; }
+    if (!platform::jni_context::bind_current_thread()) return;
+    jni::frame frame{128};
+    if (prepare(6) != hybrid::result::ready) { cancel_anchor(); return; }
+    if (settings.execution_mode == 1 && !install_anchor_hooks(jni::get_env())) { cancel_anchor(); return; }
+    anchor_expected_generation = expected_generation;
+    anchor_reset_source = &generation;
+    auto env = jni::get_env();
+    auto flags = env->NewBooleanArray(5);
+    const bool flags_error = platform::jni_context::clear_exception();
+    if (!flags || flags_error) { cancel_anchor(); return; }
+    auto values = env->NewIntArray(8);
+    const bool values_error = platform::jni_context::clear_exception();
+    if (!values || values_error) { cancel_anchor(); return; }
+    const jboolean switches[]{static_cast<jboolean>(settings.while_use),static_cast<jboolean>(settings.stop_on_kill),
+        static_cast<jboolean>(settings.click_simulation),static_cast<jboolean>(settings.only_own),static_cast<jboolean>(settings.only_charge)};
+    const jint numbers[]{settings.place_chance,settings.switch_delay,settings.switch_chance,settings.glowstone_delay,
+        settings.glowstone_chance,settings.explode_delay,settings.explode_chance,settings.explode_slot};
+    env->SetBooleanArrayRegion(flags,0,5,switches); env->SetIntArrayRegion(values,0,8,numbers);
+    if (platform::jni_context::clear_exception()) { cancel_anchor(); return; }
+    env->CallVoidMethod(bridge,anchor_tick_id,JNI_TRUE,static_cast<jlong>(anchor_expected_generation),static_cast<jint>(settings.execution_mode),flags,values);
+    if (!checked_result(6,true)) cancel_anchor();
+}
+void services::game::world_bridge::cancel_anchor()
+{
+    anchor_reset_source = nullptr; anchor_expected_generation = 0;
+    if (!bridge || !anchor_cancel_id || !platform::jni_context::bind_current_thread()) return;
+    jni::frame frame{96};
+    jni::get_env()->CallVoidMethod(bridge,anchor_cancel_id);
+    if (platform::jni_context::clear_exception()) suspended[6] = true;
+}
+void services::game::world_bridge::tick_totem(const module_settings::auto_totem& s, bool active,
+    const std::atomic<std::uint64_t>& generation, std::uint64_t expected_generation)
+{
+    if (!active || !permitted() || generation.load(std::memory_order_acquire) != expected_generation) { cancel_totem(); return; }
+    if (!platform::jni_context::bind_current_thread()) return;
+    jni::frame frame{64};
+    if (!connect(jni::get_env()) || !install_anchor_hooks(jni::get_env()) || prepare(7) != hybrid::result::ready) { cancel_totem(); return; }
+    totem_reset_source = &generation; totem_expected_generation = expected_generation;
+    auto env = jni::get_env();
+    auto values = env->NewIntArray(7);
+    if (platform::jni_context::clear_exception() || !values) { cancel_totem(); return; }
+    const jint settings[]{s.mode,s.delay,static_cast<jint>(s.hotbar),s.totem_slot,
+        static_cast<jint>(s.auto_switch),static_cast<jint>(s.force_totem),s.stay_open_for};
+    env->SetIntArrayRegion(values,0,7,settings);
+    if (platform::jni_context::clear_exception()) { cancel_totem(); return; }
+    env->CallVoidMethod(bridge,totem_tick_id,JNI_TRUE,static_cast<jlong>(expected_generation),values,static_cast<jboolean>(s.auto_open));
+    if (!checked_result(7,true)) cancel_totem();
+}
+void services::game::world_bridge::cancel_totem()
+{
+    totem_reset_source=nullptr; totem_expected_generation=0;
+    if (!bridge || !totem_cancel_id || !platform::jni_context::bind_current_thread()) return;
+    jni::frame frame{32};
+    jni::get_env()->CallVoidMethod(bridge,totem_cancel_id);
+    if (platform::jni_context::clear_exception()) suspended[7]=true;
+}
+
 void services::game::world_bridge::shutdown()
 {
+    totem_reset_source = nullptr; totem_expected_generation = 0;
+    anchor_reset_source = nullptr; anchor_expected_generation = 0;
+    jump_reset_source = nullptr; jump_expected_generation = 0;
     if (bridge && platform::jni_context::bind_current_thread()) {
         jni::get_env()->CallVoidMethod(bridge, stop_id); platform::jni_context::clear_exception();
+        shutdown_anchor_hooks(jni::get_env());
         auto type = jni::get_env()->GetObjectClass(bridge);
         if (type) { jni::get_env()->UnregisterNatives(type); jni::get_env()->DeleteLocalRef(type); }
         platform::jni_context::clear_exception(); jni::get_env()->DeleteGlobalRef(bridge);
@@ -556,6 +877,10 @@ void services::game::world_bridge::shutdown()
     pearl_id = begin_id = use_id = release_pearl_id = stop_id = nullptr;
     crystal_tick_id = crystal_cancel_id = crystal_input_id = nullptr;
     trigger_tick_id = trigger_cancel_id = nullptr; trigger_reset_source = nullptr; trigger_helper = 0;
+    jump_tick_id = jump_cancel_id = nullptr;
+    anchor_tick_id = anchor_cancel_id = anchor_install_events_id = nullptr;
+    totem_tick_id = totem_cancel_id = nullptr;
+    anchor_hooks_failed=false;
     services::combat::release_trigger();
     prepared = {}; rejected = {}; suspended = {}; failed = false;
 }

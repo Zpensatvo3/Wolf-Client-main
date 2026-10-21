@@ -34,28 +34,67 @@ Arayüz gruplaması [UI rehberinde](GRIM_UI_LAYOUT.md), Java I/O kapsamı
 
 ### Anchor Macro
 
-Legit ve Blatant tek modül içindeki ayrı profillerdir; Safe Anchor ayrıdır.
-Slot geçişi, yerleştirme, glowstone, patlatma, geri dönüş, kamera ve
-rastgeleleştirme tercihleri profil başına saklanır. Gecikmeler toplanır;
-her bileşen 0–500 ms, açık rastgelelik ayarlanan ± sapmayı kullanır.
-Sıfır gecikmede bile kare başına en fazla bir etkileşim vardır.
+Anchor Macro'nun canlı denetleyicisi Java WorldBridge özelliği 6'dır. Varsayılan
+**Normal**, mevcut OneStep akışıdır; **Legit**, Argon'un tick/eşya kullanımı
+olaylarına dayalı akışını uygular. `execution_mode` bu iki seçimi kaydeder.
+Menüde Mode ve iki modun kullandığı aynı 13 kontrol bulunur: While Use, Stop on Kill, Click Simulation,
+Place Chance, Switch Delay/Chance, Glowstone Delay/Chance, Explode Delay/Chance,
+Explode Slot, Only Own ve Only Charge. Gecikmeler 0–20 **oyun tick'i**, şanslar
+0–100%, patlatma slotu 1–9'dur. Fiziksel sağ tuş GLFW'den okunur.
 
-Tek açılış bir döngüdür; dolum gözlenmeden patlama aşamasına geçilmez.
-Dünya/oyuncu, odak/menü veya manuel slot değişimi pending işi iptal eder;
-slot yalnızca hâlâ modülün sahip olduğu seçimdeyse geri alınır.
-Yerel blok gözlemi sunucu onayı veya rastgelelik sunucu kabulü garantisi değildir.
+Normal mod yerleştirme → yerleşimi gözleme → glowstone → dolumu gözleme → patlatma
+→ kaybolmayı gözleme → eski slotu geri alma akışını korur. Mevcut bir anchor'dan
+da başlanabilir. Sağ tuş basışı başına tek döngü çalışır; yeni deneme için tuşun
+bırakılması gerekir. Her aşamada şans bir kez örneklenir; başarısızlık aynı
+basışı tekrar tekrar denemez. Bir tick'te en fazla bir slot/oyun işlemi uygulanır.
+Dolum bilinmiyorsa patlatılmaz; glowstone patlatma slotu kabul edilmez.
 
-Eski `anchor_macro` / `blatant_anchor_macro` alanları iki profile taşınır.
-İkisi açıksa Legit; yalnızca Blatant açıksa Blatant ve onun tuşu seçilir.
-Yeni birleşik kayıt varsa önceliklidir.
+Only Own yalnızca aynı dünya/oyuncu oturumunda modülün yerleştirdiği ve dünyada
+gözlediği anchor'ları kabul eder. Only Charge dolumdan sonra durur. While Use
+kapalıysa elde/ikinci elde yemek veya kalkan varken ve aktif eşya kullanımında
+bekler. Stop on Kill altı blok içindeki ölü oyuncu için durur. Click Simulation
+başarılı doğrudan etkileşimden sonra Java Mouse callback'ine sağ basma/bırakma
+çifti yollar; ek vanilla kullanım kuyruğu yaratmaz, Windows input üretmez.
+
+Manuel slot, ayar, dünya/oyuncu/pencere veya odak değişimi döngüyü iptal eder.
+Slot yalnızca hâlâ modülün seçtiği slot ise aynı envanterde geri alınır. Gerçek
+vanilla erişim ve blok görüşü tekrar okunur. Yerleşim/dolum/kaybolma 650 ms içinde
+gözlenmezse döngü biter; yerel gözlem sunucu onayı garantisi değildir.
+
+Legit otomatik anchor koymaz: normal oyun kullanımıyla koyduğun veya şu an
+nişangâhında bulunan anchor'ı işler. Gerçek client tick HEAD olayında güncel
+hedefi okur; sağ tık basılıyken sürekli çalışır. Şans başarısızlığı sonraki
+tick'te yeniden denenir. Switch/glowstone/explode sayaçları hedef/sağ tuş
+bırakma/ayar değişiminde sıfırlanmaz; modül yeniden etkinleşince sıfırlanır.
+Place Chance boş anchor'da switch/doldurma yolunu kapılar. Only Charge patlatma
+çağrısını engeller fakat Explode Slot'a geçişi engellemez. Eski slota dönülmez;
+sıfır gecikmede dolum ve patlatma aynı tick'te gerçekleşebilir.
+
+Legit Only Own, gerçek normal eşya kullanımı HEAD olayında tahmin edilen yerleşim
+konumunu kaydeder; kaynak gibi yerleşim onayı beklemez ve konumları disable/enable
+boyunca korur. Kaynak davranışına uygun olarak koordinat listesi dünya bazında
+ayrılmaz. Java `ActionResult` istemci el sallamasını istediğinde swing yapılır.
+Click Simulation nominal 35 ms sağ mouse basışı üretir; client use HEAD hook'u
+bir sonraki fake kullanımı iptal eder. Basma/bırakma oyun thread'indedir; bırakma
+süresi dolduğunda ilk uygun tick/render çağrısında uygulanır. Argon'un worker
+havuzu kullanılmaz. Odak/izin/kapanış kontrolleri ve input temizliği devam eder.
+Legit için tick/use hook kurulumu başarısızsa Normal kullanılmaya devam edebilir.
+
+Eski Legit/Blatant profil alanları config'te gizli saklanır. Eski alias birleştirme
+ve keybind seçimi sürer; açıkça gelen eski switch/charge/detonate milisaniyeleri
+üst tick'e yuvarlanır. `execution_mode` içermeyen eski public config'ler Normal
+açılır; eski gizli `mode: 1` yeni Legit seçimi değildir. Yeni alanlar varsa
+önceliklidir. Safe Anchor ayrı modül
+olarak mevcut native motorunu kullanır. [Java kapsamı](HYBRID_MIGRATION.md#anchor-macro-java-denetleyicisi).
 
 ### Auto Totem
 
-Normal ve Legit tek modüldeki ayrı ayarlardır. Normal otomatik envanter açar;
-Legit yalnızca açık envanterde mevcut imleç davranışıyla çalışır.
-Mod/ayar değişimi pending işi sıfırlar. Eski `auto_totem` /
-`legit_auto_totem` kayıtları taşınır: yalnızca Legit açıksa Legit, ikisi açıksa
-Normal ve seçilen profilin tuşu alınır. Yeni birleşik kayıt önceliklidir.
+Auto Totem’in Java akışı Argon’daki Auto Inventory Totem davranışını izler:
+Blatant ilk uygun ana envanter totemini, Random rastgele uygun totemi seçer.
+Önce offhand doldurulur; Hotbar açıksa eldeki slotun boş olması veya Force Totem
+kullanılması durumunda seçili slot da doldurulur. Auto Switch seçilen totem slotuna
+geçer. Auto Open modülün açtığı envanteri, Stay Open For süresi bitince kapatır.
+Tüm kararlar ve SWAP işlemleri oyun thread’inde Java’dan yapılır.
 
 ## Hedefleme ve oyun I/O
 
@@ -91,6 +130,12 @@ Normal ve seçilen profilin tuşu alınır. Yeni birleşik kayıt önceliklidir.
   erişim ve görüş denetlenir; spawn/kaybolma gözlenir, tekrarlar sınırlıdır.
   Menü, odak/izin kaybı ve manuel slot değişimi döngüyü iptal eder.
   [Java geçiş kapsamı ve kaynak kontrolleri](HYBRID_MIGRATION.md#hit-crystal-tam-java-denetleyicisi).
+- **Jump Reset:** hasar/zemin kontrolleri, şans/gecikme, Living Attacks Only
+  onayı ve jump binding sahipliği WorldBridge Java denetleyicisindedir.
+  Tuşlar Java'da GLFW ile okunur; basma/bırakma vanilla KeyBinding yolundadır.
+  Game Binding ve Game Space modları mevcut config/preset'leri korur;
+  eski System Space kayıtları Windows input üretmeden Game Space olarak çalışır.
+  [Java geçiş kapsamı](HYBRID_MIGRATION.md#jump-reset-java-denetleyicisi).
 - **No Jump Delay:** tekrar zıplama cooldown'unu kaldırır; jump basışı üretmez.
 - **Fast Stop:** yerde hareket girdisi kesilince yatay kaymayı bir kez durdurur;
   düşey hızı korur. Hava, sıvı, tırmanma, uçuş, araç ve hurt koşullarında durur;

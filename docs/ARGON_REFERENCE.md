@@ -1,6 +1,6 @@
 # Argon kaynak referansı
 
-OneStep'in Hit Crystal ve Triggerbot modüllerinin bağımsız Java uygulamalarında incelenen referans:
+OneStep'in Hit Crystal, Triggerbot, Jump Reset, Anchor Macro ve Auto Totem modüllerinin bağımsız Java uygulamalarında incelenen referans:
 
 - Depo: [LvStrnggg/Argon](https://github.com/LvStrnggg/Argon)
 - Kaynak kodu: Java, Fabric
@@ -88,3 +88,80 @@ KeyBinding `KEYS_BY_ID`, `pressed` ve `timesPressed` adları
 ve Mojang 1.21.11 client mappings ile kontrol edildi. 26.1 ailesi mevcut SDK'nın
 MouseButtonInfo sözleşmesini ve exact Mojang adlarını kullanır; bu kaynak
 kontrolü yedi hedef için oyun içi kabul değildir.
+
+## Jump Reset için incelenen akış
+
+Aynı sabit commit'teki [AutoJumpReset](https://github.com/LvStrnggg/Argon/blob/738e75f0623581ffbbc116656835352f8df9eb22/src/main/java/dev/lvstrng/argon/module/modules/combat/AutoJumpReset.java)
+incelendi. Menü/eşya kullanımı sırasında bekleme, hasar animasyonu, yerde olma
+ve aktivasyon şansı davranış referansıdır. Argon `hurtTime == 9` üzerinde doğrudan
+`jump()` çağırır ve iki şans kontrolü yapar. OneStep'in bağımsız Java uygulaması
+mevcut tek hasar kenarı/tek şans örneklemesi, milisaniye gecikmesi, living-source
+onayı ve yapılandırılmış jump binding sözleşmesini korur; Argon kodu kopyalanmadı.
+
+WorldBridge özelliği 5 oyun okumalarını, kararları, zamanlamayı ve tuş
+sahipliğini yönetir. `mode`, `chance`, `jump_delay_ms`, `only_combat` alanları
+ve preset'ler korunur. Tuş/mouse durumu güncel oyun penceresi üzerinden Java'da
+`GLFW.glfwGetKey` / `glfwGetMouseButton` ile okunur; SCANCODE atamaları
+`glfwGetKeyScancode` ile eşlenir. Basma ve bırakma oyunun `KeyBinding.setPressed`
+yolundadır. GLFW fiziksel durumu değiştirilmez.
+
+Eski `mode: 1` / System Space kayıtları **Game Space** olarak açılır: jump tuşu
+Space'e atanmışsa Java aynı game-binding yolunu kullanır. Windows SendInput,
+native Space ticket'ı veya sonradan teslim edilecek input olayı yoktur. Native
+callback yalnızca runtime izin/odak ve iptal neslini denetler. Argon 1.21
+kaynakları diğer hedeflere birebir taşınmış kabul edilmez.
+
+
+## Anchor Macro için incelenen akış
+
+Aynı sabit commit'teki [AnchorMacro](https://github.com/LvStrnggg/Argon/blob/738e75f0623581ffbbc116656835352f8df9eb22/src/main/java/dev/lvstrng/argon/module/modules/combat/AnchorMacro.java)
+davranış referansıdır. Sağ tuşla aktivasyon, tick bazlı switch/glowstone/explode
+gecikmeleri ve şansları, Explode Slot, Only Own, Only Charge, While Use, Stop on
+Kill ve isteğe bağlı Click Simulation ayarları temel alınmıştır. Argon kodu
+kopyalanmadı; bağımsız WorldBridge özelliği 6 OneStep'in otomatik koyma/doldurma/
+patlatma sırasını, oyun durumu gözlemlerini ve slot geri dönüşünü uygular.
+
+Normal modda şans aşama başına bir kez örneklenir; OneStep'in tek döngü,
+yerleşim/dolum gözlemi ve slot geri dönüşü korunur. Legit modda ise:
+
+- Gerçek Minecraft client tick HEAD'i her tick güncel nişangâh hedefini okur.
+- Yerleştirme otomatik değildir; normal item-use HEAD olayı Only Own kaydı yapar.
+- Place Chance boş anchor'ın switch/glowstone yolunu kapılar; başarısız şanslar
+  sonraki tick yeniden denenir. Üç sayaç kaynaktaki eşitlik kontrolünü kullanır.
+- Hedef değişimi/sağ tuş bırakma sayaçları sıfırlamaz; enable sıfırlar.
+- Only Charge patlatmayı engeller, Explode Slot seçimini engellemez. Slot geri
+  dönüşü veya Normal'in tek-basış kilidi yoktur; aynı tick'te charge/explode olabilir.
+- Koordinat sahipliği, yerleşim onayı beklemeden kullanım olayından hesaplanır;
+  disable/enable ve dünya değişiminde liste kaynak gibi korunur.
+- `interactBlock` sonucu kabul edilmiş ve istemci swing istenmişse el sallanır.
+  1.21.1'de shouldSwingHand, yeni hedeflerde Success.swingSource kullanılır.
+
+Legit Click Simulation nominal 35 ms sağ basışı başlatır ve release'i ilk uygun
+client tick/render'da tamamlar. Minecraft item-use HEAD hook'u kaynaktaki global
+fake-click işareti gibi bir sonraki fake kullanımı iptal eder. Argon'un ayrı
+worker havuzundan oyun çağırma yapısı alınmadı; oyun yazmaları Java client
+thread'indedir. Native yalnızca izin/iptal kontrolü ve bir defalık JVMTI hook
+kurulum/kaldırmasını yürütür. Normal'in senkron pulse ve queue koruması korunur.
+
+`AnchorTransformer` ve `AnchorEvents`, iki özgün tick/item-use girişini hook'lar.
+Bunlar bağımsız uygulamalardır; Argon mixin/istemci kaynakları paketlenmez.
+
+## Auto Totem için incelenen akış
+
+Aynı sabit commit'teki `AutoInventoryTotem`, `InventoryUtils` ve `FakeInvScreen`
+incelendi. Kaynak yalnızca 9–35 aralığındaki ana envanterden seçilir: Blatant
+ilk uygun slotu, Random uygun slotlardan rastgele birini seçer. Önce offhand,
+sonra Hotbar açıksa boş/Force Totem ile değiştirilebilen seçili slot doldurulur.
+Auto Switch kapalıysa hedef mevcut seçili slottur; Totem Slot ise otomatik ekran
+kapatma koşulunda kullanılmaya devam eder. Bu ayrıntı kaynak davranışıdır.
+
+Delay ve Stay Open For sayaçları gerçek client tick HEAD olayında ilerler.
+Auto Open yerel bir InventoryScreen alt sınıfı oluşturur; Argon FakeInvScreen
+ile aynı şekilde hem slot tıklama hem mouseClicked çağrıları etkisizdir.
+Alt sınıf, hedef oyunun gerçek metot imzalarıyla üretilir. Kapatma sahipliği
+oluşturulan ekran nesnesiyle izlenir. WorldBridge ve hook'lar bağımsız uygulanır.
+Native yalnızca ayar/yetki köprüsüdür; Windows tuş veya fare üretimi yoktur.
+
+`Test-AutoTotem.py`, gerçek Java denetleyicisini ve üretilen ekran bytecode'unu
+izole JVM'de çalıştırır. Bu testler Windows DLL derlemesi veya oyun içi kabulün
+yerine geçmez.

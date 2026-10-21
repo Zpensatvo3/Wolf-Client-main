@@ -102,7 +102,9 @@ public:
 
 int main()
 {
-    check_contract<module_settings::anchor_macro>({"mode",
+    check_contract<module_settings::anchor_macro>({"execution_mode","while_use","stop_on_kill","click_simulation","place_chance",
+        "switch_delay","switch_chance","glowstone_delay","glowstone_chance","explode_delay","explode_chance",
+        "explode_slot","only_own","only_charge","mode",
         "legit_switch_delay","legit_place_delay","legit_charge_delay","legit_detonate_delay","legit_return_delay",
         "legit_randomize","legit_variance","legit_hybrid_slot_input","legit_camera_movement","legit_camera_strength",
         "blatant_switch_delay","blatant_place_delay","blatant_charge_delay","blatant_detonate_delay","blatant_return_delay",
@@ -110,8 +112,12 @@ int main()
     settings_fixture<module_settings::anchor_macro> macro;
     assert(macro.apply_config_settings(R"({"mode":1,"blatant_place_delay":9999,"blatant_variance":-2})"));
     assert(macro.settings.read().blatant_place_delay == 500 && macro.settings.read().blatant_variance == 0);
+    assert(macro.apply_config_settings(R"({"execution_mode":1})"));
+    assert(macro.settings.read().execution_mode == 1);
     const auto macro_saved = macro.export_config_settings();
     assert(!macro.apply_config_settings(R"({"mode":2,"legit_switch_delay":5})"));
+    assert(macro.export_config_settings() == macro_saved);
+    assert(!macro.apply_config_settings(R"({"execution_mode":2})"));
     assert(macro.export_config_settings() == macro_saved);
     check_contract<module_settings::crystal_aura>({"target_mode","mob_ground_test","action_delay_ms","switch_delay_ms","launch_timeout_ms","confirm_timeout_ms"});
     settings_fixture<module_settings::crystal_aura> aura;
@@ -223,8 +229,9 @@ int main()
     check_contract<shield_breaker>({"switch_delay","return_delay","axe_slot"});
     check_contract<mace_swap>({"preferred_mace_slot","return_delay"});
     check_contract<hit_crystal>({"auto_switch","restore_slot","place_delay","break_delay"});
-    check_contract<auto_totem>({"mode","fill_offhand","fill_hotbar","auto_open_inventory","offhand_first","pause_with_cursor_item","hotbar_slot","delay_ms","timing_randomness_ms","initial_reaction_ms","confirmation_timeout_ms",
-        "legit_reaction_delay_ms","legit_action_delay_ms","legit_timing_variation_ms","legit_confirmation_timeout_ms","legit_hotbar_slot","legit_health_threshold","legit_fill_offhand","legit_fill_hotbar","legit_offhand_first","legit_low_health_only","legit_cursor_guided_swap","legit_cursor_travel_ms","legit_pause_with_cursor_item","legit_preserve_hotbar"});
+    check_contract<auto_totem>({"mode","delay","hotbar","totem_slot","auto_switch","force_totem","auto_open","stay_open_for"});
+    assert(auto_totem{}.delay == 0 && auto_totem{}.hotbar && auto_totem{}.totem_slot == 1 &&
+        !auto_totem{}.auto_switch && !auto_totem{}.force_totem && !auto_totem{}.auto_open);
     check_contract<left_clicker>({"min_cps","max_cps","jitter_percent","jitter_camera","jitter_amount","fatigue_enabled","fatigue_factor","glfw_input"});
     check_contract<right_clicker>({"min_cps","max_cps","jitter_percent","jitter_camera","jitter_amount","fatigue_enabled","fatigue_factor","glfw_input","only_blocks"});
     check_contract<fast_exp>({"min_cps","max_cps","cps"});
@@ -277,13 +284,10 @@ int main()
     assert(exp.apply_config_settings(R"({"min_cps":1,"max_cps":50})"));
     assert(exp.settings.read().min_cps == 1 && exp.settings.read().max_cps == 50);
     settings_fixture<auto_totem> totem;
-    assert(totem.apply_config_settings(R"({"delay_ms":900,"initial_reaction_ms":800,"timing_randomness_ms":220})"));
-    assert(totem.settings.read().delay_ms == 900 && totem.settings.read().initial_reaction_ms == 800 &&
-        totem.settings.read().timing_randomness_ms == 220);
-    settings_fixture<auto_totem> legit_totem;
-    assert(legit_totem.apply_config_settings(R"({"mode":1,"legit_reaction_delay_ms":1100,"legit_action_delay_ms":45,"legit_timing_variation_ms":240})"));
-    assert(legit_totem.settings.read().legit_reaction_delay_ms == 1100 && legit_totem.settings.read().legit_action_delay_ms == 45 &&
-        legit_totem.settings.read().legit_timing_variation_ms == 240);
+    assert(totem.apply_config_settings(R"({"mode":1,"delay":20,"hotbar":false,"totem_slot":9,"auto_switch":true,"force_totem":true,"auto_open":true,"stay_open_for":18})"));
+    assert(totem.settings.read().mode == 1 && totem.settings.read().delay == 20 && !totem.settings.read().hotbar &&
+        totem.settings.read().totem_slot == 9 && totem.settings.read().auto_switch && totem.settings.read().force_totem &&
+        totem.settings.read().auto_open && totem.settings.read().stay_open_for == 18);
     settings_fixture<radar> radar_overlay;
     assert(radar_overlay.apply_config_settings(R"({"position_x":2100,"position_y":1300})"));
     assert(radar_overlay.settings.read().position_x == 2100 && radar_overlay.settings.read().position_y == 1300);

@@ -8,6 +8,9 @@ namespace modules::config_migration
         for (const auto& [key,value] : settings.members)
         {
             (void)value;
+            for (const auto* modern : {"execution_mode","while_use","stop_on_kill","click_simulation","place_chance","switch_chance",
+                "glowstone_delay","glowstone_chance","explode_delay","explode_chance","explode_slot","only_own","only_charge"})
+                if (key == modern) return true;
             if (key == "mode" || key.starts_with("legit_") || key.starts_with("blatant_")) return true;
         }
         return false;
@@ -18,6 +21,7 @@ namespace modules::config_migration
         if (unified)
         {
             for (const auto& [key,value] : settings.members) result[key] = std::string(value.raw);
+            if (!settings.find("execution_mode")) result["execution_mode"] = "0";
             return result;
         }
         const std::string prefix = blatant ? "blatant_" : "legit_";
@@ -50,6 +54,7 @@ namespace modules::config_migration
         const auto* selected = anchor;
         if (!modern && (!anchor || (!anchor->find("enabled")->boolean && blatant && blatant->find("enabled")->boolean))) selected = blatant;
         if (!selected) selected = blatant;
+        if (!merged.contains("execution_mode")) merged["execution_mode"] = "0";
         if (!modern) merged["mode"] = selected == blatant ? "1" : "0";
         return {selected->find("enabled")->boolean,*selected->find("keybind")->integer(),encode(merged)};
     }

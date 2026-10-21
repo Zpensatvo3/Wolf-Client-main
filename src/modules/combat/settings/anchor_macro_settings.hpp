@@ -5,6 +5,14 @@ namespace module_settings
 {
     struct anchor_macro
     {
+        int execution_mode = 0; // Normal / Legit; legacy mode below remains a migration field.
+        // Argon-style controls; delays are game ticks (0..20), not milliseconds.
+        bool while_use = true, stop_on_kill = false, click_simulation = false;
+        bool only_own = false, only_charge = false;
+        int place_chance = 100, switch_delay = 0, switch_chance = 100;
+        int glowstone_delay = 0, glowstone_chance = 100;
+        int explode_delay = 0, explode_chance = 100, explode_slot = 1;
+        // Hidden legacy profiles remain serializable for old public configs.
         int mode = 0;
         bool legit_hybrid_slot_input = false, legit_camera_movement = true, legit_randomize = true;
         float legit_camera_strength = .28f;
@@ -37,10 +45,26 @@ namespace module_settings
         static std::span<const modules::settings::descriptor<anchor_macro>> schema()
         {
             using d = modules::settings::descriptor<anchor_macro>;
+            static const modules::settings::label execution_modes[]{{"Normal"},{"Legit"}};
             static const modules::settings::label modes[]{{"Legit"},{"Blatant"}};
             static const auto legit = +[](const anchor_macro& c) { return c.mode == 0; };
             static const auto blatant = +[](const anchor_macro& c) { return c.mode == 1; };
-            static const d fields[]{
+            static const auto fields = [] {
+                std::array values{
+                d::choice("execution_mode", {"Mode"}, &anchor_macro::execution_mode, execution_modes),
+                d::toggle("while_use", {"While Use"}, &anchor_macro::while_use),
+                d::toggle("stop_on_kill", {"Stop on Kill"}, &anchor_macro::stop_on_kill),
+                d::toggle("click_simulation", {"Click Simulation"}, &anchor_macro::click_simulation),
+                d::integer("place_chance", {"Place Chance"}, &anchor_macro::place_chance,0,100,"%d%%"),
+                d::integer("switch_delay", {"Switch Delay"}, &anchor_macro::switch_delay,0,20,"%d ticks"),
+                d::integer("switch_chance", {"Switch Chance"}, &anchor_macro::switch_chance,0,100,"%d%%"),
+                d::integer("glowstone_delay", {"Glowstone Delay"}, &anchor_macro::glowstone_delay,0,20,"%d ticks"),
+                d::integer("glowstone_chance", {"Glowstone Chance"}, &anchor_macro::glowstone_chance,0,100,"%d%%"),
+                d::integer("explode_delay", {"Explode Delay"}, &anchor_macro::explode_delay,0,20,"%d ticks"),
+                d::integer("explode_chance", {"Explode Chance"}, &anchor_macro::explode_chance,0,100,"%d%%"),
+                d::integer("explode_slot", {"Explode Slot"}, &anchor_macro::explode_slot,1,9,"Slot %d"),
+                d::toggle("only_own", {"Only Own"}, &anchor_macro::only_own),
+                d::toggle("only_charge", {"Only Charge"}, &anchor_macro::only_charge),
                 d::choice("mode", {"Mode"}, &anchor_macro::mode, modes),
                 d::integer("legit_switch_delay", {"Slot Switch Delay"}, &anchor_macro::legit_switch_delay,0,500,"%d ms").when(legit),
                 d::integer("legit_place_delay", {"Place Delay"}, &anchor_macro::legit_place_delay,0,500,"%d ms").when(legit),
@@ -66,8 +90,37 @@ namespace module_settings
                 d::toggle("blatant_camera_movement", {"Camera Movement"}, &anchor_macro::blatant_camera_movement).when(blatant),
                 d::number("blatant_camera_strength", {"Camera Strength"}, &anchor_macro::blatant_camera_strength,0,1.2f)
                     .when([](const anchor_macro& c) { return c.mode == 1 && c.blatant_camera_movement; })
-            };
+                };
+                for (std::size_t i = 14; i < values.size(); ++i) values[i].visible = false;
+                return values;
+            }();
             return fields;
         }
+        static bool visit(modules::config_visitor& v, anchor_macro& live)
+        {
+            auto c = live;
+            const bool importing = v.importing();
+            if (importing) v.stage_values(true);
+            modules::settings::visit_fields(v,c,schema());
+            if (!importing) return false;
+            if (!modules::settings::normalize(c,schema())) v.reject("Invalid Anchor settings.");
+            // Public-config merging still supplies the selected legacy profile.
+            // Convert its explicit millisecond fields once, preserving new keys.
+            const bool fast = c.mode == 1;
+            const char* switch_key = fast ? "blatant_switch_delay" : "legit_switch_delay";
+            const char* charge_key = fast ? "blatant_charge_delay" : "legit_charge_delay";
+            const char* explode_key = fast ? "blatant_detonate_delay" : "legit_detonate_delay";
+            const auto ticks = [](int ms) { return std::clamp((ms+49)/50,0,20); };
+            if (!v.has_field("switch_delay") && v.has_field(switch_key))
+                c.switch_delay = ticks(fast ? c.blatant_switch_delay : c.legit_switch_delay);
+            if (!v.has_field("glowstone_delay") && v.has_field(charge_key))
+                c.glowstone_delay = ticks(fast ? c.blatant_charge_delay : c.legit_charge_delay);
+            if (!v.has_field("explode_delay") && v.has_field(explode_key))
+                c.explode_delay = ticks(fast ? c.blatant_detonate_delay : c.legit_detonate_delay);
+            v.stage_values(false);
+            if (!v.reading() || !v.valid()) return false;
+            live = c; return true;
+        }
+
     };
 }

@@ -29,3 +29,13 @@
 - [x] Block ESP tamamen 3D'ye geçirildi: 12 kenarlı kutular, altı yarı saydam yüzey ve görüş alanında kesme.
 
 - [x] Triggerbot karar akışı ve saldırıları Argon davranış referansıyla Java'ya taşındı; mevcut ayarlar ve ortak helper bağlantıları korundu.
+
+- [x] Jump Reset kararları, hasar takibi, zamanlama ve binding sahipliği Argon davranış referansıyla Java'ya taşındı; mevcut ayarlar korundu. Tuş okuması GLFW, basma/bırakma vanilla KeyBinding ile Java'dadır; eski System Space artık Game Space olarak çalışır.
+
+- [x] Anchor Macro Java'ya taşındı: OneStep koyma/dolum/patlatma döngüsü Argon tarzı 13 ayar, GLFW girişi ve Java oyun etkileşimleriyle birleştirildi. Eski profil/config alanları gizli uyumluluk verisi olarak saklanır.
+
+- [x] Anchor Macro Normal/Legit: Normal mevcut OneStep döngüsünü korur; Legit Argon'un gerçek tick/item-use, sayaç/şans, güncel hedef ve slot davranışını uygular. Eski config'ler Normal açılır.
+
+- Auto Totem, Argon AutoInventoryTotem akışına göre Java WorldBridge feature 7’ye taşındı: Blatant/Random kaynak seçimi, offhand/hotbar, Auto Switch ve Auto Open/Stay Open For.
+
+- [x] Argon karşılaştırmalı kontrol: Auto Totem clickSlot PlayerEntity imzası ve sahte envanter tıklama engeli düzeltildi, gerçek tick olayına bağlandı. Jump Reset tuş değiştirme sırasında eski sentetik basışı temizler. Auto Totem/Jump Reset/Anchor Normal-Legit ve bytecode hook kontrolleri eklendi/çalıştırıldı.

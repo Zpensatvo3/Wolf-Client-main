@@ -12,7 +12,8 @@ sources = ["src/modules/combat/jump_reset_config.hpp", "src/modules/combat/jump_
            "src/modules/combat/jump_reset.cpp", "tests/jump_reset_config_test.cpp",
            "src/modules/combat/jump_reset_engine.hpp", "tests/jump_reset_engine_test.cpp",
            "src/services/input/jump_key_tracking.hpp", "src/services/input/input_service.hpp",
-           "src/services/input/input_service.cpp", "src/gui/gui.cpp", "src/main.cpp"]
+           "src/services/input/input_service.cpp", "src/gui/gui.cpp", "src/main.cpp",
+           "src/services/game/world_bridge.hpp"]
 texts = {source: (ROOT / source).read_text(encoding="utf-8") for source in sources}
 config, header, implementation = (texts[source] for source in sources[:3])
 includes = re.findall(r'^#include\s+["<]([^">]+)', config, re.M)
@@ -33,15 +34,25 @@ assert "GetAsyncKeyState" not in implementation
 worker = re.search(r'void modules::jump_reset::run\([^)]*\)\s*\{(.*?)\}', implementation, re.S).group(1)
 assert "setPressed" not in worker and "engine" not in worker
 assert "render_when_disabled()" in header and "reset_generation" in header
-assert "consumed_source_revision" in implementation and "source_observed_at" in implementation
-assert implementation.index("settings_revision.load(std::memory_order_acquire) != revision", implementation.index("std::lock_guard dispatch_lock")) < implementation.index("services::input::press_jump_space")
-assert "std::lock_guard dispatch_lock(settings_mutex)" in implementation
-model = texts["src/modules/combat/jump_reset_engine.hpp"]
-assert "now + 200" in model and "now + 140" in model and "now + 105" in model and "now + 170" in model
-assert "frame.age > state.sent_age" in model and "if (!frame.on_ground || !frame.jump_ready)" in model
-assert "state.delivery_seen = immediate_delivery" in model
-assert "jumpingCooldown.get() == 0" in implementation and "!flight_enabled" in implementation
-assert "press_jump_space" in implementation and "release_jump_space" in implementation
+bridge = (ROOT / "src/bridge/WorldBridge.java").read_text(encoding="utf-8")
+native = (ROOT / "src/services/game/world_bridge.cpp").read_text(encoding="utf-8")
+assert "jump_reset_engine" not in header + implementation
+assert "capture_client_context" not in implementation and "setPressed" not in implementation
+assert "world_bridge::tick_jump(settings, enabled, reset_generation)" in implementation
+assert "std::lock_guard lock(settings_mutex)" in implementation
+assert "release_jump_input" not in implementation
+assert "on_render_shutdown() override" in header
+assert "jumpConsumedSource" in bridge and "jumpSourceAt" in bridge
+assert all(token in bridge for token in ("now + 200", "now + 140", "now + 105", "now + 170"))
+assert "age > jumpSentAge" in bridge and "jumpCooldown.getInt(p) != 0" in bridge
+assert "jumpAllowFlight.getBoolean(abilities)" in bridge
+assert '"tickJump", "(ZJIIIZ)V"' in native
+assert '"jumpPermitted"), const_cast<char*>("(J)Z")' in native
+assert all(token not in native for token in ("press_jump_space", "release_jump_space", "jump_space_receipt"))
+assert all(token in bridge for token in ("glfwGetKey", "glfwGetMouseButton", "glfwGetKeyScancode", "glfwGetWindowAttrib"))
+assert "jumpSetPressed.invoke(key, true)" in bridge
+assert "jumpService" not in bridge and "jumpSystemOwned" not in bridge
+assert "jump_reset_source->load(std::memory_order_acquire) == jump_expected_generation" in native
 catalog = (ROOT / "src/modules/module_catalog.cpp").read_text(encoding="utf-8")
 assert '{ "jump_reset",' in catalog
 if options.parser_dir:
@@ -61,4 +72,4 @@ if options.parser_dir:
     if errors:
         raise SystemExit("\n".join(errors))
     print(f"C++ syntax parsed for {len(sources)} Jump Reset files.")
-print("Jump config, client-thread runtime, one-hit decision model, tick-based release, tracked Space and dispatch cancellation checked. No build or runtime tests executed.")
+print("Jump config, Java runtime delegation, JNI signatures, Java/GLFW game input and dispatch cancellation checked. No build or runtime tests executed.")

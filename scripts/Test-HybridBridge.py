@@ -28,6 +28,7 @@ def main():
                         str(ROOT / "src/bridge/ItemBridge.java"),
                         str(ROOT / "src/bridge/InventoryBridge.java"),
                         str(ROOT / "src/bridge/WorldBridge.java"),
+                        str(ROOT / "src/bridge/AnchorEvents.java"),
                         str(ROOT / "src/bridge/ClientBridge.java"),
                         str(ROOT / "tests/hybrid/GLFW.java"),
                         str(ROOT / "tests/hybrid/HybridBridgeTest.java"),
@@ -43,16 +44,21 @@ def main():
         for mode, cp in modes:
             for test in ("HybridBridgeTest", "UtilityBridgeTest", "ItemBridgeTest", "ClickerBridgeTest", "InventoryBridgeTest", "ContainerBridgeTest", "WorldBridgeTest", "ClientBridgeTest"):
                 subprocess.run([java, "-Xcheck:jni", "-cp", cp, "net.minecraft." + test, mode], cwd=ROOT, check=True)
-        # Independent fixtures use the same intermediary names, so keep their
-        # class path separate from the eight earlier bridge suites.
-        crystal_classes = Path(work) / "hit-crystal"
-        subprocess.run([javac, "--release", "17", "-encoding", "UTF-8", "-g:none", "-d", str(crystal_classes),
-                        str(ROOT / "src/bridge/WorldBridge.java"),
-                        str(ROOT / "tests/hit_crystal/HitCrystalBridgeTest.java")], check=True)
-        crystal_modes = [("source", str(crystal_classes))]
-        if not args.source_only: crystal_modes.append(("embedded", os.pathsep.join(map(str, (embedded, crystal_classes)))))
-        for mode, cp in crystal_modes:
-            subprocess.run([java, "-Xcheck:jni", "-cp", cp, "net.minecraft.HitCrystalBridgeTest", mode], cwd=ROOT, check=True)
+        # Independent fixtures share intermediary names with the earlier suites.
+        for folder, test in (("hit_crystal", "HitCrystalBridgeTest"), ("jump_reset", "JumpResetBridgeTest"), ("anchor_macro", "AnchorMacroBridgeTest"), ("anchor_legit", "AnchorLegitBridgeTest")):
+            isolated = Path(work) / folder
+            extra = [str(ROOT / "tests/anchor_macro/AnchorMacroBridgeTest.java")] if folder == "anchor_legit" else []
+            subprocess.run([javac, "--release", "17", "-encoding", "UTF-8", "-g:none", "-d", str(isolated),
+                            str(ROOT / "src/bridge/WorldBridge.java"),
+                            str(ROOT / "src/bridge/AnchorEvents.java"),
+                            str(ROOT / "tests/hybrid/GLFW.java"),
+                            str(ROOT / "tests" / folder / (test + ".java")), *extra], check=True)
+            isolated_modes = [("source", str(isolated))]
+            if not args.source_only:
+                isolated_modes.append(("embedded", os.pathsep.join(map(str, (embedded, isolated)))))
+            for mode, cp in isolated_modes:
+                subprocess.run([java, "-Xcheck:jni", "-cp", cp, "net.minecraft." + test, mode], cwd=ROOT, check=True)
+
 
 
 if __name__ == "__main__":

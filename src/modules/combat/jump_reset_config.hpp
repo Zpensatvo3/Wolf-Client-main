@@ -6,7 +6,7 @@ namespace jump_reset_config
 {
     struct config
     {
-        int mode = 0; // 0 = configured game jump binding, 1 = synthetic system Space.
+        int mode = 0; // 0 = configured game jump binding, 1 = game Space binding (legacy System Space configs).
         int chance = 100, jump_delay_ms = 0;
         bool only_combat = true;
     };
@@ -14,7 +14,7 @@ namespace jump_reset_config
     {
         using d = modules::settings::descriptor<config>;
         static constexpr modules::settings::label modes[]{
-            {"Game Binding"}, {"System Space"}
+            {"Game Binding"}, {"Game Space"}
         };
         static const d fields[]{
             d::choice("mode", {"Jump Input"}, &config::mode, modes),

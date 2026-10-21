@@ -9,15 +9,15 @@ import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
 
-/** OneStep world I/O and Java-owned Hit Crystal / Triggerbot controllers. */
-public final class WorldBridge {
+/** OneStep world I/O and Java-owned combat and Auto Totem controllers. */
+public class WorldBridge {
     private final ClassLoader loader;
     private final int target;
     private final Map<String, String> names;
     private final Class<?> clientType, playerType;
     private final Field instance, player, world, screen, options, manager;
     private final Method onThread, alive;
-    private final boolean[] prepared = new boolean[5];
+    private final boolean[] prepared = new boolean[8];
     private Field sneak, bound, keySymbol, scanCode, mouse, vx, vz, minX, minY, minZ, maxX, maxZ;
     private Field selected, main, pearlItem, cooldown;
     private Method pressed, setPressed, code, category, ground, velocity, bounds, mainHand, empty, item, count, copy, same;
@@ -90,8 +90,11 @@ public final class WorldBridge {
         throw new NoSuchMethodException(name);
     }
     public void prepare(int feature) throws ReflectiveOperationException {
-        if (stopped || feature < 1 || feature > 4 || (feature < 3 && target != 12111)) throw new IllegalStateException("World feature/lifecycle");
+        if (stopped || feature < 1 || feature > 7 || (feature < 3 && target != 12111)) throw new IllegalStateException("World feature/lifecycle");
         if (prepared[feature]) return;
+        if (feature == 7) { prepareTotem(); prepared[7] = true; return; }
+        if (feature == 6) { prepareAnchor(); prepared[6] = true; return; }
+        if (feature == 5) { prepareJump(); prepared[5] = true; return; }
         if (feature == 4) { prepareTrigger(); prepared[4] = true; return; }
         if (feature == 3) { prepareCrystal(); prepared[3] = true; return; }
         Class<?> stack = load("class_1799");
@@ -1015,7 +1018,1039 @@ public final class WorldBridge {
         }
     }
 
+    // Independent OneStep controller; Argon AutoJumpReset is a behavior reference.
+    // Physical input is read from GLFW; all game input writes stay in Java.
+    // The native callback exposes authorization/cancellation only.
+    protected native boolean jumpPermitted(long generation);
+    private Class<?> jumpLiving;
+    private Method jumpGetWindow, jumpGetHandle, jumpGlfwKey, jumpGlfwMouse, jumpGlfwScan, jumpGlfwAttrib;
+    private int jumpScanCode = -1, jumpScanSymbol = -1;
+    private long jumpWindowHandle;
+    private Field jumpKey, jumpBound, jumpSymbols, jumpScans, jumpMouse, jumpHurt, jumpAge, jumpCooldown;
+    private Field jumpAllowFlight, jumpFlying;
+    private Method jumpCode, jumpCategory, jumpPressed, jumpSetPressed, jumpGround, jumpUsing, jumpSleeping;
+    private Method jumpWater, jumpSwimming, jumpFallFlying, jumpClimbing, jumpRiding, jumpAbilities, jumpSource, jumpAttacker;
+    private Object jumpPlayer, jumpWorld, jumpOptions, jumpBinding, jumpInput, jumpPreviousSource;
+    private Object[] jumpOwner;
+    private long jumpGeneration, jumpSourceRevision, jumpConsumedSource, jumpSourceAt;
+    private long jumpReadyAt, jumpExpiresAt, jumpConfirmUntil, jumpHoldUntil, jumpNextAllowed;
+    private long jumpLastGrounded = -1, jumpDamageAt = -1;
+    private int jumpPreviousHurt, jumpSentAge, jumpMode, jumpChance, jumpDelay;
+    private boolean jumpSeeded, jumpPending, jumpConfirmed, jumpHolding, jumpSourceLiving;
+    private boolean jumpAwaitingSource, jumpOnlyCombat, jumpFailed;
+
+    private void prepareJump() throws ReflectiveOperationException {
+        Class<?> entity = load("class_1297"), binding = load("class_304");
+        Class<?> input = load("class_3675$class_306"), type = load("class_3675$class_307");
+        Class<?> abilities = load("class_1656"), source = load("class_1282");
+        jumpLiving = load("class_1309");
+        jumpKey = mappedField(load("class_315"), "field_1903", binding, false);
+        jumpBound = mappedField(binding, "field_1655", input, false);
+        jumpSymbols = mappedField(type, "field_1668", type, true);
+        jumpScans = mappedField(type, "field_1671", type, true);
+        jumpMouse = mappedField(type, "field_1672", type, true);
+        jumpCode = mappedMethod(input, "method_1444", int.class);
+        jumpCategory = mappedMethod(input, "method_1442", type);
+        jumpPressed = mappedMethod(binding, "method_1434", boolean.class);
+        jumpSetPressed = mappedMethod(binding, "method_23481", void.class, boolean.class);
+        jumpHurt = mappedField(jumpLiving, "field_6235", int.class, false);
+        jumpAge = mappedField(entity, "field_6012", int.class, false);
+        jumpCooldown = mappedField(jumpLiving, "field_6228", int.class, false);
+        jumpGround = mappedMethod(entity, "method_24828", boolean.class);
+        jumpUsing = mappedMethod(jumpLiving, "method_6115", boolean.class);
+        jumpSleeping = mappedMethod(jumpLiving, "method_6113", boolean.class);
+        jumpWater = mappedMethod(entity, "method_5799", boolean.class);
+        jumpSwimming = mappedMethod(entity, "method_5681", boolean.class);
+        jumpFallFlying = mappedMethod(jumpLiving, "method_6128", boolean.class);
+        jumpClimbing = mappedMethod(jumpLiving, "method_6101", boolean.class);
+        jumpRiding = mappedMethod(entity, "method_5765", boolean.class);
+        jumpAbilities = mappedMethod(playerType, "method_31549", abilities);
+        jumpAllowFlight = mappedField(abilities, "field_7478", boolean.class, false);
+        jumpFlying = mappedField(abilities, "field_7479", boolean.class, false);
+        jumpSource = mappedMethod(jumpLiving, "method_6081", source);
+        jumpAttacker = mappedMethod(source, "method_5529", entity);
+        Class<?> window = load("class_1041");
+        jumpGetWindow = mappedMethod(clientType, "method_22683", window);
+        jumpGetHandle = mappedMethod(window, "method_4490", long.class);
+        Class<?> glfw = Class.forName("org.lwjgl.glfw.GLFW", false, loader);
+        jumpGlfwKey = jumpGlfwMethod(glfw, "glfwGetKey", long.class, int.class);
+        jumpGlfwMouse = jumpGlfwMethod(glfw, "glfwGetMouseButton", long.class, int.class);
+        jumpGlfwScan = jumpGlfwMethod(glfw, "glfwGetKeyScancode", int.class);
+        jumpGlfwAttrib = jumpGlfwMethod(glfw, "glfwGetWindowAttrib", long.class, int.class);
+    }
+    private static Method jumpGlfwMethod(Class<?> glfw, String name, Class<?>... args) throws ReflectiveOperationException {
+        Method m = glfw.getMethod(name, args);
+        if (!Modifier.isStatic(m.getModifiers()) || m.getReturnType() != int.class || !m.trySetAccessible())
+            throw new IllegalAccessException(name);
+        return m;
+    }
+    private long jumpWindow(Object c) throws ReflectiveOperationException {
+        Object window = jumpGetWindow.invoke(c);
+        long handle = window == null ? 0 : (long) jumpGetHandle.invoke(window);
+        // GLFW_FOCUSED. Never restore a held key into an unfocused/replaced window.
+        return handle != 0 && (int) jumpGlfwAttrib.invoke(null, handle, 0x00020001) == 1 ? handle : 0;
+    }
+    private static boolean jumpKnownSymbol(int key) {
+        return key == 32 || key == 39 || (key >= 44 && key <= 57) || key == 59 || key == 61 ||
+            (key >= 65 && key <= 93) || key == 96 || key == 161 || key == 162 ||
+            (key >= 256 && key <= 269) || (key >= 280 && key <= 284) || (key >= 290 && key <= 314) ||
+            (key >= 320 && key <= 336) || (key >= 340 && key <= 348);
+    }
+    private int[] jumpDescriptor(Object input) throws ReflectiveOperationException {
+        if (input == null) return null;
+        Object type = jumpCategory.invoke(input); int value = (int) jumpCode.invoke(input);
+        if (type == jumpSymbols.get(null) && jumpKnownSymbol(value)) return new int[]{0, value};
+        if (type == jumpScans.get(null) && value > 0 && value < 512) return new int[]{1, value};
+        if (type == jumpMouse.get(null) && value >= 0 && value < 8) return new int[]{2, value};
+        return null;
+    }
+    private boolean jumpPhysical(Object input, long handle) throws ReflectiveOperationException {
+        int[] descriptor = jumpDescriptor(input);
+        if (descriptor == null || handle == 0) return true;
+        int kind = descriptor[0], key = descriptor[1];
+        if (kind == 1) {
+            if (jumpScanCode != key) {
+                jumpScanCode = key; jumpScanSymbol = -1;
+                for (int symbol = 32; symbol <= 348; ++symbol)
+                    if (jumpKnownSymbol(symbol) && (int) jumpGlfwScan.invoke(null, symbol) == key) {
+                        jumpScanSymbol = symbol; break;
+                    }
+            }
+            if (jumpScanSymbol < 0) return true;
+            key = jumpScanSymbol;
+        }
+        int state = (int) (kind == 2 ? jumpGlfwMouse : jumpGlfwKey).invoke(null, handle, key);
+        if (state != 0 && state != 1) throw new IllegalStateException("Invalid GLFW input state");
+        return state == 1;
+    }
+    private boolean jumpSpace(Object input) throws ReflectiveOperationException {
+        int[] descriptor = jumpDescriptor(input);
+        return descriptor != null && ((descriptor[0] == 0 && descriptor[1] == 32) ||
+            (descriptor[0] == 1 && descriptor[1] == (int) jumpGlfwScan.invoke(null, 32)));
+    }
+    private boolean jumpPlayable(Object c, Object p, Object w) throws ReflectiveOperationException {
+        if (!live(c, p, w) || (boolean) jumpUsing.invoke(p) || (boolean) jumpSleeping.invoke(p) ||
+            (boolean) jumpWater.invoke(p) || (boolean) jumpSwimming.invoke(p) ||
+            (boolean) jumpFallFlying.invoke(p) || (boolean) jumpClimbing.invoke(p) || (boolean) jumpRiding.invoke(p)) return false;
+        Object abilities = jumpAbilities.invoke(p);
+        return abilities != null && !jumpAllowFlight.getBoolean(abilities) && !jumpFlying.getBoolean(abilities);
+    }
+    private boolean releaseJump() throws ReflectiveOperationException {
+        if (jumpOwner != null) {
+            Object c = client(); if (c == null) return false;
+            // Clear our old synthetic press even if the binding object was replaced.
+            // If that same binding was rebound, preserve the NEW physical key state.
+            boolean current=options.get(c) == jumpOwner[0] && jumpKey.get(jumpOwner[0]) == jumpOwner[1];
+            Object input=current ? jumpBound.get(jumpOwner[1]) : null;
+            boolean physical=current && jumpDescriptor(input)!=null && jumpWindow(c)==(long)jumpOwner[3] &&
+                jumpPhysical(input,(long)jumpOwner[3]);
+            jumpSetPressed.invoke(jumpOwner[1],physical);
+            jumpOwner = null;
+        }
+        return true;
+    }
+    public void cancelJump() throws ReflectiveOperationException {
+        if (!prepared[5] || client() == null) return;
+        try { releaseJump(); }
+        finally {
+            jumpSeeded = jumpPending = jumpConfirmed = jumpHolding = false;
+            jumpPlayer = jumpWorld = jumpOptions = jumpBinding = jumpInput = jumpPreviousSource = null;
+            jumpSourceRevision = jumpConsumedSource = 0; jumpSourceAt = 0; jumpSourceLiving = false;
+            jumpLastGrounded = jumpDamageAt = -1; jumpAwaitingSource = false;
+        }
+    }
+    public void tickJump(boolean active, long generation, int mode, int chance, int delay, boolean onlyCombat)
+        throws ReflectiveOperationException {
+        Object c = client(); if (c == null) return;
+        if (!active) { cancelJump(); return; }
+        prepare(5);
+        try {
+            if (jumpFailed || mode < 0 || mode > 1 || chance < 0 || chance > 100 || delay < 0 || delay > 100 ||
+                chance == 0 || !jumpPermitted(generation)) { cancelJump(); return; }
+            if (generation != jumpGeneration || mode != jumpMode || chance != jumpChance || delay != jumpDelay ||
+                onlyCombat != jumpOnlyCombat) {
+                cancelJump(); jumpGeneration = generation; jumpMode = mode; jumpChance = chance;
+                jumpDelay = delay; jumpOnlyCombat = onlyCombat;
+            }
+            if (!jumpHolding && !releaseJump()) return;
+            Object p = player.get(c), w = world.get(c), opts = options.get(c);
+            long handle = jumpWindow(c);
+            if (handle == 0 || !jumpPlayable(c, p, w) || opts == null) { cancelJump(); return; }
+            Object key = jumpKey.get(opts), input = key == null ? null : jumpBound.get(key);
+            if (jumpDescriptor(input) == null || (mode == 1 && !jumpSpace(input))) { cancelJump(); return; }
+            long now = System.nanoTime() / 1_000_000L;
+            int hurt = jumpHurt.getInt(p), age = jumpAge.getInt(p);
+            boolean grounded = (boolean) jumpGround.invoke(p);
+            if (age < 0 || hurt < 0) { cancelJump(); return; }
+            if (!jumpSeeded || p != jumpPlayer || w != jumpWorld || opts != jumpOptions || key != jumpBinding || input != jumpInput || handle != jumpWindowHandle) {
+                cancelJump(); if (!releaseJump()) return;
+                jumpPlayer = p; jumpWorld = w; jumpOptions = opts; jumpBinding = key; jumpInput = input;
+                jumpWindowHandle = handle; jumpPreviousHurt = hurt; jumpLastGrounded = grounded ? now : -1;
+                jumpPreviousSource = jumpSource.invoke(p); jumpSeeded = true; return;
+            }
+            boolean damaged = hurt > 0 && hurt > jumpPreviousHurt; jumpPreviousHurt = hurt;
+            if (grounded) jumpLastGrounded = now;
+            Object source = jumpSource.invoke(p);
+            if (source != null && source != jumpPreviousSource) {
+                Object attacker = jumpAttacker.invoke(source);
+                jumpSourceLiving = attacker != p && jumpLiving.isInstance(attacker);
+                jumpPreviousSource = source; ++jumpSourceRevision; jumpSourceAt = now;
+            }
+            boolean livingDamage = source != null && jumpSourceLiving && jumpSourceRevision != jumpConsumedSource && now - jumpSourceAt <= 105;
+            boolean physical = jumpPhysical(input, handle);
+            if (jumpHolding) {
+                if (physical || age > jumpSentAge || now >= jumpHoldUntil || age < jumpSentAge) {
+                    jumpHolding = false; releaseJump();
+                }
+                return;
+            }
+            if (physical || (boolean) jumpPressed.invoke(key)) { jumpPending = false; return; }
+            if (damaged) {
+                jumpDamageAt = now; jumpAwaitingSource = !livingDamage;
+                jumpPending = false;
+                if (now >= jumpNextAllowed && (grounded || (jumpLastGrounded >= 0 && now - jumpLastGrounded <= 85)) &&
+                    (chance == 100 || java.util.concurrent.ThreadLocalRandom.current().nextInt(1, 101) <= chance)) {
+                    jumpPending = true; jumpConfirmed = !onlyCombat || livingDamage;
+                    jumpConfirmUntil = now + 105; jumpReadyAt = now + delay; jumpExpiresAt = now + 170;
+                }
+            }
+            if (livingDamage && (damaged || (jumpPending && jumpConfirmed) ||
+                (jumpAwaitingSource && jumpDamageAt >= 0 && now - jumpDamageAt <= 105))) {
+                jumpConsumedSource = jumpSourceRevision; jumpAwaitingSource = false;
+            }
+            if (!jumpPending) return;
+            if (now >= jumpExpiresAt || hurt == 0) { jumpPending = false; return; }
+            if (!jumpConfirmed) {
+                if (now >= jumpConfirmUntil) { jumpPending = false; return; }
+                jumpConfirmed = livingDamage; if (!jumpConfirmed) return;
+            }
+            if (now < jumpReadyAt || !grounded || jumpCooldown.getInt(p) != 0) return;
+            // Final client-thread revalidation; consume this hit before mutation.
+            if (client() != c || player.get(c) != p || world.get(c) != w || options.get(c) != opts ||
+                jumpKey.get(opts) != key || jumpBound.get(key) != input || !jumpPlayable(c, p, w) ||
+                !(boolean) jumpGround.invoke(p) || jumpCooldown.getInt(p) != 0 || jumpWindow(c) != handle || jumpPhysical(input, handle) ||
+                (boolean) jumpPressed.invoke(key) || !jumpPermitted(generation)) {
+                jumpPending = false; return;
+            }
+            jumpPending = false; jumpHolding = true; jumpSentAge = age;
+            jumpHoldUntil = now + 200; jumpNextAllowed = now + 140;
+            jumpOwner = new Object[]{opts, key, input, handle};
+            jumpSetPressed.invoke(key, true);
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            jumpFailed = true;
+            try { cancelJump(); } catch (ReflectiveOperationException cleanup) { error.addSuppressed(cleanup); }
+            throw error;
+        }
+    }
+
+    // OneStep placement/confirmation sequence with Argon-style held-use settings.
+    // Native only checks runtime authority; all input, inventory and world I/O is Java.
+    protected native boolean anchorPermitted(long generation);
+    private Class<?> anchorHitType, anchorShield;
+    private Method anchorMainHand, anchorOffHand, anchorFoodComponent;
+    private Object anchorFood;
+    private Field anchorCrosshair, anchorSelected, anchorPos, anchorX, anchorY, anchorZ, anchorTicks;
+    private Field anchorUseKey, anchorUseCount, anchorRightClicked;
+    private Method anchorInventory, anchorStack, anchorEmpty, anchorItem, anchorSync, anchorUsing;
+    private Method anchorStateAt, anchorIsOf, anchorAir, anchorProperty, anchorSide, anchorDx, anchorDy, anchorDz;
+    private Method anchorGetPos, anchorGetType, anchorGetX, anchorGetY, anchorGetZ, anchorEyeY, anchorRange;
+    private Method anchorRaycast, anchorInteract, anchorAccepted, anchorSwing, anchorPlayers, anchorAlive;
+    private Method anchorPressed, anchorSetPressed, anchorGetWindow, anchorGetHandle, anchorGlfwMouse, anchorGlfwKey, anchorGlfwScan, anchorGlfwAttrib;
+    private Constructor<?> anchorPosCtor, anchorVecCtor, anchorHitCtor, anchorRayCtor;
+    private Object anchorItemValue, anchorGlowstone, anchorBlockValue, anchorCharges, anchorHand, anchorBlockType, anchorCollider, anchorNoFluid;
+    private Object[] anchorDirections;
+    private Object anchorPlayer, anchorWorld, anchorManager, anchorInv, anchorTarget, anchorSupport, anchorFace;
+    private Object anchorOwnershipWorld, anchorOwnershipPlayer;
+    private final java.util.Set<String> anchorOwned = new java.util.HashSet<>();
+    private Object[] anchorUseOwner;
+    private boolean[] anchorFlags;
+    private int[] anchorValues;
+    private int anchorStage, anchorAfterSwitch, anchorDesiredSlot, anchorOldSlot = -1, anchorOwnedSlot = -1;
+    private int anchorDueTick, anchorLastTick = -1;
+    private long anchorGeneration, anchorWindowHandle, anchorStarted, anchorWaiting;
+    private boolean anchorRequireRelease, anchorFailed;
+
+    private void prepareAnchor() throws ReflectiveOperationException {
+        Class<?> entity = load("class_1297"), inv = load("class_1661"), stack = load("class_1799");
+        Class<?> pos = load("class_2338"), vec = load("class_243"), state = load("class_2680"), block = load("class_2248");
+        Class<?> hit = load("class_239"), type = load("class_239$class_240"), dir = load("class_2350"), hand = load("class_1268");
+        Class<?> w = load("class_638"), m = load("class_636"), ray = load("class_3959"), result = load("class_1269");
+        Class<?> shape = load("class_3959$class_3960"), fluid = load("class_3959$class_242"), itemType = load("class_1792");
+        Class<?> binding = load("class_304"), input = load("class_3675$class_306"), inputType = load("class_3675$class_307");
+        anchorHitType = load("class_3965");
+        anchorCrosshair = mappedField(clientType,"field_1765",hit,false);
+        anchorSelected = mappedField(inv,"field_7545",int.class,false);
+        anchorPos = mappedField(entity,"field_22467",vec,false);
+        anchorX = mappedField(vec,"field_1352",double.class,false); anchorY = mappedField(vec,"field_1351",double.class,false);
+        anchorZ = mappedField(vec,"field_1350",double.class,false); anchorTicks = mappedField(entity,"field_6012",int.class,false);
+        anchorInventory = mappedMethod(playerType,"method_31548",inv); anchorStack = mappedMethod(inv,"method_5438",stack,int.class);
+        anchorEmpty = mappedMethod(stack,"method_7960",boolean.class); anchorItem = mappedMethod(stack,"method_7909",itemType);
+        anchorSync = mappedMethod(m,"method_2911",void.class); anchorUsing = mappedMethod(playerType,"method_6115",boolean.class);
+        anchorMainHand = mappedMethod(playerType,"method_6047",stack); anchorOffHand = mappedMethod(playerType,"method_6079",stack);
+        anchorShield = load("class_1819");
+        Class<?> componentType = load("class_9331");
+        anchorFood = mappedField(load("class_9334"),"field_50075",componentType,true).get(null);
+        anchorFoodComponent = mappedMethod(stack,target >= 12108 ? "method_58694" : "method_57824",Object.class,componentType);
+        anchorStateAt = mappedMethod(w,"method_8320",state,pos);
+        anchorIsOf = mappedMethod(state,"method_27852",boolean.class,target >= 26100 ? Object.class : block);
+        anchorAir = mappedMethod(state,"method_26215",boolean.class);
+        anchorProperty = mappedMethod(state,"method_11654",Comparable.class,load("class_2769"));
+        anchorGetPos = mappedMethod(anchorHitType,"method_17777",pos); anchorSide = mappedMethod(anchorHitType,"method_17780",dir);
+        anchorGetType = mappedMethod(hit,"method_17783",type);
+        anchorGetX = mappedMethod(pos,"method_10263",int.class); anchorGetY = mappedMethod(pos,"method_10264",int.class);
+        anchorGetZ = mappedMethod(pos,"method_10260",int.class);
+        anchorDx = mappedMethod(dir,"method_10148",int.class); anchorDy = mappedMethod(dir,"method_10164",int.class);
+        anchorDz = mappedMethod(dir,"method_10165",int.class);
+        anchorEyeY = mappedMethod(entity,"method_23320",double.class); anchorRange = mappedMethod(playerType,"method_55754",double.class);
+        anchorRaycast = mappedMethod(w,"method_17742",anchorHitType,ray);
+        anchorInteract = mappedMethod(m,"method_2896",result,playerType,hand,anchorHitType);
+        anchorAccepted = mappedMethod(result,"method_23665",boolean.class); anchorSwing = mappedMethod(playerType,"method_6104",void.class,hand);
+        anchorPlayers = mappedMethod(w,"method_18456",List.class); anchorAlive = mappedMethod(entity,"method_5805",boolean.class);
+        anchorPosCtor = constructor(pos,int.class,int.class,int.class); anchorVecCtor = constructor(vec,double.class,double.class,double.class);
+        anchorHitCtor = constructor(anchorHitType,vec,dir,pos,boolean.class);
+        anchorRayCtor = constructor(ray,vec,vec,shape,fluid,entity);
+        anchorItemValue = mappedField(load("class_1802"),"field_23141",itemType,true).get(null);
+        anchorGlowstone = mappedField(load("class_1802"),"field_8801",itemType,true).get(null);
+        anchorBlockValue = mappedField(load("class_2246"),"field_23152",block,true).get(null);
+        anchorCharges = mappedField(load("class_4969"),"field_23153",load("class_2758"),true).get(null);
+        anchorHand = mappedField(hand,"field_5808",hand,true).get(null);
+        anchorBlockType = mappedField(type,"field_1332",type,true).get(null);
+        anchorCollider = mappedField(shape,"field_17558",shape,true).get(null);
+        anchorNoFluid = mappedField(fluid,"field_1348",fluid,true).get(null);
+        anchorDirections = new Object[6]; String[] directions = {"field_11033","field_11036","field_11043","field_11035","field_11039","field_11034"};
+        for (int i=0;i<6;++i) anchorDirections[i] = mappedField(dir,directions[i],dir,true).get(null);
+        anchorUseKey = mappedField(load("class_315"),"field_1904",binding,false);
+        anchorUseCount = mappedField(binding,"field_1661",int.class,false);
+        anchorPressed = mappedMethod(binding,"method_1434",boolean.class); anchorSetPressed = mappedMethod(binding,"method_23481",void.class,boolean.class);
+        bound = mappedField(binding,"field_1655",input,false);
+        code = mappedMethod(input,"method_1444",int.class); category = mappedMethod(input,"method_1442",inputType);
+        keySymbol = mappedField(inputType,"field_1668",inputType,true); scanCode = mappedField(inputType,"field_1671",inputType,true);
+        mouse = mappedField(inputType,"field_1672",inputType,true);
+        Class<?> window = load("class_1041"), glfw = Class.forName("org.lwjgl.glfw.GLFW",false,loader);
+        anchorGetWindow = mappedMethod(clientType,"method_22683",window); anchorGetHandle = mappedMethod(window,"method_4490",long.class);
+        anchorGlfwMouse = jumpGlfwMethod(glfw,"glfwGetMouseButton",long.class,int.class);
+        anchorGlfwKey = jumpGlfwMethod(glfw,"glfwGetKey",long.class,int.class);
+        anchorGlfwScan = jumpGlfwMethod(glfw,"glfwGetKeyScancode",int.class);
+        anchorGlfwAttrib = jumpGlfwMethod(glfw,"glfwGetWindowAttrib",long.class,int.class);
+        if (anchorItemValue == null || anchorGlowstone == null || anchorBlockValue == null || anchorCharges == null)
+            throw new IllegalStateException("Uninitialized anchor bindings");
+    }
+    private long anchorWindow(Object c) throws ReflectiveOperationException {
+        Object w = anchorGetWindow.invoke(c); long handle = w == null ? 0 : (long) anchorGetHandle.invoke(w);
+        return handle != 0 && (int) anchorGlfwAttrib.invoke(null,handle,0x00020001) == 1 ? handle : 0;
+    }
+    private boolean anchorPhysical(Object input,long handle) throws ReflectiveOperationException {
+        if (handle == 0) return false;
+        int[] key = descriptor(input); int kind = key[0], value = key[1];
+        if (kind == 1) {
+            int symbol = -1;
+            for (int i=32;i<=348;++i) if (jumpKnownSymbol(i) && (int) anchorGlfwScan.invoke(null,i) == value) { symbol=i; break; }
+            if (symbol < 0) return false; value=symbol;
+        }
+        if ((kind == 0 && !jumpKnownSymbol(value)) || kind < 0 || (kind == 2 && (value < 0 || value > 7))) return false;
+        return (int) (kind == 2 ? anchorGlfwMouse : anchorGlfwKey).invoke(null,handle,value) == 1;
+    }
+    private boolean anchorSame(Object c) throws ReflectiveOperationException {
+        return c != null && live(c,anchorPlayer,anchorWorld) && player.get(c) == anchorPlayer && world.get(c) == anchorWorld &&
+            manager.get(c) == anchorManager && anchorInventory.invoke(anchorPlayer) == anchorInv &&
+            anchorSelected.getInt(anchorInv) == anchorOwnedSlot && anchorWindow(c) == anchorWindowHandle;
+    }
+    private boolean suppressAnchorUse(Object c) throws ReflectiveOperationException {
+        Object opts = options.get(c), key = opts == null ? null : anchorUseKey.get(opts), input = key == null ? null : bound.get(key);
+        if (input == null || (anchorUseOwner != null && (opts != anchorUseOwner[0] || key != anchorUseOwner[1] || input != anchorUseOwner[2]))) return false;
+        if (anchorUseOwner == null) anchorUseOwner = new Object[]{opts,key,input,anchorWindow(c)};
+        anchorSetPressed.invoke(key,false); anchorUseCount.setInt(key,0); return true;
+    }
+    private void releaseAnchorUse(Object c) throws ReflectiveOperationException {
+        if (anchorUseOwner == null || c == null) return;
+        Object[] owner = anchorUseOwner;
+        if (options.get(c) == owner[0] && anchorUseKey.get(owner[0]) == owner[1] && bound.get(owner[1]) == owner[2])
+            anchorSetPressed.invoke(owner[1],anchorWindow(c) == (long) owner[3] && anchorPhysical(owner[2],(long) owner[3]));
+        anchorUseOwner = null;
+    }
+    private void resetAnchorSlot() throws ReflectiveOperationException {
+        Object p=anchorPlayer,w=anchorWorld,m=anchorManager,inv=anchorInv; int old=anchorOldSlot,owned=anchorOwnedSlot;
+        anchorPlayer=anchorWorld=anchorManager=anchorInv=anchorTarget=anchorSupport=anchorFace=null;
+        anchorOldSlot=anchorOwnedSlot=-1; anchorStage=0;
+        Object c=client();
+        if (c != null && inv != null && old >= 0 && old < 9 && player.get(c) == p && world.get(c) == w && manager.get(c) == m &&
+            anchorInventory.invoke(p) == inv && anchorSelected.getInt(inv) == owned) {
+            anchorSelected.setInt(inv,old); anchorSync.invoke(m);
+        }
+    }
+    public void cancelAnchor() throws ReflectiveOperationException {
+        if (!prepared[6]) return;
+        Object c=client(); if (c == null) return;
+        anchorRequireRelease = true;
+        try { cancelAnchorLegit(); } finally {
+            try { resetAnchorSlot(); } finally { releaseAnchorUse(c); }
+        }
+    }
+    private String anchorKey(Object pos) throws ReflectiveOperationException {
+        return anchorGetX.invoke(pos)+":"+anchorGetY.invoke(pos)+":"+anchorGetZ.invoke(pos);
+    }
+    private boolean anchorEqual(Object a,Object b) throws ReflectiveOperationException {
+        return a != null && b != null && anchorKey(a).equals(anchorKey(b));
+    }
+    private int anchorCharge(Object pos) throws ReflectiveOperationException {
+        Object state=anchorStateAt.invoke(anchorWorld,pos);
+        if (state == null || !(boolean) anchorIsOf.invoke(state,anchorBlockValue)) return -1;
+        Object value=anchorProperty.invoke(state,anchorCharges);
+        if (!(value instanceof Integer n) || n < 0 || n > 4) throw new IllegalStateException("Unknown anchor charge");
+        return n;
+    }
+    private Object anchorHit(Object pos,Object side) throws ReflectiveOperationException {
+        int x=(int) anchorGetX.invoke(pos),y=(int) anchorGetY.invoke(pos),z=(int) anchorGetZ.invoke(pos);
+        int dx=(int) anchorDx.invoke(side),dy=(int) anchorDy.invoke(side),dz=(int) anchorDz.invoke(side);
+        double tx=x+.5+dx*.5,ty=y+.5+dy*.5,tz=z+.5+dz*.5;
+        Object v=anchorPos.get(anchorPlayer); if (v == null) return null;
+        double ex=anchorX.getDouble(v),ey=(double) anchorEyeY.invoke(anchorPlayer),ez=anchorZ.getDouble(v);
+        double reach=(double) anchorRange.invoke(anchorPlayer),distance=(ex-tx)*(ex-tx)+(ey-ty)*(ey-ty)+(ez-tz)*(ez-tz);
+        if (!Double.isFinite(distance) || !Double.isFinite(reach) || reach <= 0 || distance > reach*reach) return null;
+        Object from=anchorVecCtor.newInstance(ex,ey,ez),to=anchorVecCtor.newInstance(x+.5+dx*.49,y+.5+dy*.49,z+.5+dz*.49);
+        Object ray=anchorRayCtor.newInstance(from,to,anchorCollider,anchorNoFluid,anchorPlayer);
+        Object visible=anchorRaycast.invoke(anchorWorld,ray);
+        if (visible == null || anchorGetType.invoke(visible) != anchorBlockType || !anchorEqual(anchorGetPos.invoke(visible),pos)) return null;
+        return anchorHitCtor.newInstance(anchorVecCtor.newInstance(tx,ty,tz),side,pos,false);
+    }
+    private Object anchorNearSide() throws ReflectiveOperationException {
+        Object v=anchorPos.get(anchorPlayer);
+        double dx=anchorX.getDouble(v)-((int) anchorGetX.invoke(anchorTarget)+.5);
+        double dz=anchorZ.getDouble(v)-((int) anchorGetZ.invoke(anchorTarget)+.5);
+        return Math.abs(dx) >= Math.abs(dz) ? anchorDirections[dx >= 0 ? 5 : 4] : anchorDirections[dz >= 0 ? 3 : 2];
+    }
+    private int anchorFind(Object item) throws ReflectiveOperationException {
+        for (int i=0;i<9;++i) if (anchorHeld(i,item)) return i;
+        return -1;
+    }
+    private boolean anchorHeld(int slot,Object item) throws ReflectiveOperationException {
+        if (slot < 0 || slot > 8) return false;
+        Object s=anchorStack.invoke(anchorInv,slot);
+        return s != null && !(boolean) anchorEmpty.invoke(s) && anchorItem.invoke(s) == item;
+    }
+    private boolean anchorFoodOrShield(Object stack) throws ReflectiveOperationException {
+        return stack != null && !(boolean) anchorEmpty.invoke(stack) &&
+            (anchorShield.isInstance(anchorItem.invoke(stack)) || anchorFoodComponent.invoke(stack,anchorFood) != null);
+    }
+    private boolean anchorUsingAllowed() throws ReflectiveOperationException {
+        return anchorFlags[0] || (!(boolean) anchorUsing.invoke(anchorPlayer) &&
+            !anchorFoodOrShield(anchorMainHand.invoke(anchorPlayer)) && !anchorFoodOrShield(anchorOffHand.invoke(anchorPlayer)));
+    }
+    private boolean anchorDeadNearby() throws ReflectiveOperationException {
+        Object values=anchorPlayers.invoke(anchorWorld);
+        if (!(values instanceof List<?> list) || list.size() > 4096) return true;
+        Object p=anchorPos.get(anchorPlayer);
+        for (Object e:list) if (e != null && e != anchorPlayer && !(boolean) anchorAlive.invoke(e)) {
+            Object v=anchorPos.get(e); if (v == null) continue;
+            double dx=anchorX.getDouble(v)-anchorX.getDouble(p),dy=anchorY.getDouble(v)-anchorY.getDouble(p),dz=anchorZ.getDouble(v)-anchorZ.getDouble(p);
+            if (Double.isFinite(dx+dy+dz) && dx*dx+dy*dy+dz*dz <= 36) return true;
+        }
+        return false;
+    }
+    private static boolean anchorRoll(int chance) {
+        return chance == 100 || (chance > 0 && java.util.concurrent.ThreadLocalRandom.current().nextInt(1,101) <= chance);
+    }
+    private void anchorSchedule(int action,int slot,int tick) throws ReflectiveOperationException {
+        anchorStage=1; anchorAfterSwitch=action; anchorDesiredSlot=slot;
+        anchorDueTick=tick+(anchorSelected.getInt(anchorInv) == slot ? 0 : anchorValues[1]);
+    }
+    private void finishAnchor() throws ReflectiveOperationException {
+        anchorRequireRelease=true; resetAnchorSlot(); // Keep the vanilla-use gate until physical release.
+    }
+    private void anchorClick(Object c) throws ReflectiveOperationException {
+        prepareTriggerSimulation();
+        if (anchorRightClicked == null) anchorRightClicked=mappedField(load("class_312"),"field_1788",boolean.class,false);
+        Object mouse=triggerMouse.get(c),registry=triggerBindings.get(null);
+        if (mouse == null || !(registry instanceof Map<?,?> mappings)) throw new IllegalStateException("Anchor click callback unavailable");
+        java.util.ArrayList<Object[]> snapshots=new java.util.ArrayList<>();
+        for (Object binding:mappings.values()) if (binding != null) {
+            Object key=triggerBindingKey.get(binding);
+            if (key != null && triggerKeyCategory.invoke(key) == triggerMouseKeyType && (int) triggerKeyCode.invoke(key) == 1)
+                snapshots.add(new Object[]{binding,key,triggerBindingPressed.getBoolean(binding),triggerBindingCount.getInt(binding)});
+        }
+        long handle=anchorWindowHandle; Object input=target >= 12111 ? triggerMouseInputConstructor.newInstance(1,0) : null;
+        boolean prior=anchorRightClicked.getBoolean(mouse); ReflectiveOperationException error=null;
+        try {
+            if (target >= 12111) triggerMouseCallback.invoke(mouse,handle,input,1);
+            else triggerMouseCallback.invoke(mouse,handle,1,1,0);
+        } catch (ReflectiveOperationException failure) { error=failure; }
+        finally {
+            try {
+                if (target >= 12111) triggerMouseCallback.invoke(mouse,handle,input,0);
+                else triggerMouseCallback.invoke(mouse,handle,1,0,0);
+            } catch (ReflectiveOperationException failure) {
+                if (error == null) error=failure; else error.addSuppressed(failure);
+            }
+            boolean same=false,held=false;
+            try {
+                same=anchorSame(client()) && anchorPermitted(anchorGeneration);
+                held=same && (int) anchorGlfwMouse.invoke(null,handle,1) == 1;
+            } catch (ReflectiveOperationException failure) {
+                if (error == null) error=failure; else error.addSuppressed(failure);
+            }
+            for (Object[] saved:snapshots) try {
+                if (triggerBindingKey.get(saved[0]) == saved[1]) {
+                    triggerBindingPressed.setBoolean(saved[0],held && (boolean) saved[2]);
+                    triggerBindingCount.setInt(saved[0],same ? (int) saved[3] : 0);
+                }
+            } catch (ReflectiveOperationException failure) {
+                if (error == null) error=failure; else error.addSuppressed(failure);
+            }
+            try { anchorRightClicked.setBoolean(mouse,held && prior); }
+            catch (ReflectiveOperationException failure) {
+                if (error == null) error=failure; else error.addSuppressed(failure);
+            }
+        }
+        if (error != null) throw error;
+    }
+    private boolean anchorUse(Object c,Object hit) throws ReflectiveOperationException {
+        if (hit == null || !anchorSame(client()) || !anchorPermitted(anchorGeneration) ||
+            (int) anchorGlfwMouse.invoke(null,anchorWindowHandle,1) != 1 ||
+            !anchorUsingAllowed() || (anchorFlags[1] && anchorDeadNearby())) return false;
+        anchorLastTick=anchorTicks.getInt(anchorPlayer); anchorWaiting=System.nanoTime();
+        Object result=anchorInteract.invoke(anchorManager,anchorPlayer,anchorHand,hit);
+        if (result == null || !(boolean) anchorAccepted.invoke(result)) return false;
+        if (!anchorSame(client())) return false;
+        anchorSwing.invoke(anchorPlayer,anchorHand);
+        if (anchorFlags[2]) anchorClick(c);
+        return true;
+    }
+    private void tickAnchorNormal(boolean active,long generation,boolean[] flags,int[] values) throws ReflectiveOperationException {
+        Object c=client(); if (c == null) return;
+        if (!active) { cancelAnchor(); return; }
+        prepare(6);
+        try {
+            if (flags == null || flags.length != 5 || values == null || values.length != 8) throw new IllegalArgumentException("Anchor config shape");
+            for (int i=0;i<8;++i) {
+                int max=(i == 1 || i == 3 || i == 5) ? 20 : i == 7 ? 9 : 100;
+                if (values[i] < (i == 7 ? 1 : 0) || values[i] > max) throw new IllegalArgumentException("Anchor config range");
+            }
+            boolean changed=anchorFlags != null && (generation != anchorGeneration || !java.util.Arrays.equals(flags,anchorFlags) || !java.util.Arrays.equals(values,anchorValues));
+            if (changed) cancelAnchor();
+            anchorGeneration=generation; anchorFlags=flags.clone(); anchorValues=values.clone();
+            if (anchorFailed || !anchorPermitted(generation)) { cancelAnchor(); return; }
+            Object p=player.get(c),w=world.get(c),m=manager.get(c); long handle=anchorWindow(c);
+            if (!live(c,p,w) || m == null || handle == 0) { cancelAnchor(); return; }
+            if (anchorOwnershipWorld != w || anchorOwnershipPlayer != p) {
+                anchorOwned.clear(); anchorOwnershipWorld=w; anchorOwnershipPlayer=p;
+            }
+            boolean right=(int) anchorGlfwMouse.invoke(null,handle,1) == 1;
+            if (!right) { cancelAnchor(); anchorRequireRelease=false; return; }
+            if (anchorRequireRelease) { if (anchorUseOwner != null && !suppressAnchorUse(c)) cancelAnchor(); return; }
+            if (anchorStage != 0 && !anchorSame(c)) { cancelAnchor(); return; }
+            if (anchorStage == 0) {
+                anchorPlayer=p; anchorWorld=w; anchorManager=m; anchorInv=anchorInventory.invoke(p);
+                if (anchorInv == null) { cancelAnchor(); return; }
+                anchorOldSlot=anchorOwnedSlot=anchorSelected.getInt(anchorInv); anchorWindowHandle=handle;
+                if (anchorOldSlot < 0 || anchorOldSlot > 8) { cancelAnchor(); return; }
+            }
+            if (!anchorUsingAllowed() || (flags[1] && anchorDeadNearby())) { cancelAnchor(); return; }
+            if (!suppressAnchorUse(c)) { cancelAnchor(); return; }
+            int tick=anchorTicks.getInt(p); long now=System.nanoTime();
+            if (tick < 0 || (anchorStage != 0 && (tick < anchorLastTick || now-anchorStarted > 10_000_000_000L))) { finishAnchor(); return; }
+            if (anchorStage == 0) {
+                Object cross=anchorCrosshair.get(c);
+                if (!anchorHitType.isInstance(cross) || anchorGetType.invoke(cross) != anchorBlockType) { finishAnchor(); return; }
+                anchorSupport=anchorGetPos.invoke(cross); anchorFace=anchorSide.invoke(cross);
+                if (anchorSupport == null || anchorFace == null) { finishAnchor(); return; }
+                int charge=anchorCharge(anchorSupport);
+                if (charge >= 0) anchorTarget=anchorSupport;
+                else {
+                    int x=(int) anchorGetX.invoke(anchorSupport)+(int) anchorDx.invoke(anchorFace);
+                    int y=(int) anchorGetY.invoke(anchorSupport)+(int) anchorDy.invoke(anchorFace);
+                    int z=(int) anchorGetZ.invoke(anchorSupport)+(int) anchorDz.invoke(anchorFace);
+                    anchorTarget=anchorPosCtor.newInstance(x,y,z);
+                    Object emptyState=anchorStateAt.invoke(w,anchorTarget);
+                    if (emptyState == null || !(boolean) anchorAir.invoke(emptyState)) { finishAnchor(); return; }
+                }
+                if (charge >= 0 && flags[3] && !anchorOwned.contains(anchorKey(anchorTarget))) { finishAnchor(); return; }
+                anchorStarted=now; anchorLastTick=-1;
+                if (charge < 1 && !anchorRoll(values[0])) { finishAnchor(); return; }
+                if (charge < 0) anchorSchedule(2,anchorFind(anchorItemValue),tick);
+                else if (charge == 0) anchorSchedule(4,anchorFind(anchorGlowstone),tick);
+                else if (flags[4]) finishAnchor();
+                else anchorSchedule(6,values[7]-1,tick);
+                return;
+            }
+            if (tick == anchorLastTick) return;
+            if (anchorStage == 1) {
+                if (tick < anchorDueTick) return;
+                int slot=anchorDesiredSlot;
+                if (slot < 0 || slot > 8 || (anchorAfterSwitch == 2 && !anchorHeld(slot,anchorItemValue)) ||
+                    (anchorAfterSwitch == 4 && !anchorHeld(slot,anchorGlowstone)) ||
+                    (anchorAfterSwitch == 6 && anchorHeld(slot,anchorGlowstone))) { finishAnchor(); return; }
+                if (anchorSelected.getInt(anchorInv) != slot) {
+                    if (!anchorRoll(values[2]) || !anchorPermitted(generation) || !anchorSame(client())) { finishAnchor(); return; }
+                    anchorOwnedSlot=slot; anchorSelected.setInt(anchorInv,slot); anchorLastTick=tick; anchorSync.invoke(m);
+                }
+                anchorStage=anchorAfterSwitch;
+                anchorDueTick=tick+(anchorStage == 4 ? values[3] : anchorStage == 6 ? values[5] : 0);
+                return;
+            }
+            if (tick < anchorDueTick) return;
+            if (anchorStage == 2) {
+                Object state=anchorStateAt.invoke(w,anchorTarget);
+                if (!anchorHeld(anchorOwnedSlot,anchorItemValue) || state == null || !(boolean) anchorAir.invoke(state)) { finishAnchor(); return; }
+                Object hit=anchorHit(anchorSupport,anchorFace); anchorStage=3;
+                if (!anchorUse(c,hit)) finishAnchor(); return;
+            }
+            if (anchorStage == 3) {
+                if (anchorCharge(anchorTarget) >= 0) {
+                    if (anchorOwned.size() >= 256) anchorOwned.clear(); anchorOwned.add(anchorKey(anchorTarget));
+                    anchorSchedule(4,anchorFind(anchorGlowstone),tick);
+                } else if (now-anchorWaiting >= 650_000_000L) finishAnchor();
+                return;
+            }
+            if (anchorStage == 4) {
+                if (anchorCharge(anchorTarget) != 0 || !anchorHeld(anchorOwnedSlot,anchorGlowstone) || !anchorRoll(values[4])) { finishAnchor(); return; }
+                Object hit=anchorHit(anchorTarget,anchorNearSide()); anchorStage=5;
+                if (!anchorUse(c,hit)) finishAnchor(); return;
+            }
+            if (anchorStage == 5) {
+                int charge=anchorCharge(anchorTarget);
+                if (charge > 0) {
+                    if (flags[4]) finishAnchor(); else anchorSchedule(6,values[7]-1,tick);
+                } else if (charge < 0 || now-anchorWaiting >= 650_000_000L) finishAnchor();
+                return;
+            }
+            if (anchorStage == 6) {
+                if (anchorCharge(anchorTarget) < 1 || anchorHeld(anchorOwnedSlot,anchorGlowstone) || !anchorRoll(values[6])) { finishAnchor(); return; }
+                Object hit=anchorHit(anchorTarget,anchorNearSide()); anchorStage=7;
+                if (!anchorUse(c,hit)) finishAnchor(); return;
+            }
+            if (anchorStage == 7) {
+                if (anchorCharge(anchorTarget) < 0) { anchorOwned.remove(anchorKey(anchorTarget)); finishAnchor(); }
+                else if (now-anchorWaiting >= 650_000_000L) finishAnchor();
+            }
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            anchorFailed=true;
+            try { cancelAnchor(); } catch (ReflectiveOperationException cleanup) { error.addSuppressed(cleanup); }
+            throw error;
+        }
+    }
+
+    // Legit mirrors the reference event-driven controller. Normal's transaction
+    // state and single-activation latch are not used by this mode.
+    private int anchorExecutionMode;
+    private volatile boolean legitActive;
+    private boolean legitPrepared, legitFailed, legitFakeUse;
+    private int legitSwitchClock, legitGlowClock, legitExplodeClock;
+    private long legitGeneration;
+    private boolean[] legitFlags;
+    private int[] legitValues;
+    private final java.util.Set<String> legitOwned = new java.util.HashSet<>();
+    private final java.util.ArrayList<Object[]> legitPulses = new java.util.ArrayList<>();
+    private Object[] legitUseOwner;
+    private Object legitPulseMouse;
+    private Class<?> legitEvents, legitSuccess;
+    private Method legitStopEvents, legitReplaceable, legitDead, legitSwingTest, legitItemComponents, legitContains;
+    private Object legitClientSwing;
+
+    protected int anchorLegitPercent() { return java.util.concurrent.ThreadLocalRandom.current().nextInt(1,101); }
+    public void installAnchorEvents() throws ReflectiveOperationException {
+        if (legitEvents != null) return;
+        Class<?> events=Class.forName("net.onestep.hybrid.AnchorEvents",true,loader);
+        Method install=events.getMethod("install",Object.class,java.util.function.Consumer.class,java.util.function.Predicate.class);
+        legitStopEvents=events.getMethod("stop",Object.class);
+        install.invoke(null,this,(java.util.function.Consumer<Object>)this::onCombatTick,
+            (java.util.function.Predicate<Object>)this::onAnchorLegitUse);
+        legitEvents=events;
+    }
+    private void onCombatTick(Object c) {
+        onTotemTick(c);
+        onAnchorLegitTick(c);
+    }
+    private void prepareAnchorLegit() throws ReflectiveOperationException {
+        if (legitPrepared) return;
+        legitReplaceable=mappedMethod(load("class_2680"),"method_45474",boolean.class);
+        legitDead=mappedMethod(load("class_1309"),"method_29504",boolean.class);
+        Class<?> components=load("class_9323");
+        legitItemComponents=mappedMethod(load("class_1792"),"method_57347",components);
+        legitContains=mappedMethod(components,"method_57832",boolean.class,load("class_9331"));
+        if (target == 12101) legitSwingTest=mappedMethod(load("class_1269"),"method_23666",boolean.class);
+        else {
+            legitSuccess=load("class_1269$class_9860"); Class<?> swing=load("class_1269$class_9861");
+            legitSwingTest=mappedMethod(legitSuccess,"comp_2909",swing);
+            legitClientSwing=mappedField(swing,"field_52427",swing,true).get(null);
+        }
+        legitPrepared=true;
+    }
+    private boolean legitContext(Object c) throws ReflectiveOperationException {
+        return legitActive && !legitFailed && anchorExecutionMode == 1 && c != null && client() == c &&
+            anchorPermitted(legitGeneration) && live(c,player.get(c),world.get(c)) && manager.get(c) != null && anchorWindow(c) != 0;
+    }
+    private void cancelAnchorLegit() throws ReflectiveOperationException {
+        legitActive=false;
+        Object c=client(); if (c == null) return;
+        serviceAnchorLegitPulses(true);
+        if (legitUseOwner != null) {
+            Object[] owner=legitUseOwner;
+            if (options.get(c) == owner[0] && anchorUseKey.get(owner[0]) == owner[1] && bound.get(owner[1]) == owner[2]) {
+                if (legitFakeUse) anchorUseCount.setInt(owner[1],Math.max(0,anchorUseCount.getInt(owner[1])-1));
+                anchorSetPressed.invoke(owner[1],anchorWindow(c) == (long) owner[3] && anchorPhysical(owner[2],(long) owner[3]));
+            }
+            legitUseOwner=null;
+        }
+        if (legitPulseMouse != null && triggerMouse.get(c) == legitPulseMouse) {
+            if (anchorRightClicked == null) anchorRightClicked=mappedField(load("class_312"),"field_1788",boolean.class,false);
+            long handle=anchorWindow(c);
+            anchorRightClicked.setBoolean(legitPulseMouse,handle != 0 && (int)anchorGlfwMouse.invoke(null,handle,1) == 1);
+        }
+        legitPulseMouse=null; legitFakeUse=false;
+    }
+    private void anchorLegitFailure(Throwable error) {
+        legitFailed=true;
+        try { cancelAnchorLegit(); } catch (ReflectiveOperationException | RuntimeException cleanup) { error.addSuppressed(cleanup); }
+    }
+    private boolean legitFoodOrShield(Object stack) throws ReflectiveOperationException {
+        if (stack == null || (boolean)anchorEmpty.invoke(stack)) return false;
+        Object item=anchorItem.invoke(stack);
+        return anchorShield.isInstance(item) || (item != null && (boolean)legitContains.invoke(legitItemComponents.invoke(item),anchorFood));
+    }
+    private boolean legitBody(Object c) throws ReflectiveOperationException {
+        Object p=player.get(c),w=world.get(c),list=anchorPlayers.invoke(w);
+        if (!(list instanceof Iterable<?> values)) return true;
+        Object position=anchorPos.get(p);
+        for (Object entity:values) if (entity != null && entity != p && (boolean)legitDead.invoke(entity)) {
+            Object other=anchorPos.get(entity);
+            double dx=anchorX.getDouble(other)-anchorX.getDouble(position),dy=anchorY.getDouble(other)-anchorY.getDouble(position),dz=anchorZ.getDouble(other)-anchorZ.getDouble(position);
+            if (dx*dx+dy*dy+dz*dz <= 36) return true;
+        }
+        return false;
+    }
+    private int legitCharge(Object w,Object pos) throws ReflectiveOperationException {
+        Object state=anchorStateAt.invoke(w,pos);
+        if (state == null || !(boolean)anchorIsOf.invoke(state,anchorBlockValue)) return -1;
+        Object charge=anchorProperty.invoke(state,anchorCharges);
+        if (!(charge instanceof Integer value)) throw new IllegalStateException("Legit anchor charge type");
+        return value;
+    }
+    private boolean legitHeld(Object p,Object wanted) throws ReflectiveOperationException {
+        Object stack=anchorMainHand.invoke(p);
+        return stack != null && anchorItem.invoke(stack) == wanted;
+    }
+    private boolean legitClock(int stage,int delay) {
+        int value=stage == 0 ? legitSwitchClock : stage == 1 ? legitGlowClock : legitExplodeClock;
+        if (value == delay) return true;
+        if (stage == 0) ++legitSwitchClock; else if (stage == 1) ++legitGlowClock; else ++legitExplodeClock;
+        return false;
+    }
+    private void legitSelect(Object c,Object p,int slot) throws ReflectiveOperationException {
+        if (slot >= 0 && slot < 9 && legitContext(c) && player.get(c) == p)
+            anchorSelected.setInt(anchorInventory.invoke(p),slot);
+    }
+    private void legitFindGlowstone(Object c,Object p) throws ReflectiveOperationException {
+        Object inv=anchorInventory.invoke(p);
+        for (int slot=0;slot<9;++slot) {
+            Object stack=anchorStack.invoke(inv,slot);
+            if (stack != null && anchorItem.invoke(stack) == anchorGlowstone) { legitSelect(c,p,slot); return; }
+        }
+    }
+    private void anchorLegitPulse(Object c) throws ReflectiveOperationException {
+        prepareTriggerSimulation();
+        Object mouse=triggerMouse.get(c); long handle=anchorWindow(c);
+        if (mouse == null || handle == 0) return;
+        Object input=target >= 12111 ? triggerMouseInputConstructor.newInstance(1,0) : null;
+        // Nominal 35 ms hold as in the reference. Release is serviced by the
+        // game's tick/render thread, so no worker calls Minecraft or GLFW.
+        legitPulseMouse=mouse;
+        legitPulses.add(new Object[]{c,mouse,handle,System.nanoTime()+35_000_000L,input});
+        legitFakeUse=true;
+        if (target >= 12111) triggerMouseCallback.invoke(mouse,handle,input,1);
+        else triggerMouseCallback.invoke(mouse,handle,1,1,0);
+    }
+    private void serviceAnchorLegitPulses(boolean force) throws ReflectiveOperationException {
+        Object c=client(); if (c == null) return;
+        ReflectiveOperationException error=null;
+        for (int i=legitPulses.size()-1;i>=0;--i) {
+            Object[] pulse=legitPulses.get(i);
+            if (!force && System.nanoTime() < (long)pulse[3]) continue;
+            legitPulses.remove(i);
+            try {
+                if (pulse[0] == c && triggerMouse.get(c) == pulse[1] && anchorWindow(c) == (long)pulse[2]) {
+                    if (target >= 12111) triggerMouseCallback.invoke(pulse[1],(long)pulse[2],pulse[4],0);
+                    else triggerMouseCallback.invoke(pulse[1],(long)pulse[2],1,0,0);
+                }
+            } catch (ReflectiveOperationException failure) { if (error == null) error=failure; else error.addSuppressed(failure); }
+        }
+        if (error != null) throw error;
+    }
+    private void legitInteract(Object c,Object p,Object w,Object m,Object hit) throws ReflectiveOperationException {
+        if (!legitContext(c) || player.get(c) != p || world.get(c) != w || manager.get(c) != m) return;
+        if (legitFlags[2]) anchorLegitPulse(c);
+        Object result=anchorInteract.invoke(m,p,anchorHand,hit);
+        if (result != null && (boolean)anchorAccepted.invoke(result)) {
+            boolean swing=target == 12101 ? (boolean)legitSwingTest.invoke(result) :
+                legitSuccess.isInstance(result) && legitSwingTest.invoke(result) == legitClientSwing;
+            if (swing && legitContext(c)) anchorSwing.invoke(p,anchorHand);
+        }
+    }
+    private void onAnchorLegitTick(Object c) {
+        try {
+            serviceAnchorLegitPulses(false);
+            if (!legitContext(c)) return;
+            Object p=player.get(c),w=world.get(c),m=manager.get(c); long handle=anchorWindow(c);
+            boolean right=(int)anchorGlfwMouse.invoke(null,handle,1) == 1;
+            if (!legitFlags[0] && right && (legitFoodOrShield(anchorMainHand.invoke(p)) || legitFoodOrShield(anchorOffHand.invoke(p)))) return;
+            if (legitFlags[1] && legitBody(c)) return;
+            int roll=anchorLegitPercent();
+            if (!right) return;
+            Object hit=anchorCrosshair.get(c);
+            if (!anchorHitType.isInstance(hit)) return;
+            Object pos=anchorGetPos.invoke(hit);
+            if (pos == null || legitCharge(w,pos) < 0 || (legitFlags[3] && !legitOwned.contains(anchorKey(pos)))) return;
+            Object opts=options.get(c),key=opts == null ? null : anchorUseKey.get(opts);
+            if (key == null) return;
+            Object input=bound.get(key);
+            if (legitUseOwner == null || legitUseOwner[0] != opts || legitUseOwner[1] != key || legitUseOwner[2] != input)
+                legitUseOwner=new Object[]{opts,key,input,handle};
+            anchorSetPressed.invoke(key,false);
+            if (legitCharge(w,pos) == 0) {
+                roll=anchorLegitPercent();
+                if (roll <= legitValues[0]) {
+                    if (!legitHeld(p,anchorGlowstone)) {
+                        if (!legitClock(0,legitValues[1])) return;
+                        roll=anchorLegitPercent();
+                        if (roll <= legitValues[2]) { legitSwitchClock=0; legitFindGlowstone(c,p); }
+                    }
+                    if (legitHeld(p,anchorGlowstone)) {
+                        if (!legitClock(1,legitValues[3])) return;
+                        roll=anchorLegitPercent();
+                        if (roll <= legitValues[4]) { legitGlowClock=0; legitInteract(c,p,w,m,hit); }
+                    }
+                }
+            }
+            if (legitCharge(w,pos) > 0) {
+                int slot=legitValues[7]-1; Object inv=anchorInventory.invoke(p);
+                if (anchorSelected.getInt(inv) != slot) {
+                    if (!legitClock(0,legitValues[1])) return;
+                    if (roll <= legitValues[2]) { legitSwitchClock=0; legitSelect(c,p,slot); }
+                }
+                if (anchorSelected.getInt(inv) == slot) {
+                    if (!legitClock(2,legitValues[5])) return;
+                    roll=anchorLegitPercent();
+                    if (roll <= legitValues[6]) {
+                        legitExplodeClock=0;
+                        if (!legitFlags[4]) { legitInteract(c,p,w,m,hit); legitOwned.remove(anchorKey(pos)); }
+                    }
+                }
+            }
+        } catch (ReflectiveOperationException | RuntimeException error) { anchorLegitFailure(error); }
+    }
+    private boolean onAnchorLegitUse(Object c) {
+        try {
+            if (!legitContext(c)) {
+                // The reference's fake-click cancellation lives in the client
+                // mixin, so it still consumes a queued fake use after disable.
+                if (legitFakeUse && client() == c) { legitFakeUse=false; return true; }
+                return false;
+            }
+            Object p=player.get(c),w=world.get(c),hit=anchorCrosshair.get(c);
+            if (anchorHitType.isInstance(hit) && anchorGetType.invoke(hit) == anchorBlockType) {
+                Object pos=anchorGetPos.invoke(hit);
+                if (legitHeld(p,anchorItemValue)) {
+                    Object state=anchorStateAt.invoke(w,pos),owned=pos;
+                    if (!(boolean)legitReplaceable.invoke(state)) {
+                        Object side=anchorSide.invoke(hit);
+                        owned=anchorPosCtor.newInstance((int)anchorGetX.invoke(pos)+(int)anchorDx.invoke(side),
+                            (int)anchorGetY.invoke(pos)+(int)anchorDy.invoke(side),(int)anchorGetZ.invoke(pos)+(int)anchorDz.invoke(side));
+                    }
+                    legitOwned.add(anchorKey(owned));
+                }
+                if (legitCharge(w,pos) > 0) legitOwned.remove(anchorKey(pos));
+            }
+            if (legitFakeUse) { legitFakeUse=false; return true; }
+            return false;
+        } catch (ReflectiveOperationException | RuntimeException error) { anchorLegitFailure(error); return false; }
+    }
+    public void tickAnchor(boolean active,long generation,int mode,boolean[] flags,int[] values) throws ReflectiveOperationException {
+        Object c=client(); if (c == null) return;
+        if (mode < 0 || mode > 1) throw new IllegalArgumentException("Anchor mode");
+        if (mode != anchorExecutionMode) { cancelAnchor(); anchorExecutionMode=mode; anchorRequireRelease=false; }
+        if (mode == 0) { tickAnchorNormal(active,generation,flags,values); return; }
+        if (!active) { cancelAnchor(); return; }
+        prepare(6);
+        if (flags == null || flags.length != 5 || values == null || values.length != 8) throw new IllegalArgumentException("Anchor config shape");
+        for (int i=0;i<8;++i) {
+            int max=(i == 1 || i == 3 || i == 5) ? 20 : i == 7 ? 9 : 100;
+            if (values[i] < (i == 7 ? 1 : 0) || values[i] > max) throw new IllegalArgumentException("Anchor config range");
+        }
+        prepareAnchorLegit();
+        if (legitEvents == null) throw new IllegalStateException("Legit Anchor requires tick/item-use hooks");
+        if (!legitActive) legitSwitchClock=legitGlowClock=legitExplodeClock=0;
+        legitGeneration=generation; legitFlags=flags.clone(); legitValues=values.clone();
+        legitActive=!legitFailed && anchorPermitted(generation);
+        serviceAnchorLegitPulses(false);
+    }
+    // Existing callers/default configs retain the Normal controller.
+    public void tickAnchor(boolean active,long generation,boolean[] flags,int[] values) throws ReflectiveOperationException {
+        tickAnchor(active,generation,0,flags,values);
+    }
+
+    // Feature 7: Java port of Argon's AutoInventoryTotem tick flow.
+    protected native boolean totemPermitted(long generation);
+    private Class<?> totemScreenType;
+    private Constructor<?> totemScreenCtor;
+    private Method totemInventory, totemStack, totemOffhand, totemMainHand, totemEmpty, totemItem;
+    private Method totemClick, totemSetScreen, totemClose;
+    private Field totemHandler, totemScreenHandler, totemSync, totemSelected;
+    private Object totemValue, totemSwap, totemPlayer, totemWorld, totemManager, totemInventoryOwner;
+    private Object totemOpenedScreen;
+    private int totemClock=-1, totemCloseClock=-1;
+    private volatile boolean totemActive;
+    private boolean totemFailed;
+    private long totemGeneration;
+    private int[] totemValues;
+    private boolean totemAutoOpen;
+    private final java.util.Random totemRandom=new java.util.Random();
+
+    private void prepareTotem() throws ReflectiveOperationException {
+        Class<?> inv=load("class_1661"), stack=load("class_1799"), itemType=load("class_1792");
+        Class<?> handler=load("class_1703"), action=load("class_1713"), screenType=load("class_437");
+        totemScreenType=load("class_490");
+        Class<?> playerBase=load("class_1657");
+        Class<?> fake;
+        try { fake=Class.forName("net.onestep.hybrid.TotemScreen",false,WorldBridge.class.getClassLoader()); }
+        catch (ClassNotFoundException missing) {
+            Class<?> transformer=Class.forName("net.onestep.hybrid.AnchorTransformer",true,WorldBridge.class.getClassLoader());
+            Method factory=transformer.getMethod("inventoryScreen",Class.class,Class.class,String.class,String.class);
+            byte[] bytes=(byte[])factory.invoke(null,totemScreenType,playerBase,name("method_2383"),name("method_25402"));
+            try { fake=java.lang.invoke.MethodHandles.lookup().defineClass(bytes); }
+            catch (IllegalAccessException error) { throw new ReflectiveOperationException("Totem screen class",error); }
+        }
+        totemScreenCtor=constructor(fake,playerBase);
+        totemInventory=mappedMethod(playerType,"method_31548",inv);
+        totemStack=mappedMethod(inv,"method_5438",stack,int.class);
+        totemOffhand=mappedMethod(playerType,"method_6079",stack);
+        totemMainHand=mappedMethod(playerType,"method_6047",stack);
+        totemEmpty=mappedMethod(stack,"method_7960",boolean.class);
+        totemItem=mappedMethod(stack,"method_7909",itemType);
+        totemValue=mappedField(load("class_1802"),"field_8288",itemType,true).get(null);
+        totemSwap=mappedField(action,"field_7791",action,true).get(null);
+        totemHandler=mappedField(playerType,"field_7512",handler,false);
+        totemScreenHandler=mappedField(load("class_465"),"field_2797",handler,false);
+        totemSync=mappedField(handler,"field_7763",int.class,false);
+        totemSelected=mappedField(inv,"field_7545",int.class,false);
+        totemClick=mappedMethod(load("class_636"),"method_2906",void.class,int.class,int.class,int.class,action,load("class_1657"));
+        totemSetScreen=mappedMethod(clientType,"method_1507",void.class,screenType);
+        totemClose=mappedMethod(screenType,"method_25419",void.class);
+    }
+    public void cancelTotem() {
+        totemPlayer=totemWorld=totemManager=totemInventoryOwner=totemOpenedScreen=null;
+        totemClock=totemCloseClock=-1; totemActive=false;
+    }
+    private boolean totemIs(Object stack) throws ReflectiveOperationException {
+        return stack!=null && !(boolean)totemEmpty.invoke(stack) && totemItem.invoke(stack)==totemValue;
+    }
+    private int totemFind(Object inv,int mode) throws ReflectiveOperationException {
+        java.util.ArrayList<Integer> slots=new java.util.ArrayList<>();
+        for (int i=9;i<36;++i) if (totemIs(totemStack.invoke(inv,i))) {
+            if (mode==0) return i;
+            slots.add(i);
+        }
+        return slots.isEmpty() ? -1 : slots.get(totemRandom.nextInt(slots.size()));
+    }
+    private boolean totemHasOutside(Object inv) throws ReflectiveOperationException {
+        return totemFind(inv,0)>=0;
+    }
+    private void totemClick(Object c,Object p,Object inv,Object h,int source,int destination) throws ReflectiveOperationException {
+        if (source<9 || source>=36 || (destination!=40 && (destination<0 || destination>8))) return;
+        int sync=totemSync.getInt(h);
+        Object s=screen.get(c);
+        if (player.get(c)!=p || world.get(c)!=totemWorld || manager.get(c)!=totemManager ||
+            totemInventory.invoke(p)!=inv || totemHandler.get(p)!=h || !totemScreenType.isInstance(s) ||
+            totemScreenHandler.get(s)!=h || !totemIs(totemStack.invoke(inv,source)) || !totemPermitted(totemGeneration)) return;
+        totemClick.invoke(manager.get(c),sync,source,destination,totemSwap,p);
+    }
+    /** Argon AutoInventoryTotem settings: mode, delay ticks, hotbar, slot, auto switch, force, stay-open ticks. */
+    public void tickTotem(boolean active,long generation,int[] values,boolean autoOpen) throws ReflectiveOperationException {
+        if (!active || stopped) { cancelTotem(); return; }
+        if (values==null || values.length!=7 || values[0]<0 || values[0]>1) throw new IllegalArgumentException("Auto Totem settings");
+        prepare(7);
+        if (client()==null) return;
+        totemGeneration=generation; totemValues=values.clone(); totemAutoOpen=autoOpen;
+        if (legitEvents==null) throw new IllegalStateException("Auto Totem requires tick hooks");
+        totemActive=!totemFailed && totemPermitted(generation);
+    }
+    private void onTotemTick(Object c) {
+        if (!totemActive || stopped) return;
+        try { runTotemTick(c); }
+        catch (ReflectiveOperationException | RuntimeException error) { totemFailed=true; cancelTotem(); }
+    }
+    private void runTotemTick(Object c) throws ReflectiveOperationException {
+        if (c==null || client()!=c) return;
+        int[] values=totemValues; boolean autoOpen=totemAutoOpen; long generation=totemGeneration;
+        Object p=player.get(c),w=world.get(c),m=manager.get(c);
+        if (p==null || w==null || m==null || !(boolean)alive.invoke(p) || !totemPermitted(generation)) { cancelTotem(); return; }
+        Object inv=totemInventory.invoke(p),s=screen.get(c),h=totemHandler.get(p);
+        if (inv==null || h==null) { cancelTotem(); return; }
+        if (totemPlayer!=p || totemWorld!=w || totemManager!=m || totemInventoryOwner!=inv) {
+            totemClock=totemCloseClock=-1; totemOpenedScreen=null;
+            totemPlayer=p; totemWorld=w; totemManager=m; totemInventoryOwner=inv;
+        }
+        boolean screenIsOwned=s!=null && s==totemOpenedScreen;
+        boolean invScreen=s!=null && totemScreenType.isInstance(s);
+        boolean offhand=totemIs(totemOffhand.invoke(p));
+        int desired=Math.max(1,Math.min(9,values[3]))-1;
+        boolean hotbar=values[2]!=0;
+        boolean desiredHotbar=totemIs(totemStack.invoke(inv,desired));
+        boolean shouldOpen=(hotbar ? (!offhand || !desiredHotbar) : !offhand) && !screenIsOwned && totemHasOutside(inv);
+        if (autoOpen && shouldOpen) {
+            Object fake=totemScreenCtor.newInstance(p);
+            if (!totemPermitted(generation)) return;
+            totemSetScreen.invoke(c,fake);
+            if (screen.get(c)==fake) {
+                totemOpenedScreen=fake;
+                // Continue this same tick through the local inventory screen.
+                s=fake; screenIsOwned=true; invScreen=true;
+            }
+        }
+        if (!invScreen) { totemClock=-1; totemCloseClock=-1; totemOpenedScreen=null; return; }
+        if (totemScreenHandler.get(s)!=totemHandler.get(p)) return;
+        int delay=Math.max(0,Math.min(20,values[1]));
+        int stay=Math.max(0,Math.min(20,values[6]));
+        if (totemClock==-1) totemClock=delay;
+        if (totemCloseClock==-1) totemCloseClock=stay;
+        if (totemClock>0) totemClock--;
+        if (values[4]!=0) totemSelected.setInt(inv,desired);
+        h=totemHandler.get(p);
+        if (h==null) return;
+        if (totemClock<=0) {
+            offhand=totemIs(totemOffhand.invoke(p));
+            if (!offhand) {
+                int source=totemFind(inv,values[0]);
+                if (source!=-1) { totemClick(c,p,inv,h,source,40); return; }
+            }
+            if (hotbar) {
+                Object hand=totemMainHand.invoke(p);
+                boolean empty=(boolean)totemEmpty.invoke(hand), already=totemIs(hand);
+                if (empty || (values[5]!=0 && !already)) {
+                    int source=totemFind(inv,values[0]);
+                    if (source!=-1) {
+                        int selected=totemSelected.getInt(inv);
+                        totemClick(c,p,inv,h,source,selected); return;
+                    }
+                }
+            }
+            boolean close=screenIsOwned && (hotbar ? totemIs(totemStack.invoke(inv,desired)) && totemIs(totemOffhand.invoke(p)) : totemIs(totemOffhand.invoke(p)));
+            if (close && autoOpen) {
+                if (totemCloseClock!=0) { totemCloseClock--; return; }
+                if (screen.get(c)==s && totemPermitted(generation)) totemClose.invoke(s);
+                totemOpenedScreen=null; totemCloseClock=stay;
+            }
+        }
+    }
+
     public void stop() {
+        cancelTotem();
+        legitActive=false; legitFakeUse=false; legitPulses.clear(); legitUseOwner=null; legitPulseMouse=null;
+        if (legitEvents != null) try { legitStopEvents.invoke(null,this); } catch (ReflectiveOperationException ignored) {}
+        legitEvents=null;
+        anchorPlayer=anchorWorld=anchorManager=anchorInv=anchorTarget=anchorSupport=anchorFace=null;
+        anchorUseOwner=null; anchorOwned.clear(); anchorOwnershipWorld=anchorOwnershipPlayer=null; anchorStage=0;
+        jumpSeeded = jumpHolding = jumpPending = false;
+        jumpPlayer = jumpWorld = jumpOptions = jumpBinding = jumpInput = jumpPreviousSource = null;
+        jumpOwner = null;
         triggerActive = false;
         triggerPlayer = triggerWorld = triggerManager = triggerTarget = triggerInv = null;
         stopped = true; sneakOwner = pearlOwner = null; bridgeNonce = pearlNonce = 0;

@@ -5,6 +5,8 @@
 #include "../../platform/adapter/target_version.hpp"
 
 namespace trigger_engine { struct config; }
+namespace jump_reset_config { struct config; }
+namespace module_settings { struct anchor_macro; struct auto_totem; }
 
 namespace services::game::world_bridge
 {
@@ -28,5 +30,13 @@ namespace services::game::world_bridge
     void cancel_crystal(); // Client-thread ownership cleanup; no new interaction.
     void tick_trigger(const trigger_engine::config& settings, bool active, const std::atomic<std::uint64_t>& generation);
     void cancel_trigger();
+    void tick_jump(const jump_reset_config::config& settings, bool active, const std::atomic<std::uint64_t>& generation);
+    void cancel_jump();
+    void tick_anchor(const module_settings::anchor_macro& settings, bool active, const std::atomic<std::uint64_t>& generation,
+        std::uint64_t expected_generation);
+    void cancel_anchor();
+    void tick_totem(const module_settings::auto_totem& settings, bool active,
+        const std::atomic<std::uint64_t>& generation, std::uint64_t expected_generation);
+    void cancel_totem();
     void shutdown();
 }

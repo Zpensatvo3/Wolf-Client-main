@@ -101,24 +101,11 @@ int main()
     assert(aura.target_mode == 2); // Combo stub selects Mobs Only.
     assert(drawn == (std::set<std::string>{"target_mode","mob_ground_test","action_delay_ms","switch_delay_ms","launch_timeout_ms","confirm_timeout_ms"}));
     module_settings::anchor_macro anchor;
-    const auto anchor_fields = module_settings::anchor_macro::schema();
     drawn.clear();
-    gui::settings::render(anchor,anchor_fields.subspan(1));
-    assert(drawn.contains("legit_place_delay") && drawn.contains("legit_variance") && drawn.contains("legit_camera_strength"));
-    assert(!drawn.contains("blatant_place_delay") && !drawn.contains("blatant_randomize"));
-    anchor.legit_randomize = false;
-    drawn.clear();
-    gui::settings::render(anchor,anchor_fields.subspan(1));
-    assert(!drawn.contains("legit_variance"));
-    anchor.mode = 1;
-    drawn.clear();
-    gui::settings::render(anchor,anchor_fields.subspan(1));
-    assert(drawn.contains("blatant_place_delay") && !drawn.contains("legit_place_delay"));
-    assert(!drawn.contains("blatant_variance") && !drawn.contains("blatant_camera_strength"));
-    anchor.blatant_randomize = anchor.blatant_camera_movement = true;
-    drawn.clear();
-    gui::settings::render(anchor,anchor_fields.subspan(1));
-    assert(drawn.contains("blatant_variance") && drawn.contains("blatant_camera_strength"));
+    gui::settings::render(anchor,module_settings::anchor_macro::schema());
+    assert(drawn == (std::set<std::string>{"execution_mode","while_use","stop_on_kill","click_simulation","place_chance",
+        "switch_delay","switch_chance","glowstone_delay","glowstone_chance","explode_delay","explode_chance",
+        "explode_slot","only_own","only_charge"}));
     assert(anchor.legit_place_delay == 38 && anchor.blatant_place_delay == 0);
 
     // NameProtect keeps its custom text control but publishes through the shared editor.

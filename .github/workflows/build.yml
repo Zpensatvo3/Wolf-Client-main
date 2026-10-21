@@ -43,6 +43,13 @@ jobs:
           python scripts/Test-JumpResetSources.py
       - name: Check original hybrid game bridge offline
         run: python scripts/Test-HybridBridge.py
+      - name: Verify Anchor tick and item-use bytecode hooks
+        run: |
+          mkdir -p "$RUNNER_TEMP/anchor-asm"
+          curl --fail --silent --show-error --location https://repo.maven.apache.org/maven2/org/ow2/asm/asm/9.9/asm-9.9.jar -o "$RUNNER_TEMP/anchor-asm/asm.jar"
+          curl --fail --silent --show-error --location https://repo.maven.apache.org/maven2/org/ow2/asm/asm-tree/9.9/asm-tree-9.9.jar -o "$RUNNER_TEMP/anchor-asm/asm-tree.jar"
+          python scripts/Test-AnchorHooks.py --asm-classpath "$RUNNER_TEMP/anchor-asm/asm.jar:$RUNNER_TEMP/anchor-asm/asm-tree.jar"
+          python scripts/Test-AutoTotem.py --asm-classpath "$RUNNER_TEMP/anchor-asm/asm.jar:$RUNNER_TEMP/anchor-asm/asm-tree.jar"
       - name: Compile and run offline tests
         run: python scripts/Test-Offline.py --jobs 2
       - name: Exercise GrimUI layout and input without Minecraft

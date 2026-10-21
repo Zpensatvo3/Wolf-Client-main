@@ -1,4 +1,6 @@
 #pragma once
+// Legacy native decision model retained as an offline migration reference.
+// Live Jump Reset execution is owned by WorldBridge.java feature 5.
 #include "jump_reset_config.hpp"
 #include <cstdint>
 

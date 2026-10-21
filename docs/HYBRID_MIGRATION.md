@@ -1,4 +1,4 @@
-# C++ / Java hibrit geçişi — ilk sekiz grup, Hit Crystal ve Triggerbot
+# C++ / Java hibrit geçişi — ilk sekiz grup, Hit Crystal, Triggerbot, Jump Reset ve Anchor Macro
 
 ## Kapsam
 
@@ -459,3 +459,132 @@ Mouse'a bağlı bütün KeyBinding'lerin press kuyruğu/basılı halleri korunar
 vanilla saldırı önlenir. Pencere/odak/oturum kaybında eski basılı hal geri yazılmaz.
 1.21.11 ve sonraki hedeflerde MouseButtonInfo, eskilerde dört argümanlı mouse
 callback imzası kullanılır; lazy çözümleme yalnızca seçenek açıkken yapılır.
+
+
+## Jump Reset: Java denetleyicisi
+
+`src/modules/combat/jump_reset.cpp` ayar/preset/config arayüzünü ve yaşam döngüsünü
+sağlar; çalışan native karar motoru veya JNI oyun okuması içermez. WorldBridge
+özelliği 5, mevcut SDK profilinin exact adlarıyla yedi DLL hedefinde bağımsız
+hazırlanır. Binding hatası modülü pasif bırakır; native karar motoruna dönülmez.
+`jump_reset_engine.hpp` yalnızca eski sözleşmenin offline geçiş referansıdır.
+
+Java client thread'inde dünya/oyuncu/options/binding kimliği, canlılık, ekran,
+eşya kullanımı, yüzme/uçuş/tırmanma/araç ve fiziksel jump durumu okunur. Hasar
+kenarı bir kez örneklenir; Living Attacks Only için taze, kendisi dışındaki canlı
+saldırgana ait damage source en çok 105 ms içinde eşlenir. Gecikme 0–100 ms,
+karar ömrü 170 ms, yerde gözlem toleransı 85 ms'dir; havada jump gönderilmez.
+Game Binding vanilla binding'i basar; oyun tick'i ilerlediğinde veya en geç
+200 ms'de bırakır. Aynı hasar animasyonu tekrar denemez; backoff 140 ms'dir.
+
+Giriş yolu Java'dadır. `GLFW.glfwGetKey` ve `glfwGetMouseButton`, güncel oyun
+penceresinin fiziksel durumunu okur; SCANCODE atamaları `glfwGetKeyScancode`
+üzerinden platforma göre eşlenir. Basma/bırakma vanilla `KeyBinding.setPressed`
+çağrısıdır. GLFW_FOCUSED ve window handle tekrar doğrulanır; kullanıcı basışı
+korunur, odak kaybı veya pencere değişiminde eski basış yeniden yaratılmaz.
+
+Eski System Space / `mode: 1` kayıtları **Game Space** olur. Bu mod Space jump
+ataması ister ve tamamen Java game-binding yolundan çalışır. Native Space
+biletleri, receipt/validator callback'leri ve Windows input üretimi kaldırıldı.
+Native callback yalnızca izin/odak ve ayar iptal neslini okur. Basma client
+thread'inde senkron uygulanır; bir sonraki tick veya en geç 200 ms'de bırakılır.
+Disable, ayar veya oturum değişimi işi iptal eder; kısmen uygulanmış press
+istisnasında cleanup denenir, modül askıya alınır ve aynı hasar tekrar oynatılmaz.
+
+Argon'un [AutoJumpReset davranış kaydı](ARGON_REFERENCE.md#jump-reset-için-incelenen-akış)
+referanstır. `tests/jump_reset/JumpResetBridgeTest.java` bağımsız oyun/platform
+fixture'ları ile karar, iptal, GLFW/game input sahipliği ve yedi exact binding protokolünü
+sınar; `Test-HybridBridge.py` hem kaynak hem gömülü sınıfı çalıştırır. Bu kontroller
+Windows DLL bağlama veya gerçek Minecraft/oyun içi sürüm kabulü değildir.
+
+
+## Anchor Macro: Java denetleyicisi
+
+`src/modules/combat/anchor_macro.cpp` yalnızca ayar snapshot'ını ve yaşam döngüsünü
+WorldBridge'e iletir. Özellik 6; hedefe özel SDK adları, GLFW giriş okuması,
+vanilla envanter seçimi/senkronizasyonu ve `interactBlock`/el sallama ile çalışır.
+Native callback yalnızca runtime izin/odak ve iptal neslini denetler. Ayar okumasından
+önce alınan nesil dispatch boyunca doğrulanır; eski ayarla yeni neslin eşleşmesi
+önlenir. Hazırlama hatası native Anchor Macro motoruna dönmez.
+
+[Modül sözleşmesi](MODULES.md#anchor-macro) Mode ve 13 ortak kontrolü açıklar.
+Normal, OneStep koyma/dolum/patlama sırasını korur. Normal her tick'te en fazla bir slot/oyun
+mutasyonu yapar; sıfır gecikmeler aynı tick'te art arda paket üretmez. Sonraki
+aşama yerleşim/dolum gözlenmeden açılmaz. Bir gözlem 650 ms'de gelmezse veya
+döngü toplam 10 saniyeyi geçerse döngü durur; belirsiz/istisna sonrası işlem
+tekrarlanmaz. Patlatma için yapılandırılan slot seçilir; glowstone kabul edilmez.
+
+Input sahipliği options/key/boundKey/window kimliklerine, slot sahipliği
+dünya/oyuncu/manager/inventory ve seçili slota bağlıdır. Kapanış temizliği client
+thread'indedir; module worker yalnızca iptal neslini değiştirir. Disable, odak,
+loader, ayar veya oturum değişimi yeni işlemleri durdurur. Runtime exception
+özelliği askıya alır; yarım uygulanmış etkileşim yeniden oynatılmaz.
+
+Eski Legit/Blatant değerleri schema'da gizli olarak saklanır ve public config
+alias dönüşümü devam eder. Eski switch/charge/detonate gecikmeleri açıkça içe
+aktarılmışsa milisaniyeden tick'e yukarı yuvarlanır; yeni kontrol değerleri
+önceliklidir. Safe Anchor mevcut `anchor_engine` yolunda kalır.
+
+`tests/anchor_macro/AnchorMacroBridgeTest.java` kaynak ve gömülü sınıf için
+bağımsız oyun/GLFW/Mouse fixture'larıyla çalışır. Kaynak senaryoları gerçek
+Minecraft/Fabric, Windows DLL linki veya oyun içi sürüm kabulü değildir.
+
+
+### Anchor Macro Legit olay bağlantısı
+
+`execution_mode`: 0 Normal (varsayılan), 1 Legit. Eski public config içe aktarımı
+bu alan yoksa Normal seçer; tarihi gizli `mode` alanı repurpose edilmedi.
+Legit'in üç sayacı, koordinat sahipliği ve fake-use işareti Normal'in transaction
+state'inden ayrıdır. Normal regresyon senaryoları iki mod eklendikten sonra da
+aynı davranışı denetler.
+
+Legit ilk seçildiğinde kendi JVMTI ortamında yalnızca MinecraftClient.tick ve
+doItemUse HEAD'lerine `AnchorEvents` çağrıları eklenir. 26.x exact Mojang adları
+tick/startUseItem'dır. `AnchorEvents` game loader'a, WorldBridge ve ASM transformer
+izole loader'a yüklenir. Callback'ler Java Consumer/Predicate üzerinden geçer;
+oyun tick/use sıcak yolunda native hook/callback yoktur (izin kontrolü hariç).
+Şema değişmeden retransform edilir. Kurulum reddedilirse Legit devre dışıdır,
+Normal hazırlığı etkilenmez. Stop owner-token kontrolüyle Java callback'lerini
+bırakır; JVMTI ortamı kendi dönüşümünü kaldırıp dispose edilir.
+
+Source ve gömülü sınıflar için:
+
+```sh
+python scripts/Test-HybridBridge.py
+python scripts/Test-AnchorHooks.py --asm-classpath '<ASM 9.9+ ve ASM Tree classpath>'
+```
+
+`Test-AnchorHooks.py` gerçek dönüştürülmüş bytecode'u JVM verifier ile yedi hedef
+protokolünde çalıştırır. Tick/use HEAD sırası, fake-use iptali, şema korunumu,
+hatalı giriş ve stop/owner davranışı sınanır. `tests/anchor_legit/` gerçek event
+relay'iyle sayaç/şans/hedef, Only Own, Only Charge, slot, swing ve 35 ms pulse
+yaşam döngüsünü izole fixture'larda denetler. Bu kontroller Windows DLL linki veya
+Minecraft üzerinde canlı retransform kabulü değildir.
+
+Normal Java kaynakları/AnchorEvents normal BuildGameBridge hedefinde derlenir.
+Transformer değişirse `scripts/Build-AnchorHooks.ps1 -AsmClasspath ...` ASM/ASM Tree
+ile gömülü AnchorTransformer.class dosyasını yeniden üretir (diğer ASM köprüleri
+gibi). Runtime Fabric'in ASM sınıflarını kullanır; harici bir oyun mod JAR'ı
+paketlenmez. 35 ms release client thread'deki ilk uygun tick/render'a bağlıdır;
+Argon'un thread havuzunun birebir zamanlayıcı yapısı değildir.
+
+## Auto Totem Java denetleyicisi
+
+Auto Totem WorldBridge feature 7 içinde, Java oyun thread’inde çalışır ve Argon
+AutoInventoryTotem akışını izler: Blatant/Random kaynak seçimi, önce offhand,
+isteğe bağlı hotbar hedefi, Auto Switch ve modülün açtığı envanteri gecikmeli
+kapatma. Native `tick_totem` yalnızca ayarlar ve generation yetkisini iletir;
+oyuncu/envanter okuma ile SWAP çağrıları Java’dadır. Blatant ilk, Random
+uygun kaynaklar arasından rastgele seçim yapar. Oyun ekranı Windows tuş
+simülasyonuyla değil vanilla InventoryScreen API’siyle açılır. Gerçek oyun
+üzerinde henüz doğrulanmadı.
+
+Auto Totem gerçek client tick HEAD olayını Anchor Legit ile aynı Java relay
+üzerinden alır. `AnchorTransformer.inventoryScreen` hedef oyunun InventoryScreen
+alt sınıfını üretir; slot/mouse click metotları etkisizdir. Tipler ve metot
+imzaları yansımayla alınır; fare API değişiklikleri için sabit descriptor tahmini
+yapılmaz. Test komutu:
+
+```sh
+python scripts/Test-AutoTotem.py --asm-classpath <asm.jar:asm-tree.jar>
+```

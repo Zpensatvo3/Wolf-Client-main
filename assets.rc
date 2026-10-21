@@ -35,3 +35,6 @@ IDR_WING_ANGEL RCDATA "assets\\cosmetics\\wing-angel.png"
 IDR_WING_BUTTERFLY RCDATA "assets\\cosmetics\\wing-butterfly.png"
 IDR_CAPE_PHOENIX RCDATA "assets\\cosmetics\\cape-phoenix.png"
 IDR_CAPE_ASTRAL RCDATA "assets\\cosmetics\\cape-astral.png"
+
+IDR_ANCHOR_EVENTS RCDATA "assets\\hybrid\\net\\onestep\\hybrid\\AnchorEvents.class"
+IDR_ANCHOR_TRANSFORMER RCDATA "assets\\hybrid\\net\\onestep\\hybrid\\AnchorTransformer.class"
