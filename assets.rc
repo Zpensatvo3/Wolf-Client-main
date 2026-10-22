@@ -1,9 +1,6 @@
 #include "resource.h"
 
-IDR_FONT_GOOGLE_SANS_SEMIBOLD RCDATA "assets\\fonts\\GoogleSans-SemiBold.ttf"
-IDR_FONT_GOOGLE_SANS_BOLD RCDATA "assets\\fonts\\GoogleSans-Bold.ttf"
 IDR_FONT_FONTAWESOME_SOLID RCDATA "assets\\fonts\\FontAwesome-Free-Solid-900.otf"
-IDR_LICENSE_GOOGLE_SANS RCDATA "assets\\fonts\\OFL-Google-Sans.txt"
 IDR_LICENSE_FONTAWESOME RCDATA "assets\\fonts\\LICENSE-Font-Awesome.txt"
 IDR_FONT_MONTSERRAT_SEMIBOLD RCDATA "assets\\fonts\\Montserrat-SemiBold.ttf"
 IDR_FONT_MONTSERRAT_BOLD RCDATA "assets\\fonts\\Montserrat-Bold.ttf"

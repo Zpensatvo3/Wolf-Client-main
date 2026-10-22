@@ -89,8 +89,8 @@
       "id": "safe_anchor",
       "owner": "src/modules/combat/safe_anchor.hpp",
       "model": "src/modules/combat/anchor_config.hpp",
-      "ownership": "client_thread_config",
-      "panel": "src/modules/combat/anchor_engine.cpp"
+      "ownership": "snapshot_store",
+      "panel": "src/modules/combat/safe_anchor.cpp"
     },
     {
       "id": "hit_crystal",

@@ -85,7 +85,12 @@ ve keybind seçimi sürer; açıkça gelen eski switch/charge/detonate milisaniy
 üst tick'e yuvarlanır. `execution_mode` içermeyen eski public config'ler Normal
 açılır; eski gizli `mode: 1` yeni Legit seçimi değildir. Yeni alanlar varsa
 önceliklidir. Safe Anchor ayrı modül
-olarak mevcut native motorunu kullanır. [Java kapsamı](HYBRID_MIGRATION.md#anchor-macro-java-denetleyicisi).
+olarak mevcut native motorunu kullanır. Koruma bloğu anchor ile oyuncu arasına
+yerleştirilip dünyada görülmeden doldurma/patlatma yapılmaz. Obsidyen, yoksa
+glowstone kullanılır; hem koruma hem dolum için glowstone kullanılacaksa iki
+adet gerekir. Yerde sabit durup erişilebilir blok/anchor'a bakarak etkinleştirilir;
+bir zincir sonunda kapanır. [Safe Anchor akışı](SAFE_ANCHOR_FIX.md).
+[Java kapsamı](HYBRID_MIGRATION.md#anchor-macro-java-denetleyicisi).
 
 ### Auto Totem
 
@@ -110,18 +115,14 @@ Tüm kararlar ve SWAP işlemleri oyun thread’inde Java’dan yapılır.
   kapalı), saldırı sonrası oyunun mouse callback'ine bir basma/bırakma çifti
   yollar; eklenen vanilla press kuyruğunu temizler. Eski config anahtarları korunur. Menü, odak, oturum,
   manuel slot veya ayar değişimi döngüyü iptal eder; Windows click üretilmez.
-- **Crystal Aura:** en yakın uygun hedefe kilitlenir; arkadaşları, izleyicileri
-  ve Anti Bot adaylarını dışlar. Kılıç, havalanma, uygun obsidyen/kristal
-  yerleştirme ve kırma aşamalarını izler; hedef kaybında sıradakine geçer.
-  Oyuncular / Oyuncular + Moblar / Yalnızca Moblar test seçenekleri vardır.
-  Golem gibi dirençli moblar için yerde kılıç sonrası deneme mümkündür;
-  oyuncuların havalanma şartı değişmez. Zırh askıları/eşyalar hedef değildir.
-  Hotbar seçimi, vanilla cooldown, görüş ve yerleştirme boşluğu doğrulanır;
-  kamera görünür döner, otomatik yürüme/erişim artırma yoktur.
-  **Kendine hasar/ölüm koruması yoktur; arkadaşlar da patlamadan zarar görebilir.**
-  Sonuçlar yeniden okunur, sınırsız paket yerine timeout/gecikme uygulanır.
-  Clicker'lar ortak saldırı sahipliğine uyar; Triggerbot önceliklidir.
-  Diğer slot/blok makrolarıyla eşzamanlı kullanım doğrulanmamıştır.
+- **Crystal Aura:** WorldBridge Java özelliği 8; hasara göre taban/kristal seçer,
+  yerleştirme ve kırmayı ayrı zamanlar. Kılıç/havalanma şartı yoktur; mevcut
+  tabanlar, hotbar/offhand kristalleri ve isteğe bağlı obsidyen desteği kullanılır.
+  Hasar tahmini blok görüşü, zırh/toughness, direnç ve koruma büyülerini içerir.
+  Self / Friend Protection açıkken hasar ve anti-suicide sınırları uygulanır.
+  Gerçek menzil, entity boşluğu, görünür dönüş, slot sahipliği ve sunucu teyidi
+  Java'da kontrol edilir. İşlem neden bekliyorsa ayar panelinde görünür.
+  [Kaynak karşılaştırması ve güncel tasarım](CRYSTAL_AURA_REDESIGN.md).
 - **Vape:** yalnızca Aim Assist (Simple/Adaptive), Left Clicker, Right Clicker.
 - **Hit Crystal:** fiziksel sağ tuş basılıyken bakılan obsidyen/bedrock üzerinde
   kristal yerleştirip kırar; mevcut kristal hedefinden de başlayabilir. Kararlar,

@@ -21,7 +21,7 @@ namespace gui
             { "triggerbot", "Attack the target you aim at" },
             { "mace swap", "Switch to a mace before hitting" },
             { "anchor macro", "Place, charge and explode an anchor" },
-            { "safe anchor", "Use an anchor while standing still" },
+            { "safe anchor", "Place cover, charge and detonate an anchor while standing still" },
             { "hit crystal", "Hold right-click to place and break crystals" },
             { "crystal aura", "Attack with a sword and crystals" },
             { "jump reset", "Jump after taking a hit" },

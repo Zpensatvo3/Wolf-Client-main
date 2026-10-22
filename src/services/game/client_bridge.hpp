@@ -17,6 +17,9 @@ namespace services::game::client_bridge
     hybrid::result capture_walk(walk_snapshot& out);
     bool apply_walk(const walk_snapshot& observed, const std::array<bool, 6>& desired);
     bool release_walk(bool vanilla = false);
+    bool prepare_walk_action(int kind, int code);
+    void set_inventory_busy(bool busy);
+    bool is_inventory_busy();
     hybrid::result capture_glow(glow_snapshot& out);
     bool apply_glow(const glow_snapshot& observed, const std::vector<bool>& allowed);
     bool release_glow();

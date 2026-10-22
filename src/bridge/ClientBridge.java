@@ -21,7 +21,20 @@ public final class ClientBridge {
     private Method pressed, setPressed, code, category, focused, visible, active, children, bookOpen;
     private Class<?> handled, inventory, creative, text, parent, recipe, players;
     private Method entities, localGlow, flag, setGlow, setFlag;
+    private Method isSprinting, setSprinting;
+    private Field sprintKey, sprintTimer;
+    private Field walkInput, walkFlags, walkVector, walkLastSent, walkNetwork;
+    private Method walkSend, walkSendSprint, walkKeyScan;
+    private java.lang.reflect.Constructor<?> walkInputPacket;
+    private Object walkEmptyInput, walkZeroVector;
+    private boolean walkActionsPrepared, walkActionFailed;
+    private long walkActionPauseUntil;
+    private static volatile boolean inventoryBusy = false;
+    public void setInventoryBusy(boolean busy) { inventoryBusy = busy; }
+    public boolean isInventoryBusy() { return inventoryBusy; }
+    private Method getWindow, getHandle, glfwGetMouseButton;
     private final Object[][] walkOwners = new Object[6][];
+    private final Object[][] walkActionOwners = new Object[6][];
     private final Map<Object, boolean[]> glowOwners = new IdentityHashMap<>();
     private Object glowPlayer, glowWorld;
     private long sequence, walkNonce, glowNonce;
@@ -38,6 +51,10 @@ public final class ClientBridge {
         options = field(client, "field_1690", load("class_315"), false);
         onThread = method(client, "method_18854", boolean.class);
         alive = method(playerType, "method_5805", boolean.class);
+        getWindow = method(client, "method_22683", load("class_1041"));
+        getHandle = method(load("class_1041"), "method_4490", long.class);
+        Class<?> glfw = Class.forName("org.lwjgl.glfw.GLFW", false, loader);
+        glfwGetMouseButton = method(glfw, "glfwGetMouseButton", int.class, true, long.class, int.class);
     }
     private Class<?> load(String name) throws ClassNotFoundException { return Class.forName("net.minecraft." + name, false, loader); }
     private static Field field(Class<?> owner, String name, Class<?> type, boolean stat) throws ReflectiveOperationException {
@@ -49,9 +66,12 @@ public final class ClientBridge {
         throw new NoSuchFieldException(name);
     }
     private static Method method(Class<?> owner, String name, Class<?> result, Class<?>... args) throws ReflectiveOperationException {
+        return method(owner, name, result, false, args);
+    }
+    private static Method method(Class<?> owner, String name, Class<?> result, boolean stat, Class<?>... args) throws ReflectiveOperationException {
         for (Class<?> c = owner; c != null; c = c.getSuperclass()) try {
             Method m = c.getDeclaredMethod(name, args);
-            if (m.getReturnType() != result || Modifier.isStatic(m.getModifiers()) || !m.trySetAccessible()) throw new IllegalAccessException(name);
+            if (m.getReturnType() != result || Modifier.isStatic(m.getModifiers()) != stat || !m.trySetAccessible()) throw new IllegalAccessException(name);
             return m;
         } catch (NoSuchMethodException missing) { /* Exact inherited mapping only. */ }
         throw new NoSuchMethodException(name);
@@ -76,6 +96,13 @@ public final class ClientBridge {
             recipe = load("class_10260"); Class<?> widget = load("class_507");
             book = field(recipe, "field_54474", widget, false); bookSearch = field(widget, "field_3089", text, false);
             bookOpen = method(widget, "method_2605", boolean.class);
+            Class<?> entity = load("class_1297");
+            isSprinting = method(playerType, "method_5624", boolean.class);
+            setSprinting = method(playerType, "method_5728", void.class, boolean.class);
+            flag = method(entity, "method_5795", boolean.class, int.class);
+            setFlag = method(entity, "method_5729", void.class, int.class, boolean.class);
+            try { sprintKey = field(opts, "field_1867", binding, false); } catch (Throwable ignored) {}
+            sprintTimer = field(playerType, "field_3935", int.class, false);
         } else {
             players = load("class_1657"); Class<?> entity = load("class_1297");
             entities = method(load("class_638"), "method_18112", Iterable.class);
@@ -83,6 +110,67 @@ public final class ClientBridge {
             setGlow = method(entity, "method_5834", void.class, boolean.class); setFlag = method(entity, "method_5729", void.class, int.class, boolean.class);
         }
         prepared[feature] = true;
+    }
+    private void prepareWalkActions() throws ReflectiveOperationException {
+        if (walkActionsPrepared) return;
+        Class<?> input = load("class_744"), flags = load("class_10185"), vector = load("class_241");
+        Class<?> network = load("class_634"), packet = load("class_2596");
+        walkInput = field(playerType,"field_3913",input,false);
+        walkFlags = field(input,"field_54155",flags,false);
+        walkVector = field(input,"field_55868",vector,false);
+        walkLastSent = field(playerType,"field_54156",flags,false);
+        walkNetwork = field(playerType,"field_3944",network,false);
+        walkEmptyInput = field(flags,"field_54098",flags,true).get(null);
+        walkZeroVector = field(vector,"field_1340",vector,true).get(null);
+        walkSend = method(network,"method_52787",void.class,packet);
+        walkSendSprint = method(playerType,"method_46742",void.class);
+        walkInputPacket = load("class_2851").getDeclaredConstructor(flags);
+        if (!walkInputPacket.trySetAccessible() || walkEmptyInput == null || walkZeroVector == null)
+            throw new IllegalStateException("Inventory Walk action bindings");
+        walkKeyScan = Class.forName("org.lwjgl.glfw.GLFW",false,loader).getMethod("glfwGetKeyScancode",int.class);
+        walkActionsPrepared = true;
+    }
+    /** Runs before the original window event / module inventory action, never after its click. */
+    public boolean prepareWalkAction(int kind, int value) throws ReflectiveOperationException {
+        if(walkActionFailed) return false;
+        try {return executeWalkAction(kind,value);}
+        catch(ReflectiveOperationException | RuntimeException error) {walkActionFailed=true;throw error;}
+    }
+    private boolean executeWalkAction(int kind, int value) throws ReflectiveOperationException {
+        if (!prepared[1] || stopped) return true;
+        Object c=client(); if(c==null) return false;
+        Object p=player.get(c),w=world.get(c),s=screen.get(c),opts=options.get(c);
+        if(p==null || w==null || opts==null || !handled.isInstance(s)) return true;
+        prepareWalkActions();
+        // Movement key presses are not inventory actions. Compare real remapped scan codes.
+        if(kind==0) for(Field keyField:keyFields) {
+            Object key=keyField.get(opts);int[] d=descriptor(key==null?null:bound.get(key));
+            int scan=d[0]==0?(int)walkKeyScan.invoke(null,d[1]):d[0]==1?d[1]:-1;
+            if(scan>=0 && scan==value) return true;
+        }
+        Object input=walkInput.get(p),network=walkNetwork.get(p);
+        if(input==null || network==null || !(boolean)alive.invoke(p)) return false;
+        boolean changed=!walkEmptyInput.equals(walkFlags.get(input)) || !walkEmptyInput.equals(walkLastSent.get(p));
+        walkActionPauseUntil=System.nanoTime()+200_000_000L;
+        for(int i=0;i<keyFields.length;i++) {
+            Object key=keyFields[i].get(opts);
+            if(key!=null && ((boolean)pressed.invoke(key) || walkOwners[i]!=null) && walkActionOwners[i]==null)
+                walkActionOwners[i]=new Object[]{p,w,opts,key,bound.get(key)};
+            if(key!=null) setPressed.invoke(key,false);
+            walkOwners[i]=null;
+        }
+        if(sprintKey!=null) setPressed.invoke(sprintKey.get(opts),false);
+        if(sprintTimer!=null) sprintTimer.setInt(p,0);
+        setSprinting.invoke(p,false);
+        walkFlags.set(input,walkEmptyInput);walkVector.set(input,walkZeroVector);
+        // This is the actual stopped local input, sent before the click/close on the same connection.
+        // Vanilla's sprint sender also updates its own last-sent sprint tracking.
+        walkSendSprint.invoke(p);
+        if(changed) {
+            walkSend.invoke(network,walkInputPacket.newInstance(walkEmptyInput));
+            walkLastSent.set(p,walkEmptyInput);
+        }
+        return client()==c && player.get(c)==p && world.get(c)==w && screen.get(c)==s && options.get(c)==opts;
     }
     private Object client() throws ReflectiveOperationException {
         if (stopped) return null;
@@ -145,6 +233,7 @@ public final class ClientBridge {
     }
     public int[] walkInputs() throws ReflectiveOperationException {
         boolean owned = false; for (Object[] owner : walkOwners) owned |= owner != null;
+        for(Object[] owner:walkActionOwners) owned |= owner!=null;
         if (!owned) return null;
         Object c = client(); if (c == null) return null;
         Object opts = options.get(c); int[] result = new int[12]; Arrays.fill(result, -1);
@@ -156,11 +245,22 @@ public final class ClientBridge {
     }
     public boolean releaseWalk(boolean vanilla, int[] descriptors, boolean[] physical) throws ReflectiveOperationException {
         walkNonce = 0;
+        walkActionPauseUntil = 0;
         boolean owned = false; for (Object[] owner : walkOwners) owned |= owner != null;
+        for(Object[] owner:walkActionOwners) owned |= owner!=null;
         if (!owned) return true;
         Object c = client(); if (c == null || descriptors == null || descriptors.length != 12 || physical == null || physical.length != 6) return false;
         boolean success = true;
         for (int i = 0; i < 6; ++i) if (!releaseKey(i, c, vanilla, physical[i], descriptors[i * 2], descriptors[i * 2 + 1])) success = false;
+        for(int i=0;i<6;i++) {
+            Object[] owner=walkActionOwners[i];if(owner==null) continue;
+            if(vanilla && screen.get(c)==null && player.get(c)==owner[0] && world.get(c)==owner[1] && options.get(c)==owner[2] &&
+                keyFields[i].get(owner[2])==owner[3] && bound.get(owner[3])==owner[4]) {
+                int[] d=descriptor(owner[4]);
+                if(d[0]==descriptors[2*i] && d[1]==descriptors[2*i+1]) setPressed.invoke(owner[3],physical[i]);
+            }
+            walkActionOwners[i]=null;
+        }
         return success;
     }
     public boolean applyWalk(Object[] packet, boolean[] desired) throws ReflectiveOperationException {
@@ -175,13 +275,47 @@ public final class ClientBridge {
         Object[] keys = (Object[]) now[5], inputs = (Object[]) now[6];
         for (int i = 0; i < 6; ++i) if (keys[i] != ((Object[]) packet[5])[i] || inputs[i] != ((Object[]) packet[6])[i]) return false;
         Object c = client();
+        Object p = now[1];
+        if (p != null) {
+            try {
+                if (isSprinting != null && (boolean) isSprinting.invoke(p)) {
+                    setSprinting.invoke(p, false);
+                }
+                if (flag != null && (boolean) flag.invoke(p, 3)) {
+                    setFlag.invoke(p, 3, false);
+                }
+            } catch (Throwable ignored) {}
+        }
+        if (sprintKey != null && now[4] != null) {
+            try {
+                Object sk = sprintKey.get(now[4]);
+                if (sk != null && (boolean) pressed.invoke(sk)) {
+                    setPressed.invoke(sk, false);
+                }
+            } catch (Throwable ignored) {}
+        }
+        if (sprintTimer != null && p != null) {
+            try { sprintTimer.setInt(p, 0); } catch (Throwable ignored) {}
+        }
+        boolean mouseInteracting = false;
+        if (data[3] == 1 || data[3] == 2) {
+            try {
+                long handle = (long) getHandle.invoke(getWindow.invoke(c));
+                if ((int) glfwGetMouseButton.invoke(null, handle, 0) == 1 || (int) glfwGetMouseButton.invoke(null, handle, 1) == 1) {
+                    mouseInteracting = true;
+                }
+            } catch (Throwable ignored) {}
+        }
+        boolean busy = inventoryBusy || mouseInteracting || System.nanoTime()<walkActionPauseUntil;
         for (int i = 0; i < 6; ++i) {
             Object[] owner = walkOwners[i];
             if (owner != null && (owner[0] != now[1] || owner[1] != now[2] || owner[2] != now[4] || owner[3] != keys[i] || owner[4] != inputs[i]))
                 if (!releaseKey(i, c, false, false, (int) data[5 + i * 2], (int) data[6 + i * 2])) return false;
-            if (!desired[i] || keys[i] == null || inputs[i] == null || data[5 + i * 2] < 0) {
+            boolean wantKey = desired[i] && !busy;
+            if (!wantKey || keys[i] == null || inputs[i] == null || data[5 + i * 2] < 0) {
                 if (!releaseKey(i, c, false, false, (int) data[5 + i * 2], (int) data[6 + i * 2])) return false;
             } else if (!(boolean) pressed.invoke(keys[i])) {
+                walkActionOwners[i]=null;
                 walkOwners[i] = new Object[]{now[1], now[2], now[4], keys[i], inputs[i]};
                 setPressed.invoke(keys[i], true);
             }
@@ -249,5 +383,5 @@ public final class ClientBridge {
         }
         glowPlayer = glowWorld = null; return true;
     }
-    public void stop() { stopped = true; Arrays.fill(walkOwners, null); glowOwners.clear(); glowPlayer = glowWorld = null; walkNonce = glowNonce = 0; }
+    public void stop() { stopped = true; Arrays.fill(walkOwners, null); Arrays.fill(walkActionOwners,null); glowOwners.clear(); glowPlayer = glowWorld = null; walkNonce = glowNonce = 0; }
 }

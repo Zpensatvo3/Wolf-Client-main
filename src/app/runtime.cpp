@@ -11,6 +11,7 @@
 #include "../modules/module_lifecycle.hpp"
 #include "../platform/adapter/game_adapter.hpp"
 #include "../platform/jni/jvm_session.hpp"
+#include "../platform/test_crash_report.hpp"
 #include "../platform/input/key_codes.hpp"
 #include "../services/input/input_service.hpp"
 #include "../services/game/hybrid_bridge.hpp"
@@ -67,6 +68,7 @@ namespace
 
 void app::run()
 {
+    platform::test_crash_report crash_report;
     loader_ui::initialize();
     try
     {

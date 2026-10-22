@@ -1,4 +1,5 @@
 #include "inventory_bridge.hpp"
+#include "client_bridge.hpp"
 #include "../../auth/client.hpp"
 #include "../../auth/auth.hpp"
 #include "../../gui/gui.hpp"
@@ -138,6 +139,7 @@ services::game::hybrid::result services::game::inventory_bridge::capture_contain
 bool services::game::inventory_bridge::container_act(const container_snapshot& observed, int action, int source, int target)
 {
     if (!bridge || !observed.packet || !permitted()) return false;
+    if (!client_bridge::prepare_walk_action(3,0)) return false;
     const auto f = static_cast<unsigned>(observed.operation);
     if (f != 4 || suspended[f]) return false;
     const bool left = services::input::physical_button_down(services::input::mouse_button::left);
@@ -163,6 +165,9 @@ void services::game::inventory_bridge::tick_mouse(bool active, bool right_tweak,
         return;
     }
     if (!connect(jni::get_env())) return;
+    if (active && (services::input::physical_button_down(services::input::mouse_button::left) ||
+        services::input::physical_button_down(services::input::mouse_button::right)) &&
+        !client_bridge::prepare_walk_action(3,0)) return;
     auto env = jni::get_env();
     env->CallVoidMethod(bridge, mouse_tick_method, static_cast<jboolean>(active),
         static_cast<jboolean>(right_tweak), static_cast<jboolean>(left_with_item),
@@ -242,6 +247,7 @@ services::game::hybrid::result services::game::inventory_bridge::capture(feature
 bool services::game::inventory_bridge::act(const snapshot& observed, int source, int target, int stage, bool allow_closed)
 {
     if (!bridge || !observed.packet || !permitted()) return false;
+    if (!client_bridge::prepare_walk_action(3,0)) return false;
     const bool applied = jni::get_env()->CallBooleanMethod(bridge, act_method, observed.packet,
         static_cast<jint>(source), static_cast<jint>(target), static_cast<jint>(stage), static_cast<jboolean>(allow_closed)) == JNI_TRUE;
     // Any partially applied inventory click is non-repeatable through fallback.

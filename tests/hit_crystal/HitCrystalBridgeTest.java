@@ -82,6 +82,8 @@ public final class HitCrystalBridgeTest {
         check(c.field_1761.attacks == 0 && c.field_1724.inventory.field_7545 == 0, "ray obstruction blocks attack");
         c = setup(); c.field_1724.entityRange = .5; b = bridge(); tick(b, true, true, true); step(b); step(b);
         check(c.field_1761.attacks == 0, "actual entity reach is enforced");
+        c = setup(); c.field_1724.field_6031 = 90.0f; b = bridge(); tick(b, true, true, true); step(b); step(b);
+        check(c.field_1761.attacks == 0, "crosshair not intersecting crystal hitbox blocks attack");
         c = setup(); c.field_1761.removeOnAttack = false; b = bridge(); tick(b, true, true, true); step(b); step(b);
         class_1297 target = c.field_1687.entities.get(0); c.field_1687.entities.clear();
         class_1511 replacement = new class_1511(target.id); c.field_1687.entities.add(replacement); step(b);
@@ -150,7 +152,7 @@ class class_3675$class_306 {
     public int method_1444() { return code; } public class_3675$class_307 method_1442() { return type; }
 }
 class class_1297 {
-    int id; boolean alive = true; class_243 field_22467; class_238 box;
+    int id; boolean alive = true; class_243 field_22467; class_238 box; float field_6031, field_5965;
     class_1297(class_243 p) { move(p); }
     void move(class_243 p) { field_22467 = p; box = new class_238(p.field_1352 - .5, p.field_1351, p.field_1350 - .5, p.field_1352 + .5, p.field_1351 + 2, p.field_1350 + .5); }
     public boolean method_5805() { return alive; } public int method_5628() { return id; }

@@ -10,13 +10,16 @@
 #include <cmath>
 #include <stdexcept>
 #include <cstring>
+#include <cstdio>
 #include <jvmti.h>
 
 extern JavaVM* jvm;
+#include "../../modules/combat/safe_anchor.hpp"
 #include "../../modules/combat/trigger_engine.hpp"
 #include "../../modules/combat/jump_reset_config.hpp"
 #include "../../modules/combat/settings/anchor_macro_settings.hpp"
 #include "../../modules/combat/settings/auto_totem_settings.hpp"
+#include "../../modules/combat/settings/crystal_aura_settings.hpp"
 #include "../../modules/combat/shield_breaker.hpp"
 #include "../../modules/combat/mace_swap.hpp"
 #include "../../friends/friends.hpp"
@@ -35,16 +38,27 @@ namespace
     const std::atomic<std::uint64_t>* jump_reset_source = nullptr;
     std::uint64_t jump_expected_generation = 0;
     jmethodID anchor_tick_id = nullptr, anchor_cancel_id = nullptr;
+    jmethodID set_safe_anchor_active_id = nullptr, is_safe_anchor_active_id = nullptr;
+    std::atomic_bool safe_anchor_active_state{false};
+    void JNICALL safe_anchor_native_tick(JNIEnv* env, jobject self);
     const std::atomic<std::uint64_t>* anchor_reset_source = nullptr;
     std::uint64_t anchor_expected_generation = 0;
     jmethodID totem_tick_id = nullptr, totem_cancel_id = nullptr;
     const std::atomic<std::uint64_t>* totem_reset_source = nullptr;
     std::uint64_t totem_expected_generation = 0;
-    std::array<bool, 8> prepared{}, rejected{}, suspended{};
+    std::array<bool, 9> prepared{}, rejected{}, suspended{};
+    jmethodID aura_tick_id = nullptr, aura_cancel_id = nullptr, aura_action_id = nullptr;
+    const std::atomic<std::uint64_t>* aura_reset_source = nullptr;
+    std::uint64_t aura_expected_generation = 0;
     const std::atomic<std::uint64_t>* trigger_reset_source = nullptr;
     std::uint64_t trigger_expected_generation = 0;
     int trigger_helper = 0;
     bool failed = false;
+    void report_java_failure(JNIEnv* env, const char* operation)
+    {
+        std::fprintf(stderr,"[OneStep] WorldBridge %s failed; Java combat controllers paused.\n",operation);
+        if (env && env->ExceptionCheck()) env->ExceptionDescribe();
+    }
     jvmtiEnv* anchor_tooling = nullptr;
     jclass anchor_client_class = nullptr, anchor_transformer_class = nullptr;
     jmethodID anchor_transform_id = nullptr, anchor_install_events_id = nullptr;
@@ -219,6 +233,39 @@ namespace
             return -1;
         }
     }
+    jlong JNICALL aura_service(JNIEnv* env, jobject self, jint operation, jobject entity, jint id, jlong generation, jlong epoch) {
+        if (operation == 2) { services::combat::release_crystal_aura(); return 1; }
+        if (!permitted() || !auth::permitted(auth::scope::input) || !aura_reset_source ||
+            static_cast<std::uint64_t>(generation) != aura_expected_generation ||
+            aura_reset_source->load(std::memory_order_acquire) != aura_expected_generation) return 0;
+        try {
+            switch (operation) {
+            case 0: {
+                maps::Entity target(entity, false);
+                return target && !friends::is_friend(target) && !services::anti_bot::is_bot(target) &&
+                    !platform::jni_context::clear_exception();
+            }
+            case 1: return services::combat::claim_crystal_aura(id, static_cast<std::uint64_t>(epoch));
+            case 3:
+                // Serialize the Java validation and action against Triggerbot
+                // and clickers. Every Minecraft read/write remains in Java.
+                return services::combat::try_crystal_aura_action(id, static_cast<std::uint64_t>(epoch), [&] {
+                    return env->CallBooleanMethod(self, aura_action_id) == JNI_TRUE && !env->ExceptionCheck();
+                });
+            case 4: return 1;
+            case 5: {
+                maps::Entity player(entity,false);
+                return player && friends::is_friend(player) && !platform::jni_context::clear_exception();
+            }
+            default: return 0;
+            }
+        } catch (...) {
+            platform::jni_context::clear_exception();
+            auto exception = env->FindClass("java/lang/IllegalStateException");
+            if (exception) env->ThrowNew(exception, "Crystal Aura shared service failed");
+            return 0;
+        }
+    }
     template<class T> T checked(JNIEnv* env, T value) {
         if (!value || env->ExceptionCheck()) throw std::runtime_error("World JNI binding");
         return value;
@@ -229,6 +276,67 @@ namespace
     {
         struct binding { const char* source; const char* runtime; };
         static constexpr binding names[]{
+#if ONESTEP_MINECRAFT_26_1
+            {"net/minecraft/class_1304", "net/minecraft/world/entity/EquipmentSlot"},
+            {"net/minecraft/class_1293", "net/minecraft/world/effect/MobEffectInstance"},
+            {"net/minecraft/class_5134", "net/minecraft/world/entity/ai/attributes/Attributes"},
+            {"net/minecraft/class_9304", "net/minecraft/world/item/enchantment/ItemEnchantments"},
+            {"net/minecraft/class_1267", "net/minecraft/world/Difficulty"},
+            {"field_5810", "OFF_HAND"},
+            {"method_6096", "getArmorValue"},
+            {"method_45325", "getAttributeValue"},
+            {"method_6067", "getAbsorptionAmount"},
+            {"method_6112", "getEffect"},
+            {"method_5578", "getAmplifier"},
+            {"field_23725", "ARMOR_TOUGHNESS"},
+            {"field_5907", "RESISTANCE"},
+            {"field_5911", "WEAKNESS"},
+            {"field_5910", "STRENGTH"},
+            {"method_6118", "getItemBySlot"},
+            {"field_6166", "FEET"},
+            {"field_6172", "LEGS"},
+            {"field_6174", "CHEST"},
+            {"field_6169", "HEAD"},
+            {"method_58657", "getEnchantments"},
+            {"method_57539", "entrySet"},
+            {"method_55840", "getRegisteredName"},
+            {"method_8407", "getDifficulty"},
+            {"method_5461", "getId"},
+            {"field_7480", "invulnerable"},
+#else
+            {"net/minecraft/class_1304", "net/minecraft/class_1304"},
+            {"net/minecraft/class_1293", "net/minecraft/class_1293"},
+            {"net/minecraft/class_5134", "net/minecraft/class_5134"},
+            {"net/minecraft/class_9304", "net/minecraft/class_9304"},
+            {"net/minecraft/class_1267", "net/minecraft/class_1267"},
+            {"field_5810", "field_5810"},
+            {"method_6096", "method_6096"},
+            {"method_45325", "method_45325"},
+            {"method_6067", "method_6067"},
+            {"method_6112", "method_6112"},
+            {"method_5578", "method_5578"},
+            {"field_23725", "field_23725"},
+            {"field_5907", "field_5907"},
+            {"field_5911", "field_5911"},
+            {"field_5910", "field_5910"},
+            {"method_6118", "method_6118"},
+            {"field_6166", "field_6166"},
+            {"field_6172", "field_6172"},
+            {"field_6174", "field_6174"},
+            {"field_6169", "field_6169"},
+            {"method_58657", "method_58657"},
+            {"method_57539", "method_57539"},
+            {"method_55840", "method_55840"},
+            {"method_8407", "method_8407"},
+            {"method_5461", "method_5461"},
+            {"field_7480", "field_7480"},
+#endif
+            {"field_5965", ONESTEP_MC_NAME("field_5965")},
+            {"field_8281", ONESTEP_MC_NAME("field_8281")},
+            {"method_7325", ONESTEP_MC_NAME("method_7325")},
+            {"method_26225", ONESTEP_MC_NAME("method_26225")},
+            {"method_5745", ONESTEP_MC_NAME("method_5745")},
+            {"method_7350", ONESTEP_MC_NAME("method_7350")},
 #if ONESTEP_MINECRAFT_26_1
             {"net/minecraft/class_9323", "net/minecraft/core/component/DataComponentMap"},
             {"net/minecraft/class_1269$class_9860", "net/minecraft/world/InteractionResult$Success"},
@@ -539,12 +647,16 @@ namespace
             if (!bytes || !size || size > 0x7fffffffU) throw std::runtime_error("World resource");
             auto type = checked(env, env->DefineClass("net/onestep/hybrid/WorldBridge", loader, static_cast<const jbyte*>(bytes), static_cast<jsize>(size)));
             JNINativeMethod callbacks[]{
+                {const_cast<char*>("safeAnchorNativeTick"), const_cast<char*>("()V"), reinterpret_cast<void*>(&safe_anchor_native_tick)},
+                {const_cast<char*>("auraService"), const_cast<char*>("(ILjava/lang/Object;IJJ)J"), reinterpret_cast<void*>(&aura_service)},
                 {const_cast<char*>("triggerService"), const_cast<char*>("(ILjava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;IJ)J"), reinterpret_cast<void*>(&trigger_service)},
                 {const_cast<char*>("jumpPermitted"), const_cast<char*>("(J)Z"), reinterpret_cast<void*>(&jump_permitted)},
                 {const_cast<char*>("anchorPermitted"), const_cast<char*>("(J)Z"), reinterpret_cast<void*>(&anchor_permitted)},
                 {const_cast<char*>("totemPermitted"), const_cast<char*>("(J)Z"), reinterpret_cast<void*>(&totem_permitted)}
             };
             if (env->RegisterNatives(type, callbacks, static_cast<jint>(std::size(callbacks))) != JNI_OK || env->ExceptionCheck()) throw std::runtime_error("World native service binding");
+            set_safe_anchor_active_id = checked(env, env->GetMethodID(type, "setSafeAnchorActive", "(Z)V"));
+            is_safe_anchor_active_id = checked(env, env->GetMethodID(type, "isSafeAnchorActive", "()Z"));
             totem_tick_id = checked(env,env->GetMethodID(type,"tickTotem","(ZJ[IZ)V"));
             totem_cancel_id = checked(env,env->GetMethodID(type,"cancelTotem","()V"));
             anchor_install_events_id = checked(env,env->GetMethodID(type,"installAnchorEvents","()V"));
@@ -554,6 +666,9 @@ namespace
             jump_cancel_id = checked(env, env->GetMethodID(type, "cancelJump", "()V"));
             trigger_tick_id = checked(env, env->GetMethodID(type, "tickTrigger", "(ZJJFFIIIIIZZZ)V"));
             trigger_cancel_id = checked(env, env->GetMethodID(type, "cancelTrigger", "()V"));
+            aura_tick_id = checked(env,env->GetMethodID(type,"tickAura","(ZJ[I)[I"));
+            aura_cancel_id = checked(env,env->GetMethodID(type,"cancelAura","()V"));
+            aura_action_id = checked(env,env->GetMethodID(type,"executeAuraAction","()Z"));
             auto create = checked(env, env->GetMethodID(type, "<init>", "(Ljava/lang/ClassLoader;I[Ljava/lang/String;)V"));
             prepare_id = checked(env, env->GetMethodID(type, "prepare", "(I)V"));
             edge_id = checked(env, env->GetMethodID(type, "captureBridge", "()[Ljava/lang/Object;"));
@@ -572,6 +687,7 @@ namespace
             auto object = checked(env, env->NewObject(type, create, parent, static_cast<jint>(mc::target.build_id), crystal_names(env)));
             bridge = checked(env, env->NewGlobalRef(object)); return true;
         } catch (...) {
+            report_java_failure(env,"initialization");
             platform::jni_context::clear_exception(); failed = true;
             OutputDebugStringW(L"[OneStep] World bridge setup unavailable; Java-only combat controllers inactive.\n"); return false;
         }
@@ -579,19 +695,26 @@ namespace
     services::game::hybrid::result prepare(unsigned feature) {
         using services::game::hybrid::result;
         if (!auth::permitted(auth::scope::bridge)) return result::unavailable;
-        if (feature < 1 || feature > 7) return result::unavailable;
+        if (feature < 1 || feature > 8) return result::unavailable;
         if constexpr (mc::target.build_id != 12111) if (feature < 3) return result::native_fallback;
         if (!permitted() || !platform::jni_context::bind_current_thread() || suspended[feature]) return result::unavailable;
         if (rejected[feature] || !connect(jni::get_env())) return result::native_fallback;
         if (!prepared[feature]) {
             jni::get_env()->CallVoidMethod(bridge, prepare_id, static_cast<jint>(feature));
-            if (platform::jni_context::clear_exception()) { rejected[feature] = true; return result::native_fallback; }
+            if (jni::get_env()->ExceptionCheck()) {
+                report_java_failure(jni::get_env(),"feature preparation");
+                platform::jni_context::clear_exception(); rejected[feature] = true; return result::native_fallback;
+            }
             prepared[feature] = true;
         }
         return result::ready;
     }
     bool checked_result(unsigned feature, bool value) {
-        if (!platform::jni_context::clear_exception()) return value;
+        auto env=jni::get_env();
+        if (!env) return false;
+        if (!env->ExceptionCheck()) return value;
+        report_java_failure(env,"runtime operation");
+        platform::jni_context::clear_exception();
         suspended[feature] = true;
         OutputDebugStringW(L"[OneStep] World capability suspended after runtime failure; no action replay.\n");
         return false;
@@ -622,6 +745,12 @@ namespace
         if (kind == 1) return code > 0 && code < 512 && services::input::physical_scan_down(static_cast<unsigned>(code));
         constexpr unsigned buttons[]{VK_LBUTTON, VK_RBUTTON, VK_MBUTTON, VK_XBUTTON1, VK_XBUTTON2};
         return kind == 2 && code >= 0 && code < 5 && services::input::physical_key_down(buttons[code]);
+    }
+
+    void JNICALL safe_anchor_native_tick(JNIEnv* env, jobject self)
+    {
+        (void)env; (void)self;
+        modules::safe_anchor::client_tick();
     }
 }
 
@@ -861,8 +990,70 @@ void services::game::world_bridge::cancel_totem()
     if (platform::jni_context::clear_exception()) suspended[7]=true;
 }
 
+std::array<int,3> services::game::world_bridge::tick_aura(const module_settings::crystal_aura& settings, bool active,
+    const std::atomic<std::uint64_t>& generation, std::uint64_t expected_generation)
+{
+    std::array<int,3> status{-1,0,0};
+    if (!active || !permitted() || !auth::permitted(auth::scope::input) ||
+        generation.load(std::memory_order_acquire) != expected_generation) { cancel_aura(); return status; }
+    if (!platform::jni_context::bind_current_thread()) { services::combat::release_crystal_aura(); return status; }
+    jni::frame frame{64};
+    if (prepare(8) != hybrid::result::ready) { cancel_aura(); status[2]=4; return status; }
+    aura_reset_source=&generation; aura_expected_generation=expected_generation;
+    auto env=jni::get_env();
+    auto values=env->NewIntArray(11);
+    if (!values || env->ExceptionCheck()) { checked_result(8,false); cancel_aura(); return status; }
+    const jint config[]{settings.target_mode,settings.switch_delay_ms,settings.confirm_timeout_ms,
+        settings.place_delay_ms,settings.break_delay_ms,
+        static_cast<jint>(std::lround(settings.target_range*1000)),static_cast<jint>(std::lround(settings.place_range*1000)),
+        static_cast<jint>(std::lround(settings.break_range*1000)),static_cast<jint>(std::lround(settings.min_damage*1000)),
+        static_cast<jint>(std::lround(settings.max_self_damage*1000)),
+        (settings.place_enabled?1:0)|(settings.break_enabled?2:0)|(settings.auto_switch?4:0)|
+        (settings.restore_slot?8:0)|(settings.support?16:0)|(settings.damage_check?32:0)};
+    env->SetIntArrayRegion(values,0,11,config);
+    if (!checked_result(8,true)) { cancel_aura(); return status; }
+    auto result=static_cast<jintArray>(env->CallObjectMethod(bridge,aura_tick_id,JNI_TRUE,
+        static_cast<jlong>(expected_generation),values));
+    if (!checked_result(8,result!=nullptr) || !result) { cancel_aura(); status[2]=4; return status; }
+    if (env->GetArrayLength(result)!=3) { suspended[8]=true; cancel_aura(); status[2]=4; return status; }
+    std::array<jint,3> raw{}; env->GetIntArrayRegion(result,0,3,raw.data());
+    if (!checked_result(8,true)) { cancel_aura(); status[2]=4; return status; }
+    for (unsigned i=0;i<3;++i) status[i]=raw[i];
+    return status;
+}
+void services::game::world_bridge::cancel_aura()
+{
+    aura_reset_source=nullptr; aura_expected_generation=0;
+    services::combat::release_crystal_aura();
+    if (!bridge || !aura_cancel_id || !platform::jni_context::bind_current_thread()) return;
+    jni::frame frame{32};
+    jni::get_env()->CallVoidMethod(bridge,aura_cancel_id);
+    if (platform::jni_context::clear_exception()) suspended[8]=true;
+}
+
+
+void services::game::world_bridge::set_safe_anchor_active(bool active)
+{
+    safe_anchor_active_state.store(active, std::memory_order_release);
+    if (!bridge || !set_safe_anchor_active_id || !platform::jni_context::bind_current_thread()) return;
+    jni::frame frame{32};
+    jni::get_env()->CallVoidMethod(bridge, set_safe_anchor_active_id, active ? JNI_TRUE : JNI_FALSE);
+    platform::jni_context::clear_exception();
+}
+
+bool services::game::world_bridge::is_safe_anchor_ticking()
+{
+    if (!bridge || !is_safe_anchor_active_id || !platform::jni_context::bind_current_thread()) return false;
+    jni::frame frame{32};
+    jboolean result = jni::get_env()->CallBooleanMethod(bridge, is_safe_anchor_active_id);
+    return !platform::jni_context::clear_exception() && result == JNI_TRUE;
+}
+
 void services::game::world_bridge::shutdown()
 {
+    set_safe_anchor_active_id = is_safe_anchor_active_id = nullptr;
+    safe_anchor_active_state.store(false);
+    cancel_aura();
     totem_reset_source = nullptr; totem_expected_generation = 0;
     anchor_reset_source = nullptr; anchor_expected_generation = 0;
     jump_reset_source = nullptr; jump_expected_generation = 0;
@@ -877,6 +1068,7 @@ void services::game::world_bridge::shutdown()
     pearl_id = begin_id = use_id = release_pearl_id = stop_id = nullptr;
     crystal_tick_id = crystal_cancel_id = crystal_input_id = nullptr;
     trigger_tick_id = trigger_cancel_id = nullptr; trigger_reset_source = nullptr; trigger_helper = 0;
+    aura_tick_id = aura_cancel_id = aura_action_id = nullptr;
     jump_tick_id = jump_cancel_id = nullptr;
     anchor_tick_id = anchor_cancel_id = anchor_install_events_id = nullptr;
     totem_tick_id = totem_cancel_id = nullptr;

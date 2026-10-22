@@ -18,7 +18,7 @@ void auth::client::initialize() {
     state={};stopping=false;
     if constexpr (!config::required) {
         state.configured=true;state.status=phase::authorized;
-        state.message="LOCAL TEST DLL - NO LAUNCHER";
+        state.message="";
         return;
     }
     state.configured=policy::valid_domain(config::server_domain)&&config::public_key[0];

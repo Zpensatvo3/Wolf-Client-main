@@ -130,6 +130,7 @@ namespace maps
         jni::method<jboolean, ONESTEP_MC_NAME("method_27852"), jni::NOT_STATIC, Block> isOf{ *this };
 #endif
     jni::method<jboolean, ONESTEP_MC_NAME("method_26215"), jni::NOT_STATIC> isAir{ *this };
+    jni::method<jboolean, ONESTEP_MC_NAME("method_45474"), jni::NOT_STATIC> isReplaceable{ *this };
     jni::method<jboolean, ONESTEP_MC_NAME("method_26225")> isOpaque{ *this };
 		jni::method<Block, ONESTEP_MC_NAME("method_26204")> getBlock{ *this };
     jni::method<Comparable, ONESTEP_MC_NAME("method_11654"), jni::NOT_STATIC, Property> get{ *this };

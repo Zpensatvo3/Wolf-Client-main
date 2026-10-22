@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+from world_binding_fixture import write_native_bindings
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -21,6 +22,7 @@ def main():
         if not (embedded / "net/onestep/hybrid" / (name + ".class")).is_file():
             raise SystemExit(f"Missing {name} resource; run scripts/Build-GameBridge.ps1")
     with tempfile.TemporaryDirectory(prefix="onestep-hybrid-") as work:
+        bindings = write_native_bindings(Path(work) / "native-bindings.txt")
         classes = Path(work) / "classes"
         subprocess.run([javac, "--release", "17", "-encoding", "UTF-8", "-g:none", "-d", str(classes),
                         str(ROOT / "src/bridge/GameBridge.java"),
@@ -40,14 +42,18 @@ def main():
                         str(ROOT / "tests/hybrid/WorldBridgeTest.java"),
                         str(ROOT / "tests/hybrid/ClientBridgeTest.java")], check=True)
         modes = [("source", str(classes))]
+        subprocess.run([shutil.which("python") or "python", "-X", "utf8",
+                        str(ROOT / "scripts/Check-GameBridgeContracts.py"), "--classes", str(classes)], check=True)
         if not args.source_only: modes.append(("embedded", os.pathsep.join(map(str, (embedded, classes)))))
         for mode, cp in modes:
             for test in ("HybridBridgeTest", "UtilityBridgeTest", "ItemBridgeTest", "ClickerBridgeTest", "InventoryBridgeTest", "ContainerBridgeTest", "WorldBridgeTest", "ClientBridgeTest"):
                 subprocess.run([java, "-Xcheck:jni", "-cp", cp, "net.minecraft." + test, mode], cwd=ROOT, check=True)
         # Independent fixtures share intermediary names with the earlier suites.
-        for folder, test in (("hit_crystal", "HitCrystalBridgeTest"), ("jump_reset", "JumpResetBridgeTest"), ("anchor_macro", "AnchorMacroBridgeTest"), ("anchor_legit", "AnchorLegitBridgeTest")):
+        for folder, test in (("hit_crystal", "HitCrystalBridgeTest"), ("jump_reset", "JumpResetBridgeTest"), ("anchor_macro", "AnchorMacroBridgeTest"), ("anchor_legit", "AnchorLegitBridgeTest"), ("crystal_aura", "CrystalAuraBridgeTest")):
             isolated = Path(work) / folder
             extra = [str(ROOT / "tests/anchor_macro/AnchorMacroBridgeTest.java")] if folder == "anchor_legit" else []
+            if folder == "crystal_aura":
+                extra = [str(ROOT / "tests/crystal_aura/Event.java"), str(ROOT / "tests/crystal_aura/ClientTickEvents.java")]
             subprocess.run([javac, "--release", "17", "-encoding", "UTF-8", "-g:none", "-d", str(isolated),
                             str(ROOT / "src/bridge/WorldBridge.java"),
                             str(ROOT / "src/bridge/AnchorEvents.java"),
@@ -57,7 +63,8 @@ def main():
             if not args.source_only:
                 isolated_modes.append(("embedded", os.pathsep.join(map(str, (embedded, isolated)))))
             for mode, cp in isolated_modes:
-                subprocess.run([java, "-Xcheck:jni", "-cp", cp, "net.minecraft." + test, mode], cwd=ROOT, check=True)
+                arguments = [str(bindings)] if folder == "crystal_aura" else []
+                subprocess.run([java, "-Xcheck:jni", "-cp", cp, "net.minecraft." + test, mode, *arguments], cwd=ROOT, check=True)
 
 
 

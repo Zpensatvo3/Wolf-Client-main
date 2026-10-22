@@ -42,6 +42,13 @@ public final class InventoryBridgeTest {
         b.cancel(3); check(stage(b.capture(3, false)) == 0, "cancel releases ownership");
 
         c = setup(); h = c.field_1724.field_7512; b = bridge();
+        c.field_1724.sprinting = true;
+        c.field_1724.sprintingFlag = true;
+        p = b.capture(3, false);
+        check(b.act(p, 9, 6, 0, false), "act with active sprint");
+        check(!c.field_1724.sprinting && !c.field_1724.sprintingFlag, "sprint cancelled before slot click");
+
+        c = setup(); h = c.field_1724.field_7512; b = bridge();
         p = b.capture(2, false); slot(h, 9).stack.components++;
         check(!b.act(p, 9, 6, 0, false) && c.field_1761.inventoryClicks == 0, "component mutation rejected");
         p = b.capture(2, false); slot(h, 9).stack.stackCount++;

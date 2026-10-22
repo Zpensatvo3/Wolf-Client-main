@@ -25,9 +25,11 @@
 #include "../modules/combat/mace_swap.hpp"
 #include "../modules/combat/shield_breaker.hpp"
 #include "../modules/combat/anchor_macro.hpp"
+#include "../modules/combat/safe_anchor.hpp"
 #include "../modules/combat/auto_totem.hpp"
 #include "../modules/combat/jump_reset.hpp"
 #include "../modules/combat/hit_crystal.hpp"
+#include "../modules/combat/crystal_aura.hpp"
 #include "../modules/combat/triggerbot.hpp"
 #include "../modules/misc/fast_exp.hpp"
 #include "../modules/misc/left_clicker.hpp"
@@ -454,8 +456,12 @@ static LRESULT CALLBACK detour_WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		focus_reset_pending.store(true, std::memory_order_release);
 		physical_left_down = physical_right_down = false;
 		services::input::reset_physical_buttons();
+		if (auto* aura = dynamic_cast<modules::crystal_aura*>(modules::find_module_by_id("crystal_aura")))
+			aura->cancel_on_client_thread();
 		if (auto* anchor = dynamic_cast<modules::anchor_macro*>(modules::find_module_by_id("anchor_macro")))
 			anchor->cancel_on_client_thread();
+		if (auto* safe = dynamic_cast<modules::safe_anchor*>(modules::find_module_by_id("safe_anchor")))
+			safe->cancel_on_client_thread();
         if (auto* totem = dynamic_cast<modules::auto_totem*>(modules::find_module_by_id("auto_totem")))
             totem->cancel_on_client_thread();
 		if (auto* jump = dynamic_cast<modules::jump_reset*>(modules::find_module_by_id("jump_reset")))
@@ -595,6 +601,10 @@ static LRESULT CALLBACK detour_WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		update_physical_button(false, msg == WM_RBUTTONDOWN);
 	}
 
+	// Stop inventory movement before GLFW dispatches the original click/close.
+	if (auto* walk=dynamic_cast<modules::inv_walk*>(modules::find_module_by_id("inv_walk"));
+		walk && walk->gate_inventory_input(msg,wParam,lParam))
+		return msg==WM_INPUT ? DefWindowProcA(hWnd,msg,wParam,lParam) : 0;
 	return CallWindowProcA(original_WndProc, hWnd, msg, wParam, lParam);
 }
 
@@ -921,9 +931,6 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 		ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Right, accept_buttons && right_down);
 	}
 	ImGui::NewFrame();
-#if defined(ONESTEP_AUTH_INSECURE_TEST_BUILD) && ONESTEP_AUTH_INSECURE_TEST_BUILD == 1
-	ImGui::GetForegroundDrawList()->AddText(ImVec2(12.f, 12.f), IM_COL32(255, 190, 60, 255), "OneStep TEST DLL - NO LAUNCHER");
-#endif
 	if (auth::permitted(auth::scope::render)) platform::client_dispatcher::drain();
 	else platform::client_dispatcher::clear();
 
@@ -995,8 +1002,12 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 	}
 	else
 	{
+		if (auto* aura = dynamic_cast<modules::crystal_aura*>(modules::find_module_by_id("crystal_aura")))
+			aura->cancel_on_client_thread();
 		if (auto* anchor = dynamic_cast<modules::anchor_macro*>(modules::find_module_by_id("anchor_macro")))
 			anchor->cancel_on_client_thread();
+		if (auto* safe = dynamic_cast<modules::safe_anchor*>(modules::find_module_by_id("safe_anchor")))
+			safe->cancel_on_client_thread();
         if (auto* totem = dynamic_cast<modules::auto_totem*>(modules::find_module_by_id("auto_totem")))
             totem->cancel_on_client_thread();
 		if (auto* jump = dynamic_cast<modules::jump_reset*>(modules::find_module_by_id("jump_reset")))

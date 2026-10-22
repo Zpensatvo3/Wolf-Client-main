@@ -22,16 +22,8 @@ namespace services::game::items
     hybrid::result capture_exp(exp_snapshot& out);
     bool use_exp(const exp_snapshot& observed);
     struct click_snapshot { jobjectArray packet = nullptr; bool right = false; };
-    struct inventory_snapshot
-    {
-        jobjectArray packet = nullptr;
-        jobject screen = nullptr, handler = nullptr;
-        int slot = -1;
-    };
     hybrid::result capture_click(bool right, bool only_blocks, click_snapshot& out);
     bool click(const click_snapshot& observed, bool game_input);
     bool jitter(const click_snapshot& observed, float yaw_delta, float pitch_delta);
-    hybrid::result capture_inventory(inventory_snapshot& out);
-    bool pickup(const inventory_snapshot& observed);
     void shutdown(); // After render callbacks have joined.
 }

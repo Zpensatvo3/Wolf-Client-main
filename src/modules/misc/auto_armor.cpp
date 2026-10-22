@@ -1,6 +1,7 @@
 #include "auto_armor.hpp"
 #include "gear_policy.hpp"
 #include "../../services/game/inventory_bridge.hpp"
+#include "../../services/game/client_bridge.hpp"
 #include "../../ui/settings_renderer.hpp"
 #include "../../cache/cache.hpp"
 #include "../../platform/jni/jni_context.hpp"
@@ -65,6 +66,9 @@ int armor_type(const maps::ItemStack& stack)
 		maps::ClientPlayerInteractionManager manager = cache.instance.interactionManager.get();
 		maps::SlotActionType pickup = maps::SlotActionType{}.PICKUP.get();
 		if (!manager || !pickup || platform::jni_context::clear_exception()) return false;
+		if (cache.player && cache.player.isSprinting.call() == JNI_TRUE && !platform::jni_context::clear_exception())
+			cache.player.setSprinting.call(JNI_FALSE);
+		platform::jni_context::clear_exception();
 		manager.clickSlot.call(handler.syncId.get(), slot, 0, pickup, cache.player.toPlayerEntity());
 		return !platform::jni_context::clear_exception();
 	}
@@ -75,6 +79,7 @@ void modules::auto_armor::reset_runtime()
 	current_state = state::idle;
 	source_screen_slot = armor_screen_slot = -1;
 	next_action = {};
+	services::game::client_bridge::set_inventory_busy(false);
 }
 
 void modules::auto_armor::run(::cache& cache)
@@ -203,6 +208,7 @@ void modules::auto_armor::render_overlay()
         const auto [source, type] = gear_logic::choose_armor(observed.keys, settings.protect_elytra);
         if (source < 0) return;
         source_screen_slot = gear_logic::screen_slot(source); armor_screen_slot = 8 - type;
+        services::game::client_bridge::set_inventory_busy(true);
         if (!bridge::act(observed, source_screen_slot, armor_screen_slot, 0, settings.work_without_inventory)) {
             reset_runtime(); bridge::cancel(bridge::feature::armor); return;
         }

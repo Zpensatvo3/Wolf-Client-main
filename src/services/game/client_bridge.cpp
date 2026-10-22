@@ -10,12 +10,15 @@
 #include <cmath>
 #include <limits>
 #include <stdexcept>
+#include <cstdio>
 
 namespace
 {
     jobject bridge = nullptr;
     jmethodID prepare_id = nullptr, walk_id = nullptr, apply_walk_id = nullptr, inputs_id = nullptr, release_walk_id = nullptr;
     jmethodID glow_id = nullptr, apply_glow_id = nullptr, release_glow_id = nullptr, stop_id = nullptr;
+    jmethodID set_inventory_busy_id = nullptr, prepare_walk_action_id = nullptr;
+    std::atomic_bool inventory_busy_state{false};
     bool failed = false;
     std::array<bool, 3> prepared{}, rejected{}, suspended{};
     bool permitted(unsigned feature) {
@@ -57,6 +60,8 @@ namespace
             apply_glow_id = checked(env, env->GetMethodID(type, "applyGlow", "([Ljava/lang/Object;[Z)Z"));
             release_glow_id = checked(env, env->GetMethodID(type, "releaseGlow", "()Z"));
             stop_id = checked(env, env->GetMethodID(type, "stop", "()V"));
+            set_inventory_busy_id = checked(env, env->GetMethodID(type, "setInventoryBusy", "(Z)V"));
+            prepare_walk_action_id = checked(env, env->GetMethodID(type, "prepareWalkAction", "(II)Z"));
             auto object = checked(env, env->NewObject(type, create, parent, static_cast<jint>(mc::target.build_id)));
             bridge = checked(env, env->NewGlobalRef(object)); return true;
         } catch (...) {
@@ -134,6 +139,20 @@ bool services::game::client_bridge::apply_walk(const walk_snapshot& observed, co
     if (env->ExceptionCheck()) { suspend(1); return false; }
     return result(1, env->CallBooleanMethod(bridge, apply_walk_id, observed.packet, array) == JNI_TRUE);
 }
+bool services::game::client_bridge::prepare_walk_action(int kind, int code)
+{
+    if constexpr (mc::target.build_id != 12111) return true;
+    if (!bridge || !prepared[1] || suspended[1]) return true;
+    if (!permitted(1) || !platform::jni_context::bind_current_thread()) return false;
+    jni::frame frame{64};auto env=jni::get_env();
+    const bool ready=env->CallBooleanMethod(bridge,prepare_walk_action_id,static_cast<jint>(kind),static_cast<jint>(code))==JNI_TRUE;
+    if (env->ExceptionCheck()) {
+        std::fprintf(stderr,"[OneStep] Inventory Walk stopped before inventory action; Java synchronization failed.\n");
+        env->ExceptionDescribe();
+        platform::jni_context::clear_exception();suspend(1);release_walk(false);return false;
+    }
+    return ready;
+}
 bool services::game::client_bridge::release_walk(bool vanilla)
 {
     if (!bridge) return true;
@@ -187,12 +206,25 @@ bool services::game::client_bridge::release_glow()
     const bool released = jni::get_env()->CallBooleanMethod(bridge, release_glow_id) == JNI_TRUE;
     return !platform::jni_context::clear_exception() && released;
 }
+void services::game::client_bridge::set_inventory_busy(bool busy)
+{
+    inventory_busy_state.store(busy, std::memory_order_release);
+    if (!bridge || !set_inventory_busy_id || !platform::jni_context::bind_current_thread()) return;
+    jni::frame frame{16};
+    jni::get_env()->CallVoidMethod(bridge, set_inventory_busy_id, busy ? JNI_TRUE : JNI_FALSE);
+    platform::jni_context::clear_exception();
+}
+bool services::game::client_bridge::is_inventory_busy()
+{
+    return inventory_busy_state.load(std::memory_order_acquire);
+}
 void services::game::client_bridge::shutdown()
 {
     if (bridge && platform::jni_context::bind_current_thread()) {
         jni::get_env()->CallVoidMethod(bridge, stop_id); platform::jni_context::clear_exception(); jni::get_env()->DeleteGlobalRef(bridge);
     }
     bridge = nullptr; prepare_id = walk_id = apply_walk_id = inputs_id = release_walk_id = nullptr;
-    glow_id = apply_glow_id = release_glow_id = stop_id = nullptr;
+    glow_id = apply_glow_id = release_glow_id = stop_id = set_inventory_busy_id = prepare_walk_action_id = nullptr;
+    inventory_busy_state.store(false);
     failed = false; prepared = {}; rejected = {}; suspended = {};
 }

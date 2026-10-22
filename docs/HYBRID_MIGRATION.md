@@ -588,3 +588,66 @@ yapılmaz. Test komutu:
 ```sh
 python scripts/Test-AutoTotem.py --asm-classpath <asm.jar:asm-tree.jar>
 ```
+
+
+## Crystal Aura: ilk Java geçişi (eski tasarım)
+
+Crystal Aura artık WorldBridge feature 8 içinde çalışır. Native modül yalnızca
+ayarları ve yaşam döngüsü sürümünü iletir, Java durumunu arayüzde gösterir.
+Mevcut config anahtarları ve kılıç → havalanma → obsidyen → kristal → kırma
+sırası korunur. Hedef seçimi, kilit, mob testi, menzil/görüş/boşluk sorguları,
+vanilla cooldown, görünür kamera dönüşü, hotbar değişimi/geri yükleme, gecikmeler
+ve sunucudan doğma/kaybolma teyidi Java’da yürütülür.
+
+Fabric API varsa START_CLIENT_TICK kullanılır; render çağrısı ayarları yayımlar.
+API yoksa aynı Java denetleyicisi client frame üzerinden çalışır; oyuncu yaşı
+kontrolü aynı oyun tick’inde tekrarlı çalışma ve etkileşimi engeller.
+200 ms ayar akışı kesilmesi, menü/odak/yetki kaybı, disable/config sürümü,
+oyuncu/dünya/envanter değişimi ve manuel slot seçimi döngüyü iptal eder.
+Slot yalnızca aynı oturum ve hâlâ sahip olunan seçim için geri yüklenir.
+Hata veren oyun işlemi Java denetleyicisini askıya alır; native tekrar yoktur.
+Kristalin sorgu alanından çıkması veya aynı ID’nin farklı entity tarafından
+kullanılması silinme teyidi sayılmaz. Tüm beklemeler süre sınırına tabidir.
+
+Native auraService yalnızca ortak arkadaş/Anti Bot ve combat ownership
+servislerini sunar. Saldırı kilidi altında Java executeAuraAction çağrılır;
+burada oturum, hedef, seçili eşya, güncel vanilla ray ve mesafeler son kez
+kontrol edilir, vanilla attackEntity/interactBlock/swing çağrıları Java’dan
+yapılır. Triggerbot önceliği ve clicker koordinasyonu korunur.
+crystal_aura_engine.hpp yalnızca eski offline regresyon modeli olarak kalır;
+çalışan modül tarafından kullanılmaz. Desteklenen yedi SDK profilinin kesin
+isimleri aynı native binding tablosundan alınır.
+
+
+Doğrulama: `scripts/Test-CrystalAura.py` canlı Java denetleyicisini hem kaynak
+hem gömülü sınıf üzerinden izole oyun/tick örnekleriyle kontrol eder; genel
+`Test-HybridBridge.py` paketi de bu senaryoları içerir. Bu kontroller gerçek
+Minecraft oturumunda çalışma/oyun uyumluluğu doğrulaması yerine geçmez.
+
+
+### 1.21.11 native binding regression
+
+Crystal Aura eklenirken ortak native listede method_6032 iki kez bulunması,
+WorldBridge constructor’ının bütün listeyi reddetmesine neden oluyordu.
+Tekrarlanan kayıt kaldırıldı. world_binding_fixture.py artık C++ koşullarını
+yedi hedef için preprocess eder ve tekrarları kontrol eder; 1.21.11’de gerçek
+native liste tekilleştirilmeden Java test constructor’ına verilir. Böylece
+önceki testlerin Set kullanarak gizlediği hata tekrar testten geçemez.
+
+Test DLL’de std::terminate/SIGABRT olursa hata yığını ve DLL adres ofsetleri
+Windows temp klasörüne OneStep-abort-<PID>.log adıyla yazılır. CRT kapanış
+sonucu değiştirilmez; raporlayıcı normal unload’da eski handler’ları geri
+koyar. Java köprüsünün kurulum/hazırlık/işlem hataları stderr’e ayrıntılarıyla
+yazılır. Dawn’ın mevcut logunda yalnızca normal Stopping! ve process exit 3
+bulunduğu için eski kapanış abort’unun kesin nedeni doğrulanmış değildir.
+
+
+## Crystal Aura: güncel yeniden tasarım
+
+Önceki kılıç/havalanma zinciri canlı modülden kaldırıldı. Güncel davranış,
+yedi kaynakla karşılaştırma, ayarlar ve doğrulama sınırları
+[CRYSTAL_AURA_REDESIGN.md](CRYSTAL_AURA_REDESIGN.md) içindedir.
+WorldBridge tickAura ABI artık `(ZJ[I)[I`; native taraftan 11 tamsayılı ayar
+paketi gelir. Minimum/maximum hasar ve menziller 1/1000 ölçeklidir, son tamsayı
+place/break/auto-switch/restore/support/protection bitleridir. Eski config
+alanları yalnızca profil uyumluluğu için saklanır.

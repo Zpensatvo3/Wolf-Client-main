@@ -192,26 +192,58 @@ class class_507 {
 class class_10260 extends class_465 { class_507 field_54474 = new class_507(); }
 class class_746 extends class_1657 {
     class_744 field_3913 = new class_744();
+    class_10185 field_54156=class_10185.field_54098;
+    int field_3935;
+    boolean lastSentSprint;
+    private void method_46742() {
+        if(lastSentSprint!=sprinting) {field_3944.events.add("sprint:"+sprinting);lastSentSprint=sprinting;}
+    }
     class_1656 abilities = new class_1656();
     public class_1656 method_31549() { return abilities; }
     boolean eligible = true;
     private boolean method_48300() { return eligible; }
     class_1661 inventory = new class_1661();
     public class_1661 method_31548() { return inventory; }
+    class_634 field_3944 = new class_634();
+}
+class class_634 {
+    public void method_2883(Object packet) {}
+    java.util.List<String> events=new java.util.ArrayList<>();
+    int inputPackets;boolean failAfterSend;
+    public void method_52787(class_2596 packet) {
+        if(packet instanceof class_2851 input) {++inputPackets;events.add("input:"+input.input.forward);}
+        if(failAfterSend) throw new IllegalStateException("after input send");
+    }
+}
+class class_2596 {}
+class class_2851 extends class_2596 {
+    final class_10185 input;
+    public class_2851(class_10185 input) {this.input=input;}
+}
+class class_2848 extends class_2596 {
+    public class_2848(class_1297 entity, class_2848$class_2849 mode) {}
+    public class_2848(class_1297 entity, class_2848$class_2849 mode, int data) {}
+}
+enum class_2848$class_2849 {
+    PRESS_SHIFT_KEY, RELEASE_SHIFT_KEY, STOP_SLEEPING, START_SPRINTING, STOP_SPRINTING, START_RIDING_JUMP, STOP_RIDING_JUMP, OPEN_INVENTORY, START_FALL_FLYING;
+    public static final class_2848$class_2849 field_12985 = STOP_SPRINTING;
 }
 class class_1657 extends HybridLivingEntity {
     class_1703 field_7512;
     class_1723 field_7498 = new class_1723();
 }
 class class_1297 {
-    boolean glowing, glowingFlag, failGlow;
+    boolean glowing, glowingFlag, failGlow, sprintingFlag;
     public boolean method_36361() { return glowing; }
-    protected boolean method_5795(int index) { return index == 6 && glowingFlag; }
+    protected boolean method_5795(int index) { return (index == 6 && glowingFlag) || (index == 3 && sprintingFlag); }
     public void method_5834(boolean value) {
         glowing = value;
         if (failGlow) { failGlow = false; throw new IllegalStateException("Fixture after glow mutation"); }
     }
-    protected void method_5729(int index, boolean value) { if (index == 6) glowingFlag = value; }
+    protected void method_5729(int index, boolean value) {
+        if (index == 6) glowingFlag = value;
+        if (index == 3) sprintingFlag = value;
+    }
 }
 class HybridLivingEntity extends class_1297 {
     int field_6228;
@@ -244,10 +276,21 @@ class HybridLivingEntity extends class_1297 {
 class class_744 {
     class_10185 field_54155 = new class_10185();
     class_241 axes = new class_241();
+    class_241 field_55868 = axes;
     public class_241 method_3128() { return axes; }
+    float field_3905;
+    float field_3907;
+    boolean field_3904;
 }
-class class_10185 { boolean jumping; public boolean comp_3163() { return jumping; } }
-class class_241 { float field_1343, field_1342; }
+class class_10185 {
+    static final class_10185 field_54098 = new class_10185();
+    boolean forward;
+    boolean jumping;
+    public boolean comp_3163() { return jumping; }
+    @Override public boolean equals(Object other) {return other instanceof class_10185 x && x.forward==forward && x.jumping==jumping;}
+    @Override public int hashCode() {return (forward?1:0)+(jumping?2:0);}
+}
+class class_241 { static final class_241 field_1340=new class_241();float field_1343, field_1342; }
 class class_243 {
     final double field_1352, field_1351, field_1350;
     class_243(double x, double y, double z) { field_1352 = x; field_1351 = y; field_1350 = z; }

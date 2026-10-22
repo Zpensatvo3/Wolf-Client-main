@@ -34,6 +34,14 @@ public final class InventoryBridge {
     private int mouseSync = -1, mouseRightSlot = -1, mouseLeftSlot = -1;
     private boolean mouseRightActive, mouseLeftActive, mouseLeftOriginal;
     private boolean mouseLastRight, mouseLastLeft, mouseCursorWasEmpty = true, mouseCursorKnown;
+    private Method isSprinting, setSprinting, flag, setFlag;
+    private Field inputField, inputFlagsField, movementForward, movementSideways, jumpingField;
+    private Field networkField;
+    private Method sendPacketMethod;
+    private java.lang.reflect.Constructor<?> packetConstructor;
+    private java.lang.reflect.Constructor<?> stopSprintingConstructor, stopSprintingConstructor3;
+    private Object stopSprintingMode;
+    private Object emptyInput;
 
     public InventoryBridge(ClassLoader loader, int target) throws ReflectiveOperationException {
         if (loader == null || target != 12111) throw new IllegalArgumentException("InventoryBridge requires Fabric 1.21.11");
@@ -52,6 +60,7 @@ public final class InventoryBridge {
         Class<?> glfw = Class.forName("org.lwjgl.glfw.GLFW", false, loader);
         glfwGetMouseButton = method(glfw, "glfwGetMouseButton", int.class, true, long.class, int.class);
         glfwGetKey = method(glfw, "glfwGetKey", int.class, true, long.class, int.class);
+        initGrimSafety();
     }
     private Class<?> load(String name) throws ClassNotFoundException {
         return Class.forName("net.minecraft." + name, false, loader);
@@ -152,9 +161,147 @@ public final class InventoryBridge {
         if (!(boolean) same.invoke(null, target, carried)) return false;
         return (int) count.invoke(target) < Math.min((int) limit.invoke(slot, carried), (int) maxCount.invoke(carried));
     }
+    private void initGrimSafety() {
+        try {
+            Class<?> entity = load("class_1297");
+            isSprinting = method(playerType, "method_5624", boolean.class, false);
+            setSprinting = method(playerType, "method_5728", void.class, false, boolean.class);
+            flag = method(entity, "method_5795", boolean.class, false, int.class);
+            setFlag = method(entity, "method_5729", void.class, false, int.class, boolean.class);
+        } catch (Throwable ignored) {}
+
+        try {
+            Class<?> inputType = load("class_744");
+            Class<?> flagsType = load("class_10185");
+            inputField = field(playerType, "field_3913", inputType, false);
+            inputFlagsField = field(inputType, "field_54155", flagsType, false);
+            try { movementForward = field(inputType, "field_3905", float.class, false); } catch (Throwable ignored) {}
+            try { movementSideways = field(inputType, "field_3907", float.class, false); } catch (Throwable ignored) {}
+            try { jumpingField = field(inputType, "field_3904", boolean.class, false); } catch (Throwable ignored) {}
+
+            try {
+                Field emptyField = flagsType.getDeclaredField("field_54098");
+                emptyField.setAccessible(true);
+                emptyInput = emptyField.get(null);
+            } catch (Throwable ignored) {}
+
+            if (emptyInput == null) {
+                for (java.lang.reflect.Constructor<?> ctor : flagsType.getDeclaredConstructors()) {
+                    if (ctor.getParameterCount() == 7) {
+                        ctor.setAccessible(true);
+                        emptyInput = ctor.newInstance(false, false, false, false, false, false, false);
+                        break;
+                    }
+                }
+            }
+
+            Class<?> networkType = load("class_634");
+            Class<?> inputPacketClass = load("class_2851");
+            networkField = field(playerType, "field_3944", networkType, false);
+            for (Class<?> c = networkType; c != null; c = c.getSuperclass()) {
+                for (Method m : c.getDeclaredMethods()) {
+                    if ((m.getName().equals("method_2883") || m.getName().equals("sendPacket")) && m.getParameterCount() == 1) {
+                        m.setAccessible(true);
+                        sendPacketMethod = m;
+                        break;
+                    }
+                }
+                if (sendPacketMethod != null) break;
+            }
+            for (java.lang.reflect.Constructor<?> ctor : inputPacketClass.getDeclaredConstructors()) {
+                if (ctor.getParameterCount() == 1) {
+                    ctor.setAccessible(true);
+                    packetConstructor = ctor;
+                    break;
+                }
+            }
+
+            Class<?> commandClass = load("class_2848");
+            Class<?> commandModeClass = load("class_2848$class_2849");
+            if (commandClass != null && commandModeClass != null) {
+                for (Object constant : commandModeClass.getEnumConstants()) {
+                    if ("STOP_SPRINTING".equals(constant.toString()) || ((Enum<?>) constant).name().equals("field_12985")) {
+                        stopSprintingMode = constant;
+                        break;
+                    }
+                }
+                for (java.lang.reflect.Constructor<?> ctor : commandClass.getDeclaredConstructors()) {
+                    if (ctor.getParameterCount() == 2 && ctor.getParameterTypes()[1] == commandModeClass) {
+                        ctor.setAccessible(true);
+                        stopSprintingConstructor = ctor;
+                        break;
+                    } else if (ctor.getParameterCount() == 3 && ctor.getParameterTypes()[1] == commandModeClass) {
+                        ctor.setAccessible(true);
+                        stopSprintingConstructor3 = ctor;
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+    }
+    private void suppressInput(Object p) {
+        if (p == null) return;
+        try {
+            if (inputField != null) {
+                Object in = inputField.get(p);
+                if (in != null) {
+                    if (inputFlagsField != null && emptyInput != null) {
+                        inputFlagsField.set(in, emptyInput);
+                    }
+                    if (movementForward != null) movementForward.setFloat(in, 0.0f);
+                    if (movementSideways != null) movementSideways.setFloat(in, 0.0f);
+                    if (jumpingField != null) jumpingField.setBoolean(in, false);
+                }
+            }
+        } catch (Throwable ignored) {}
+    }
+    private void sendStopSprinting(Object p) {
+        if (p == null || networkField == null || sendPacketMethod == null || stopSprintingMode == null) return;
+        try {
+            Object net = networkField.get(p);
+            if (net != null) {
+                Object packet = null;
+                if (stopSprintingConstructor != null) {
+                    packet = stopSprintingConstructor.newInstance(p, stopSprintingMode);
+                } else if (stopSprintingConstructor3 != null) {
+                    packet = stopSprintingConstructor3.newInstance(p, stopSprintingMode, 0);
+                }
+                if (packet != null) {
+                    sendPacketMethod.invoke(net, packet);
+                }
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    private void sendNeutralInput(Object p) {
+        if (p == null || networkField == null || sendPacketMethod == null || packetConstructor == null || emptyInput == null) return;
+        try {
+            Object net = networkField.get(p);
+            if (net != null) {
+                Object packet = packetConstructor.newInstance(emptyInput);
+                sendPacketMethod.invoke(net, packet);
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    private void safeClick(Object interaction, Object p, int sync, int slot, int button, Object action)
+            throws ReflectiveOperationException {
+        if (interaction == null || p == null || slot < 0) return;
+        try {
+            if (isSprinting != null && (boolean) isSprinting.invoke(p)) {
+                setSprinting.invoke(p, false);
+                sendStopSprinting(p);
+            }
+            if (flag != null && (boolean) flag.invoke(p, 3)) {
+                setFlag.invoke(p, 3, false);
+            }
+            suppressInput(p);
+            sendNeutralInput(p);
+        } catch (Throwable ignored) {}
+        click.invoke(interaction, sync, slot, button, action, p);
+    }
     private void mouseClick(Object interaction, Object p, int sync, int slot, int button, Object action)
             throws ReflectiveOperationException {
-        if (slot >= 0) click.invoke(interaction, sync, slot, button, action, p);
+        if (slot >= 0) safeClick(interaction, p, sync, slot, button, action);
     }
     /** Called once per rendered frame; all gesture decisions and slot reads stay Java-side. */
     public void tickMouse(boolean active, boolean rightTweak, boolean leftWithItem, boolean leftWithoutItem)
@@ -328,7 +475,7 @@ public final class InventoryBridge {
         if (f == CHEST) {
             if (source >= (int) ((double[]) now[10])[6] || (boolean) empty.invoke(stacks[source]) ||
                 !equalStack(oldStacks[source], stacks[source]) || ((Object[]) packet[6])[source] != slotObjects[source]) return false;
-            click.invoke(now[5], (int) before[3], source, 0, quickMove.get(null), now[1]);
+            safeClick(now[5], now[1], (int) before[3], source, 0, quickMove.get(null));
             return true;
         }
         if (target < 5 || target > 8 || (f == ELYTRA && target != 6) ||
@@ -342,7 +489,7 @@ public final class InventoryBridge {
         int clicked = stage == 1 ? target : source;
         // Claim before mutating. If an overridable click throws, no fallback may replay it.
         swaps[f] = null;
-        click.invoke(now[5], (int) before[3], clicked, 0, pickup.get(null), now[1]);
+        safeClick(now[5], now[1], (int) before[3], clicked, 0, pickup.get(null));
         Object h = now[4];
         Object a = copy.invoke(getStack.invoke(slotObjects[source]));
         Object b = copy.invoke(getStack.invoke(slotObjects[target]));
@@ -438,7 +585,7 @@ public final class InventoryBridge {
             for (int i = 0; i < objects.length; ++i) if (i != target && data[10 + i * 9 + 1] == index) return false;
             refill = new Object[]{now[1], now[2], now[3], now[4], now[5], now[6], objects[source], objects[target],
                 copy.invoke(stacks[source]), new int[]{source, target, (int) data[3]}};
-            click.invoke(now[5], (int) data[3], source, index, swapAction.get(null), now[1]);
+            safeClick(now[5], now[1], (int) data[3], source, index, swapAction.get(null));
             return true;
         }
         return false;

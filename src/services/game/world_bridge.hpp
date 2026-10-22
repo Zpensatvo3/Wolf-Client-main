@@ -6,7 +6,7 @@
 
 namespace trigger_engine { struct config; }
 namespace jump_reset_config { struct config; }
-namespace module_settings { struct anchor_macro; struct auto_totem; }
+namespace module_settings { struct anchor_macro; struct auto_totem; struct crystal_aura; }
 
 namespace services::game::world_bridge
 {
@@ -28,6 +28,9 @@ namespace services::game::world_bridge
     // Hit Crystal's decisions, timers, world reads and writes all execute in Java.
     void tick_crystal(bool active, bool auto_switch, bool restore_slot, int place_delay, int break_delay);
     void cancel_crystal(); // Client-thread ownership cleanup; no new interaction.
+    std::array<int,3> tick_aura(const module_settings::crystal_aura& settings, bool active,
+        const std::atomic<std::uint64_t>& generation, std::uint64_t expected_generation);
+    void cancel_aura();
     void tick_trigger(const trigger_engine::config& settings, bool active, const std::atomic<std::uint64_t>& generation);
     void cancel_trigger();
     void tick_jump(const jump_reset_config::config& settings, bool active, const std::atomic<std::uint64_t>& generation);
@@ -35,6 +38,8 @@ namespace services::game::world_bridge
     void tick_anchor(const module_settings::anchor_macro& settings, bool active, const std::atomic<std::uint64_t>& generation,
         std::uint64_t expected_generation);
     void cancel_anchor();
+    void set_safe_anchor_active(bool active);
+    bool is_safe_anchor_ticking();
     void tick_totem(const module_settings::auto_totem& settings, bool active,
         const std::atomic<std::uint64_t>& generation, std::uint64_t expected_generation);
     void cancel_totem();

@@ -11,4 +11,6 @@ New-Item -ItemType Directory -Path $classRoot -Force | Out-Null
     (Join-Path $projectRoot 'src\bridge\ClientBridge.java') `
     (Join-Path $projectRoot 'src\bridge\AnchorEvents.java')
 if ($LASTEXITCODE -ne 0) { throw 'GameBridge compilation failed.' }
+& python -X utf8 (Join-Path $PSScriptRoot 'Check-GameBridgeContracts.py')
+if ($LASTEXITCODE -ne 0) { throw 'Native / Java bridge contracts do not match.' }
 Write-Host 'Built six OneStep game bridges and the Anchor event relay (no Minecraft/Fabric compile dependency).'

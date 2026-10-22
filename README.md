@@ -61,8 +61,8 @@ Yerel oyun denemesi için `./Build-Test.ps1` launcher gerektirmeyen, imzasız
 Fabric 1.21.11 x64 test DLL'i üretir. Çıktı:
 `build/local-test/1.21.11/Onestep-TEST-NO-LAUNCHER.dll`.
 `-MinecraftVersion` ile başka desteklenen hedef seçilebilir.
-Bu yol açık test işaretleriyle Debug yapılandırmasını ve hız optimizasyonlarını
-kullanır; ekranda `TEST DLL - NO LAUNCHER` etiketi görünür. Launcher oturumu ve
+Bu yol test dosya adıyla Debug yapılandırmasını, hız optimizasyonlarını ve
+kullanılmayan kodu ayıklayan linker ayarlarını kullanır; ek bir test yazısı çizmez. Launcher oturumu ve
 sunucu config erişimi açılmaz. Üretim DLL'leri ve ara dosyaları ayrı tutulur.
 
 ## Doğrulama

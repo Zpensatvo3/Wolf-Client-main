@@ -26,7 +26,42 @@ public final class ClientBridgeTest {
         check(data(p)[3] == 1 && data(p)[4] == 0 && data(p)[6] == 87, "inventory kind and remappable forward key");
         check(b.applyWalk(p, forward()) && c.field_1690.field_1894.pressed, "owned forward press");
         check(!b.applyWalk(p, forward()), "single-use input decision");
+
+        c.field_1724.sprinting = true;
+        c.field_1724.sprintingFlag = true;
+        c.field_1690.field_1867.pressed = true;
+        p = b.captureWalk();
+        check(b.applyWalk(p, forward()), "applyWalk cancels sprint in gui");
+        check(!c.field_1724.sprinting && !c.field_1724.sprintingFlag && !c.field_1690.field_1867.pressed, "sprint and sprintKey reset in gui");
+        release(b, false, false);
+
+        org.lwjgl.glfw.GLFW.buttons[0] = 1;
+        p = b.captureWalk();
+        check(b.applyWalk(p, forward()) && !c.field_1690.field_1894.pressed, "mouse interaction in gui suppresses movement keys");
+        org.lwjgl.glfw.GLFW.buttons[0] = 0;
+        p = b.captureWalk();
+        check(b.applyWalk(p, forward()) && c.field_1690.field_1894.pressed, "resumed movement after mouse release in gui");
+        c.field_1724.field_3913.field_54155.forward=true;
+        c.field_1724.field_54156=c.field_1724.field_3913.field_54155;
+        c.field_1724.sprinting=c.field_1724.lastSentSprint=true;
+        c.field_1724.field_3935=7;
+        check(b.prepareWalkAction(2,0),"original inventory click may proceed after local input is stopped");
+        c.field_1724.field_3944.events.add("click");
+        check(c.field_1724.field_3944.events.equals(java.util.List.of("sprint:false","input:false","click")),
+            "sprint and actual neutral input reach the connection before the click");
+        check(!c.field_1690.field_1894.pressed && c.field_1724.field_3913.field_54155==class_10185.field_54098 &&
+            c.field_1724.field_3913.field_55868==class_241.field_1340 && c.field_1724.field_54156==class_10185.field_54098 &&
+            !c.field_1724.lastSentSprint && c.field_1724.field_3935==0,"local input, vector and vanilla sent-state caches agree");
+        check(b.applyWalk(b.captureWalk(),forward()) && !c.field_1690.field_1894.pressed,"render cannot restart movement during the action pause");
+        int sent=c.field_1724.field_3944.inputPackets;
+        check(b.prepareWalkAction(2,0) && c.field_1724.field_3944.inputPackets==sent,"raw and legacy mouse events do not send duplicate input");
+        var pause=ClientBridge.class.getDeclaredField("walkActionPauseUntil");pause.setAccessible(true);pause.setLong(b,0);
+        check(b.applyWalk(b.captureWalk(),forward()) && c.field_1690.field_1894.pressed,"held physical movement can resume after the pause");
+        org.lwjgl.glfw.GLFW.scans[87]=17;
+        check(b.prepareWalkAction(0,17) && c.field_1690.field_1894.pressed,"a rebound movement scan does not become an inventory action");
+        check(b.prepareWalkAction(0,1) && !c.field_1690.field_1894.pressed,"closing via Escape stops movement before forwarding the close key");
         c.field_1755 = null;
+        check(b.prepareWalkAction(2,0) && c.field_1724.field_3944.inputPackets==sent,"normal gameplay creates no inventory input packets");
         check(release(b, true, true) && c.field_1690.field_1894.pressed, "physical key handed back to vanilla");
         c.field_1690.field_1894.pressed = false; c.field_1755 = new class_490();
         b.applyWalk(b.captureWalk(), forward());
@@ -101,6 +136,11 @@ public final class ClientBridgeTest {
         failed = false;
         try { isolated.prepare(1); } catch (ClassNotFoundException expected) { failed = true; }
         check(failed && isolated.captureGlow() != null, "walk binding failure isolated from glow");
+        c=setup();b=bridge();b.applyWalk(b.captureWalk(),forward());
+        c.field_1724.field_3913.field_54155.forward=true;c.field_1724.field_3944.failAfterSend=true;
+        boolean sendFailed=false;try {b.prepareWalkAction(2,0);} catch(ReflectiveOperationException expected) {sendFailed=true;}
+        check(sendFailed && !b.prepareWalkAction(2,0) && c.field_1724.field_3944.inputPackets==1 && !c.field_1690.field_1894.pressed,
+            "partially sent input never replays an inventory action");
         System.out.println("PASS client bridge: " + checks + " checks (" + args[0] + ")");
     }
 }

@@ -1,4 +1,6 @@
 #pragma once
+// Historical native model retained for offline regression fixtures only.
+// Live Crystal Aura runs exclusively in WorldBridge.java (feature 8).
 #include "settings/crystal_aura_settings.hpp"
 #include <chrono>
 #include <cmath>

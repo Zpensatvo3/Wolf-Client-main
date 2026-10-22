@@ -34,6 +34,11 @@ namespace anchor_engine
 		int glowstone_slot = -1;
 		int totem_slot = -1;
 		int shield_slot = -1;
+		int shield_x = 0, shield_y = 0, shield_z = 0;
+		bool shield_planned = false;
+		int last_action_tick = -1;
+		std::chrono::steady_clock::time_point sequence_started{};
+		const char* status = "Aim at a block or anchor, then enable";
 		int support_x = 0;
 		int support_y = 0;
 		int support_z = 0;
@@ -55,6 +60,7 @@ namespace anchor_engine
 	// Returns false after a one-shot sequence completes or aborts; the module
 	// wrapper then turns itself off.
 	bool run_overlay(config& settings, runtime& state, profile mode);
+	bool tick(config& settings, runtime& state, profile mode);
 	void stop(::cache& cache, runtime& state);
 	void cancel_on_client_thread(runtime& state);
 	void render_options(config& settings, profile mode, const char* id_suffix);

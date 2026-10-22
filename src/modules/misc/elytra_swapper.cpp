@@ -1,6 +1,7 @@
 #include "elytra_swapper.hpp"
 #include "gear_policy.hpp"
 #include "../../services/game/inventory_bridge.hpp"
+#include "../../services/game/client_bridge.hpp"
 #include "../../ui/settings_renderer.hpp"
 #include "../../cache/cache.hpp"
 #include "../../platform/jni/jni_context.hpp"
@@ -75,6 +76,9 @@ bool stack_matches_mode(const maps::ItemStack& stack, int mode)
 		maps::SlotActionType pickup = maps::SlotActionType{}.PICKUP.get();
 		if (!manager || !pickup || platform::jni_context::clear_exception())
 			return false;
+		if (player && player.isSprinting.call() == JNI_TRUE && !platform::jni_context::clear_exception())
+			player.setSprinting.call(JNI_FALSE);
+		platform::jni_context::clear_exception();
 		manager.clickSlot.call(handler.syncId.get(), slot, 0, pickup, player.toPlayerEntity());
 		return !platform::jni_context::clear_exception();
 	}
@@ -86,6 +90,7 @@ void modules::elytra_swapper::finish()
 	source_screen_slot = -1;
 	next_action = {};
 	enabled = false;
+	services::game::client_bridge::set_inventory_busy(false);
 }
 
 void modules::elytra_swapper::run(::cache&)
@@ -124,6 +129,7 @@ void modules::elytra_swapper::render_overlay()
                 if (!observed.cursor_empty || gear_logic::matches(observed.keys[38], settings_snapshot.target_mode)) { stop(); return; }
                 const int source = gear_logic::choose_swap(observed.keys, settings_snapshot.target_mode, settings_snapshot.use_hotbar);
                 source_screen_slot = gear_logic::screen_slot(source);
+                services::game::client_bridge::set_inventory_busy(true);
                 if (source < 0 || !bridge::act(observed, source_screen_slot, 6, 0, settings_snapshot.work_without_inventory)) { stop(); return; }
                 current_state = state::pickup_source;
                 next_action = steady_clock::now() + std::chrono::milliseconds(std::clamp(settings_snapshot.swap_delay_ms, 20, 300));
@@ -243,6 +249,7 @@ void modules::elytra_swapper::render_overlay()
 
 void modules::elytra_swapper::on_disable(::cache&)
 {
+    services::game::client_bridge::set_inventory_busy(false);
     if constexpr (mc::target.build_id == 12111) { reset_requested_.store(true, std::memory_order_release); return; }
 	current_state = state::idle;
 	source_screen_slot = -1;

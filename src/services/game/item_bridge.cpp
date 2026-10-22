@@ -17,9 +17,8 @@ namespace
     jmethodID prepare_method = nullptr, tools_method = nullptr, select_method = nullptr;
     jmethodID exp_method = nullptr, use_method = nullptr, stop_method = nullptr;
     jmethodID capture_click_method = nullptr, click_method = nullptr, jitter_method = nullptr;
-    jmethodID inventory_method = nullptr, pickup_method = nullptr;
     bool connection_failed = false;
-    std::array<bool, 6> prepared{}, failed{};
+    std::array<bool, 5> prepared{}, failed{};
     bool permitted()
     {
         const HWND window = gui::get_window();
@@ -73,8 +72,6 @@ namespace
             capture_click_method = checked(env, env->GetMethodID(item, "captureClick", "(IZ)[Ljava/lang/Object;"));
             click_method = checked(env, env->GetMethodID(item, "click", "([Ljava/lang/Object;ZZ)Z"));
             jitter_method = checked(env, env->GetMethodID(item, "jitter", "([Ljava/lang/Object;FF)Z"));
-            inventory_method = checked(env, env->GetMethodID(item, "captureInventory", "()[Ljava/lang/Object;"));
-            pickup_method = checked(env, env->GetMethodID(item, "pickup", "([Ljava/lang/Object;Z)Z"));
             auto instance = checked(env, env->NewObject(item, create, parent, static_cast<jint>(mc::target.build_id)));
             bridge = checked(env, env->NewGlobalRef(instance));
             OutputDebugStringW(L"[OneStep] Java item bridge connected (1.21.11).\n");
@@ -90,6 +87,7 @@ namespace
     services::game::hybrid::result prepare(unsigned feature)
     {
         using services::game::hybrid::result;
+        if (feature < 1 || feature > 4) return result::unavailable;
         if (!auth::permitted(auth::scope::bridge)) return result::unavailable;
         if constexpr (mc::target.build_id != 12111) return result::native_fallback;
         if (!permitted() || !platform::jni_context::bind_current_thread()) return result::unavailable;
@@ -227,38 +225,6 @@ bool services::game::items::jitter(const click_snapshot& observed, float yaw_del
     return applied;
 }
 
-services::game::hybrid::result services::game::items::capture_inventory(inventory_snapshot& out)
-{
-    out = {};
-    const auto backend = prepare(5);
-    if (backend != hybrid::result::ready) return backend;
-    auto env = jni::get_env();
-    try
-    {
-        auto packet = static_cast<jobjectArray>(env->CallObjectMethod(bridge, inventory_method));
-        if (env->ExceptionCheck()) throw std::runtime_error("Inventory capture");
-        if (!packet) return hybrid::result::unavailable;
-        std::array<double, 5> values{}; read_packet(env, packet, 7, 6, values);
-        if (values[1] != 5 || values[2] <= 0 || values[4] < -1 || values[4] > (std::numeric_limits<int>::max)() ||
-            std::floor(values[4]) != values[4]) throw std::runtime_error("Inventory schema");
-        out.packet = packet;
-        out.screen = checked(env, env->GetObjectArrayElement(packet, 3));
-        out.handler = checked(env, env->GetObjectArrayElement(packet, 4));
-        out.slot = static_cast<int>(values[4]);
-        return hybrid::result::ready;
-    }
-    catch (...) { fail(5); out = {}; return hybrid::result::unavailable; }
-}
-
-bool services::game::items::pickup(const inventory_snapshot& observed)
-{
-    if (!bridge || failed[5] || !observed.packet || !permitted() ||
-        !services::input::physical_button_down(services::input::mouse_button::left)) return false;
-    const bool applied = jni::get_env()->CallBooleanMethod(bridge, pickup_method, observed.packet, JNI_TRUE) == JNI_TRUE;
-    if (platform::jni_context::clear_exception()) { fail(5); return false; }
-    return applied;
-}
-
 void services::game::items::shutdown()
 {
     if (bridge && platform::jni_context::bind_current_thread())
@@ -268,6 +234,6 @@ void services::game::items::shutdown()
     }
     bridge = nullptr;
     prepare_method = tools_method = select_method = exp_method = use_method = stop_method = nullptr;
-    capture_click_method = click_method = jitter_method = inventory_method = pickup_method = nullptr;
+    capture_click_method = click_method = jitter_method = nullptr;
     connection_failed = false; prepared = {}; failed = {};
 }

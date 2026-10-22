@@ -324,6 +324,7 @@ template<> struct symbol<"method_25396"> { static constexpr auto value = jni::st
 template<> struct symbol<"method_2605"> { static constexpr auto value = jni::string_litteral("isVisible"); };
 template<> struct symbol<"method_26204"> { static constexpr auto value = jni::string_litteral("getBlock"); };
 template<> struct symbol<"method_26215"> { static constexpr auto value = jni::string_litteral("isAir"); };
+template<> struct symbol<"method_45474"> { static constexpr auto value = jni::string_litteral("canBeReplaced"); };
 template<> struct symbol<"method_26225"> { static constexpr auto value = jni::string_litteral("canOcclude"); };
 template<> struct symbol<"method_2659"> { static constexpr auto value = jni::string_litteral("getRecipeBookComponent"); };
 template<> struct symbol<"method_27852"> { static constexpr auto value = jni::string_litteral("is"); };

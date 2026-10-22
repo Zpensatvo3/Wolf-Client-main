@@ -6,9 +6,11 @@
 #include "../../platform/adapter/game_adapter.hpp"
 #include "../../services/input/input_service.hpp"
 #include "../../services/game/hotbar_service.hpp"
+#include "../../auth/auth.hpp"
 
 #include <Windows.h>
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <random>
 
@@ -34,6 +36,10 @@ namespace
 		state.glowstone_slot = -1;
 		state.totem_slot = -1;
 		state.shield_slot = -1;
+		state.shield_x = state.shield_y = state.shield_z = 0;
+		state.shield_planned = false;
+		state.last_action_tick = -1;
+		state.sequence_started = {};
 		state.support_x = state.support_y = state.support_z = 0;
 		state.face_x = 0;
 		state.face_y = 1;
@@ -127,33 +133,13 @@ namespace
 		const maps::Item& glowstone,
 		const maps::Item& totem)
 	{
-		for (int slot = 0; slot < 9; ++slot)
-		{
-			if (stack_is_item(items, slot, anchor, "anchor") ||
-				stack_is_item(items, slot, glowstone, "glowstone") ||
-				stack_is_item(items, slot, totem, "totem"))
-				continue;
-			maps::Object object = items.get.call(static_cast<jint>(slot));
-			maps::ItemStack stack = object ? maps::ItemStack(object.object_instance, false) : maps::ItemStack{};
-			maps::Item item = stack && stack.isEmpty.call() != JNI_TRUE ? stack.item.get() : maps::Item{};
-			if (platform::jni_context::clear_exception())
-				continue;
-			if (item && item.is_instance_of<maps::BlockItem>() && !platform::jni_context::clear_exception())
-				return slot;
-			if (item && item.getTranslationKey.is_valid())
-			{
-				maps::String key = item.getTranslationKey.call();
-				if (key && !platform::jni_context::clear_exception())
-				{
-					std::string s = key.to_string();
-					if (s.find("obsidian") != std::string::npos || s.find("block") != std::string::npos ||
-						s.find("slab") != std::string::npos || s.find("cobweb") != std::string::npos)
-						return slot;
-				}
-			}
-			platform::jni_context::clear_exception();
-		}
-		return -1;
+		(void)anchor; (void)totem;
+		// A random BlockItem may be a flower, slab or cobweb. Use a full cube.
+		auto obsidian = maps::Blocks{}.OBSIDIAN.get();
+		auto obsidian_item = obsidian ? obsidian.asItem.call() : maps::Item{};
+		if (platform::jni_context::clear_exception()) return -1;
+		const int slot = find_item_slot(items,obsidian_item,"obsidian");
+		return slot >= 0 ? slot : find_item_slot(items,glowstone,"glowstone");
 	}
 
 	maps::BlockState state_at(const maps::ClientWorld& world, int x, int y, int z)
@@ -165,10 +151,11 @@ namespace
 		return world.getBlockState.call(position);
 	}
 
-	bool is_air(const maps::ClientWorld& world, int x, int y, int z)
+	bool is_replaceable(const maps::ClientWorld& world, int x, int y, int z)
 	{
 		maps::BlockState state = state_at(world, x, y, z);
-		return state && state.isAir.call() == JNI_TRUE && !platform::jni_context::clear_exception();
+		// Fire is not air, but vanilla allows a placed block to replace it.
+		return state && state.isReplaceable.call() == JNI_TRUE && !platform::jni_context::clear_exception();
 	}
 
 	bool is_anchor(const maps::ClientWorld& world, int x, int y, int z)
@@ -279,12 +266,130 @@ namespace
 		return !platform::jni_context::clear_exception();
 	}
 
+	bool ray_to(const maps::ClientWorld& world, const maps::ClientPlayerEntity& player,
+		const maths::vector3d& from, const maths::vector3d& to, maps::BlockHitResult& hit)
+	{
+		auto start = maps::Vec3d::new_object(&maps::Vec3d::constructor,from.x,from.y,from.z);
+		auto end = maps::Vec3d::new_object(&maps::Vec3d::constructor,to.x,to.y,to.z);
+		auto shape = maps::RaycastContext$ShapeType{}.COLLIDER.get();
+		auto fluid = maps::RaycastContext$FluidHandling{}.NONE.get();
+		auto ray = maps::RaycastContext::new_object(&maps::RaycastContext::constructor,start,end,shape,fluid,
+			maps::Entity(player.object_instance,false));
+		if (!start || !end || !shape || !fluid || !ray || platform::jni_context::clear_exception()) return false;
+		hit = world.raycast.call(ray);
+		auto type = hit ? maps::HitResult(hit.object_instance,false).getType.call() : maps::HitResult$Type{};
+		auto block = maps::HitResult$Type{}.BLOCK.get();
+		return hit && type && block && type.is_same_object(block) && !platform::jni_context::clear_exception();
+	}
+
+	bool hit_at(const maps::BlockHitResult& hit, int x, int y, int z)
+	{
+		auto pos = hit ? hit.getBlockPos.call() : maps::BlockPos{};
+		return pos && pos.getX.call() == x && pos.getY.call() == y && pos.getZ.call() == z &&
+			!platform::jni_context::clear_exception();
+	}
+
+	bool reachable_hit(const maps::ClientWorld& world, const maps::ClientPlayerEntity& player,
+		int x, int y, int z, int dx, int dy, int dz, maps::BlockHitResult& hit)
+	{
+		const auto eye = platform::adapter::get().get_eye_position(player);
+		const double range = player.getBlockInteractionRange.call();
+		const maths::vector3d point{x+.5+dx*.499,y+.5+dy*.499,z+.5+dz*.499};
+		const double ex = point.x-eye.x, ey = point.y-eye.y, ez = point.z-eye.z;
+		if (platform::jni_context::clear_exception() || !std::isfinite(range) || range <= 0 ||
+			!std::isfinite(ex+ey+ez) || ex*ex+ey*ey+ez*ez > range*range) return false;
+		maps::BlockHitResult visible{};
+		if (!ray_to(world,player,eye,point,visible) || !hit_at(visible,x,y,z)) return false;
+		auto side = visible.getSide.call();
+		if (!side || side.getOffsetX.call() != dx || side.getOffsetY.call() != dy || side.getOffsetZ.call() != dz ||
+			platform::jni_context::clear_exception()) return false;
+		return make_hit(x,y,z,dx,dy,dz,hit);
+	}
+
+	bool solid_cover(const maps::ClientWorld& world, int x, int y, int z)
+	{
+		auto state = state_at(world,x,y,z);
+		if (!state || is_anchor(world,x,y,z) || platform::jni_context::clear_exception()) return false;
+		if (state.isOpaque.call() == JNI_TRUE && !platform::jni_context::clear_exception()) return true;
+		// Glowstone is a full collision cube even on profiles with transparent lighting.
+		auto block = state.getBlock.call();
+		auto item = block ? block.asItem.call() : maps::Item{};
+		auto glowstone = maps::Items{}.GLOWSTONE.get();
+		return item && glowstone && item.is_same_object(glowstone) && !platform::jni_context::clear_exception();
+	}
+
+	bool shield_between(const maps::ClientPlayerEntity& player, const anchor_engine::runtime& state)
+	{
+		const auto p = platform::adapter::get().get_position(player);
+		if (!std::isfinite(p.x+p.y+p.z)) return false;
+		const auto box = platform::adapter::get().get_bounding_box(player);
+		if (!box || platform::jni_context::clear_exception()) return false;
+		if (box.minX.get() < state.shield_x+1 && box.maxX.get() > state.shield_x &&
+			box.minY.get() < state.shield_y+1 && box.maxY.get() > state.shield_y &&
+			box.minZ.get() < state.shield_z+1 && box.maxZ.get() > state.shield_z) return false;
+		if (platform::jni_context::clear_exception()) return false;
+		const double from[]{p.x,p.y+.1,p.z}, to[]{state.anchor_x+.5,state.anchor_y+.5,state.anchor_z+.5};
+		const int cell[]{state.shield_x,state.shield_y,state.shield_z};
+		double enter=0, leave=1;
+		for (int axis=0;axis<3;++axis) {
+			const double delta=to[axis]-from[axis];
+			if (std::abs(delta)<1e-9) { if (from[axis]<=cell[axis] || from[axis]>=cell[axis]+1) return false; }
+			else {
+				double a=(cell[axis]-from[axis])/delta, b=(cell[axis]+1-from[axis])/delta;
+				if (a>b) std::swap(a,b);
+				enter=std::max(enter,a); leave=std::min(leave,b);
+				if (enter>=leave) return false;
+			}
+		}
+		return enter>0 && enter<1 && leave>enter;
+	}
+
+	bool shield_ready(const maps::ClientWorld& world, const maps::ClientPlayerEntity& player,
+		const anchor_engine::runtime& state)
+	{
+		if (!state.shield_planned || !shield_between(player,state) ||
+			!solid_cover(world,state.shield_x,state.shield_y,state.shield_z)) return false;
+		const auto p=platform::adapter::get().get_position(player);
+		maps::BlockHitResult hit{};
+		return ray_to(world,player,{p.x,p.y+.1,p.z},{state.anchor_x+.5,state.anchor_y+.5,state.anchor_z+.5},hit) &&
+			hit_at(hit,state.shield_x,state.shield_y,state.shield_z);
+	}
+
+	bool plan_shield(const maps::ClientWorld& world, const maps::ClientPlayerEntity& player,
+		anchor_engine::runtime& state)
+	{
+		const auto p=platform::adapter::get().get_position(player);
+		if (!std::isfinite(p.y) || std::abs(p.y-state.anchor_y)>2) return false;
+		const int floor_y=static_cast<int>(std::floor(p.y));
+		constexpr int offsets[][2]{{0,-1},{0,1},{-1,0},{1,0}};
+		double best=1e30; std::array<int,3> chosen{}; bool found=false;
+		for (const auto& offset:offsets) for (int y:std::array{floor_y,state.anchor_y}) {
+			state.shield_x=state.anchor_x+offset[0]; state.shield_y=y; state.shield_z=state.anchor_z+offset[1];
+			state.shield_planned=true;
+			if (!shield_between(player,state)) continue;
+			if (shield_ready(world,player,state)) return true;
+			maps::BlockHitResult hit{};
+			if (state.shield_slot<0 || !is_replaceable(world,state.shield_x,y,state.shield_z) ||
+				!solid_cover(world,state.shield_x,y-1,state.shield_z) ||
+				!reachable_hit(world,player,state.shield_x,y-1,state.shield_z,0,1,0,hit)) continue;
+			const double dx=p.x-(state.shield_x+.5), dz=p.z-(state.shield_z+.5), score=dx*dx+dz*dz;
+			if (score<best) {best=score;chosen={state.shield_x,y,state.shield_z};found=true;}
+		}
+		state.shield_planned=found;
+		if (found) {state.shield_x=chosen[0];state.shield_y=chosen[1];state.shield_z=chosen[2];}
+		return found;
+	}
+
 	bool capture_target(const maps::MinecraftClient& instance, const maps::ClientWorld& world, anchor_engine::runtime& state)
 	{
 		maps::HitResult generic = instance.crosshairTarget.get();
 		if (!generic || platform::jni_context::clear_exception())
 			return false;
 		if (!generic.is_instance_of<maps::BlockHitResult>())
+			return false;
+		auto type = generic.getType.call();
+		auto block_type = maps::HitResult$Type{}.BLOCK.get();
+		if (!type || !block_type || !type.is_same_object(block_type) || platform::jni_context::clear_exception())
 			return false;
 		maps::BlockHitResult hit(generic.object_instance, false);
 		maps::BlockPos support = hit.getBlockPos.call();
@@ -370,6 +475,11 @@ namespace
 
 bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 {
+	return tick(settings, state, mode);
+}
+
+bool anchor_engine::tick(config& settings, runtime& state, profile mode)
+{
 	if (!platform::jni_context::bind_current_thread())
 		return true; // Keep enabled, try next frame
 	std::lock_guard lock(state.mutex);
@@ -393,10 +503,22 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 		: maps::ClientPlayerInteractionManager{};
 	const HWND window = gui::get_window();
 
+	maps::GameOptions options = instance ? instance.options.get() : maps::GameOptions{};
+	maps::KeyBinding use_key = options ? options.useKey.get() : maps::KeyBinding{};
+	if (use_key && state.current != runtime::phase::idle)
+	{
+		use_key.setPressed.call(JNI_FALSE);
+	}
+
 	auto finish = [&]()
 	{
 		if (player && manager && world && state.session.matches({world,player}))
 			restore_slot(player, manager, settings, state);
+		if (use_key)
+		{
+			const bool held = services::input::physical_button_down(services::input::mouse_button::right);
+			use_key.setPressed.call(held ? JNI_TRUE : JNI_FALSE);
+		}
 		reset_runtime(state);
 		platform::jni_context::clear_exception();
 		return false; // Tells the caller module to disable itself
@@ -413,13 +535,16 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 	{ reset_runtime(state); return false; }
 	state.session.observe({world,player});
 
-	if (!window || GetForegroundWindow() != window || gui::draw || gui::loader_visible || gui::should_unload ||
+	if (!auth::permitted(auth::scope::input) || !auth::permitted(auth::scope::bridge) ||
+		!window || GetForegroundWindow() != window || gui::draw || gui::loader_visible || gui::should_unload ||
 		instance.currentScreen.get() || player.isAlive.call() != JNI_TRUE || platform::jni_context::clear_exception())
 	{
 		return finish();
 	}
 
 	const auto now = steady_clock::now();
+	if (state.sequence_started.time_since_epoch().count() != 0 && now-state.sequence_started > std::chrono::seconds(10))
+	{ state.status="Stopped: sequence timed out"; return finish(); }
 
 	auto delay = [&](int base, int maximum)
 	{
@@ -459,6 +584,17 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 		const int selected = services::hotbar::selected_slot(inventory);
 		const bool holding_glowstone = stack_is_item(items,selected,glowstone,"glowstone");
 		if (platform::jni_context::clear_exception() || charging != holding_glowstone) return false;
+		const int charges=anchor_charges(world,state.anchor_x,state.anchor_y,state.anchor_z);
+		if (charging ? charges!=0 : charges<1) return false;
+		if (!charging) {
+			auto offhand=player.getOffHandStack.call();
+			auto item=offhand && offhand.isEmpty.call()!=JNI_TRUE ? offhand.item.get() : maps::Item{};
+			if (platform::jni_context::clear_exception()) return false;
+			if (item && item.is_same_object(glowstone))
+			{ state.status="Remove glowstone from offhand before detonating"; return false; }
+		}
+		if (mode==profile::safe && !shield_ready(world,player,state))
+		{ state.status="Stopped: protective block is missing or no longer between you and the anchor"; return false; }
 		const maths::vector3d player_position = player.get_position();
 		const double x_distance = player_position.x - (state.anchor_x + 0.5);
 		const double z_distance = player_position.z - (state.anchor_z + 0.5);
@@ -467,8 +603,10 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 			: 0;
 		const int face_z = face_x == 0 ? (z_distance >= 0.0 ? 1 : -1) : 0;
 		maps::BlockHitResult hit{};
-		return make_hit(state.anchor_x, state.anchor_y, state.anchor_z, face_x, 0, face_z, hit) &&
-			interact(player, manager, hit);
+		// The top stays reachable above a low protective block; the near side may be hidden.
+		if (!reachable_hit(world,player,state.anchor_x,state.anchor_y,state.anchor_z,0,1,0,hit) &&
+			!reachable_hit(world,player,state.anchor_x,state.anchor_y,state.anchor_z,face_x,0,face_z,hit)) return false;
+		return interact(player, manager, hit);
 	};
 	auto initial_place = [&]()
 	{
@@ -478,13 +616,23 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 		if (!items || !anchor || platform::jni_context::clear_exception() ||
 			!stack_is_item(items,state.anchor_slot,anchor,"anchor")) return false;
 		maps::BlockHitResult hit{};
-		return make_hit(state.support_x, state.support_y, state.support_z,
+		return is_replaceable(world,state.anchor_x,state.anchor_y,state.anchor_z) &&
+			reachable_hit(world,player,state.support_x, state.support_y, state.support_z,
 			state.face_x, state.face_y, state.face_z, hit) && interact(player, manager, hit);
 	};
 	auto shield_place = [&]()
 	{
+		if (!state.shield_planned || !shield_between(player,state) ||
+			!is_replaceable(world,state.shield_x,state.shield_y,state.shield_z) ||
+			!solid_cover(world,state.shield_x,state.shield_y-1,state.shield_z)) return false;
+		auto inventory=player.getInventory.call();
+		auto items=inventory ? inventory.main.get() : maps::DefaultedList{};
+		auto anchor=maps::Items{}.RESPAWN_ANCHOR.get(), glowstone=maps::Items{}.GLOWSTONE.get(), totem=maps::Items{}.TOTEM_OF_UNDYING.get();
+		if (!items || find_shield_slot(items,anchor,glowstone,totem)!=state.shield_slot ||
+			platform::jni_context::clear_exception()) return false;
 		maps::BlockHitResult hit{};
-		return make_hit(state.anchor_x, state.anchor_y, state.anchor_z, 0, 1, 0, hit) &&
+		// Click the ground next to the anchor. Clicking a charged anchor detonates it.
+		return reachable_hit(world,player,state.shield_x,state.shield_y-1,state.shield_z,0,1,0,hit) &&
 			interact(player, manager, hit);
 	};
 	auto begin_confirmation = [&](runtime::phase next, int timeout)
@@ -496,20 +644,43 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 		state.confirmation_timeout_ms = timeout;
 		state.retry_interval_ms = retry_delay(next);
 		state.next_action = now;
+		state.status=next==runtime::phase::wait_anchor ? "Waiting for anchor placement" :
+			next==runtime::phase::wait_charge ? "Waiting for anchor charge" :
+			next==runtime::phase::wait_shield ? "Waiting for protective block placement" : "Waiting for anchor disappearance";
+	};
+	auto schedule_anchor_action = [&]()
+	{
+		const int charges=anchor_charges(world,state.anchor_x,state.anchor_y,state.anchor_z);
+		if (charges<0) return false;
+		if (mode==profile::safe && !shield_ready(world,player,state)) {
+			if (state.shield_slot<0 || !state.shield_planned || !select(state.shield_slot)) return false;
+			state.current=runtime::phase::place_shield;
+			state.status="Placing protective block between you and the anchor";
+			state.next_action=now+std::chrono::milliseconds(delay(settings.shield_delay,220));
+			return true;
+		}
+		const bool charging=charges==0;
+		if (!select(charging ? state.glowstone_slot : state.totem_slot)) return false;
+		state.current=charging ? runtime::phase::charge_anchor : runtime::phase::detonate;
+		state.status=charging ? "Charging protected anchor" : "Detonating protected anchor";
+		state.next_action=now+std::chrono::milliseconds(charging ?
+			step_delay(timing_stage::charge,settings.switch_delay,180) :
+			step_delay(timing_stage::detonate,settings.action_delay,200));
+		return true;
 	};
 
 	if (state.current == runtime::phase::idle)
 	{
 		// Macro burst check: if conditions not met, disable module immediately
 		if (!movement_allowed(player, mode))
-			return finish();
+		{ state.status="Stand still on the ground before enabling"; return finish(); }
 
 		// Try to capture target block or existing anchor
 		if (!capture_target(instance, world, state))
-			return finish();
+		{ state.status="Aim at a reachable block or anchor"; return finish(); }
 
 		const bool target_is_existing_anchor = is_anchor(world, state.anchor_x, state.anchor_y, state.anchor_z);
-		if (!target_is_existing_anchor && !is_air(world, state.anchor_x, state.anchor_y, state.anchor_z))
+		if (!target_is_existing_anchor && !is_replaceable(world, state.anchor_x, state.anchor_y, state.anchor_z))
 			return finish();
 
 		maps::PlayerInventory inventory = player.getInventory();
@@ -546,25 +717,23 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 		state.shield_slot = mode == profile::safe
 			? find_shield_slot(items, anchor, glowstone, totem)
 			: -1;
+		state.sequence_started=now;
+		if (mode==profile::safe && !plan_shield(world,player,state))
+		{ state.status="No protective position: need obsidian or glowstone and solid ground between you and the anchor"; return finish(); }
 
-		if (state.glowstone_slot < 0 || (!target_is_existing_anchor && state.anchor_slot < 0))
-			return finish(); // Missing items in hotbar, abort
+		const int initial_charges=target_is_existing_anchor ? anchor_charges(world,state.anchor_x,state.anchor_y,state.anchor_z) : 0;
+		if (mode==profile::safe && !shield_ready(world,player,state) && initial_charges<1 && state.shield_slot==state.glowstone_slot) {
+			auto object=items.get.call(static_cast<jint>(state.glowstone_slot));
+			auto stack=object ? maps::ItemStack(object.object_instance,false) : maps::ItemStack{};
+			if (!stack || stack.getCount.call()<2 || platform::jni_context::clear_exception())
+			{ state.status="Need two glowstone: one protective block and one anchor charge"; return finish(); }
+		}
+		if ((initial_charges<1 && state.glowstone_slot<0) || (!target_is_existing_anchor && state.anchor_slot<0))
+		{ state.status="Missing anchor or charging glowstone in hotbar"; return finish(); }
 
 		if (target_is_existing_anchor)
 		{
-			int charges = anchor_charges(world, state.anchor_x, state.anchor_y, state.anchor_z);
-			if (charges >= 1)
-			{
-				if (!select(state.totem_slot)) return finish();
-				state.current = runtime::phase::detonate;
-				state.next_action = now + std::chrono::milliseconds(step_delay(timing_stage::detonate,settings.action_delay,200));
-			}
-			else
-			{
-				if (!select(state.glowstone_slot)) return finish();
-				state.current = runtime::phase::charge_anchor;
-				state.next_action = now + std::chrono::milliseconds(step_delay(timing_stage::charge,settings.switch_delay,180));
-			}
+			if (!schedule_anchor_action()) return finish();
 		}
 		else
 		{
@@ -579,7 +748,7 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 	}
 
 	if (!movement_allowed(player, mode))
-		return true; // Wait for grounded
+	{ state.status="Stopped: player moved before the sequence finished"; return finish(); }
 
 	if (settings.camera_movement &&
 		state.current != runtime::phase::idle && now >= state.next_camera_move)
@@ -594,12 +763,19 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 
 	const int transition_budget = 1; // Even zero-delay Blatant never bursts several interactions in one frame.
 	const int minimum_confirmation = mode == profile::blatant ? 0 : (mode == profile::safe ? 45 : 25);
-	const int maximum_retries = mode == profile::blatant ? 4 : 3;
+	// Never replay an unconfirmed safe placement/charge/explosion.
+	const int maximum_retries = mode == profile::safe ? 0 : mode == profile::blatant ? 4 : 3;
 	const int timeout = mode == profile::blatant ? 350 : 650;
 
 	for (int transition = 0; transition < transition_budget; ++transition)
 	{
 		if (now < state.next_action) return true;
+		const int tick=player.age.get();
+		if (platform::jni_context::clear_exception()) return finish();
+		const bool acts=state.current==runtime::phase::place_anchor || state.current==runtime::phase::charge_anchor ||
+			state.current==runtime::phase::place_shield || state.current==runtime::phase::detonate;
+		if (acts && tick==state.last_action_tick) return true;
+		if (acts) state.last_action_tick=tick;
 		switch (state.current)
 		{
 		case runtime::phase::place_anchor:
@@ -613,9 +789,7 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 			if (is_anchor(world, state.anchor_x, state.anchor_y, state.anchor_z) &&
 				elapsed(state.phase_started, now, minimum_confirmation))
 			{
-				if (!select(state.glowstone_slot)) return finish();
-				state.current = runtime::phase::charge_anchor;
-				state.next_action = now + std::chrono::milliseconds(step_delay(timing_stage::charge,settings.switch_delay,180));
+				if (!schedule_anchor_action()) return finish();
 				if (mode == profile::blatant) continue;
 				return true;
 			}
@@ -626,7 +800,8 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 				state.last_attempt = now;
 				state.retry_interval_ms = retry_delay(state.current);
 			}
-			if (elapsed(state.phase_started, now, state.confirmation_timeout_ms)) return finish();
+			if (elapsed(state.phase_started, now, state.confirmation_timeout_ms))
+			{ state.status="Stopped: anchor placement was not confirmed"; return finish(); }
 			return true;
 
 		case runtime::phase::charge_anchor:
@@ -642,18 +817,7 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 				if (charges >= 1 &&
 					elapsed(state.phase_started, now, minimum_confirmation))
 				{
-					if (mode == profile::safe && state.shield_slot >= 0)
-					{
-						if (!select(state.shield_slot)) return finish();
-						state.current = runtime::phase::place_shield;
-						state.next_action = now + std::chrono::milliseconds(delay(settings.shield_delay, 220));
-					}
-					else
-					{
-						if (!select(state.totem_slot)) return finish();
-						state.current = runtime::phase::detonate;
-						state.next_action = now + std::chrono::milliseconds(step_delay(timing_stage::detonate,settings.action_delay,200));
-					}
+					if (!schedule_anchor_action()) return finish();
 					if (mode == profile::blatant) continue;
 					return true;
 				}
@@ -664,7 +828,8 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 					state.last_attempt = now;
 					state.retry_interval_ms = retry_delay(state.current);
 				}
-				if (elapsed(state.phase_started, now, state.confirmation_timeout_ms)) return finish();
+				if (elapsed(state.phase_started, now, state.confirmation_timeout_ms))
+				{ state.status="Stopped: anchor charge was not confirmed"; return finish(); }
 				return true;
 			}
 
@@ -675,12 +840,10 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 			return true;
 
 		case runtime::phase::wait_shield:
-			if (!is_air(world, state.anchor_x, state.anchor_y + 1, state.anchor_z) &&
+			if (shield_ready(world,player,state) &&
 				elapsed(state.phase_started, now, minimum_confirmation))
 			{
-				if (!select(state.totem_slot)) return finish();
-				state.current = runtime::phase::detonate;
-				state.next_action = now + std::chrono::milliseconds(step_delay(timing_stage::detonate,settings.action_delay,200));
+				if (!schedule_anchor_action()) return finish();
 				return true;
 			}
 			if (state.retries < maximum_retries && elapsed(state.last_attempt, now, state.retry_interval_ms))
@@ -690,7 +853,8 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 				state.last_attempt = now;
 				state.retry_interval_ms = retry_delay(state.current);
 			}
-			if (elapsed(state.phase_started, now, state.confirmation_timeout_ms)) return finish();
+			if (elapsed(state.phase_started, now, state.confirmation_timeout_ms))
+			{ state.status="Stopped: protective block was not confirmed"; return finish(); }
 			return true;
 
 		case runtime::phase::detonate:
@@ -715,11 +879,13 @@ bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
 				state.last_attempt = now;
 				state.retry_interval_ms = retry_delay(state.current);
 			}
-			if (elapsed(state.phase_started, now, state.confirmation_timeout_ms)) return finish();
+			if (elapsed(state.phase_started, now, state.confirmation_timeout_ms))
+			{ state.status="Stopped: anchor did not disappear after use"; return finish(); }
 			return true;
 
 		case runtime::phase::restore:
 			restore_slot(player, manager, settings, state);
+			state.status="Completed; enable again for another sequence";
 			reset_runtime(state);
 			return false; // Successful sequence completed
 
@@ -746,6 +912,14 @@ void anchor_engine::cancel_on_client_thread(runtime& state)
 		state.session.matches({context.world,context.player}))
 	{
 		services::hotbar::restore_if_owned(context.player,context.interaction,state.old_slot,state.owned_slot);
+	}
+	maps::MinecraftClient instance = maps::MinecraftClient{}.instance.get();
+	maps::GameOptions options = instance ? instance.options.get() : maps::GameOptions{};
+	maps::KeyBinding use_key = options ? options.useKey.get() : maps::KeyBinding{};
+	if (use_key)
+	{
+		const bool held = services::input::physical_button_down(services::input::mouse_button::right);
+		use_key.setPressed.call(held ? JNI_TRUE : JNI_FALSE);
 	}
 	platform::jni_context::clear_exception();
 	reset_runtime(state);

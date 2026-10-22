@@ -1769,6 +1769,9 @@
     <ClInclude Include="src\platform\jni\jvm_session.hpp">
       <Filter>Header Files\src\platform\jni</Filter>
     </ClInclude>
+    <ClInclude Include="src\platform\test_crash_report.hpp">
+      <Filter>Header Files\src\platform</Filter>
+    </ClInclude>
     <ClInclude Include="src\platform\jni\member_id_cache.hpp">
       <Filter>Header Files\src\platform\jni</Filter>
     </ClInclude>

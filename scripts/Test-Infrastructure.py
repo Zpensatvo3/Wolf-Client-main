@@ -259,28 +259,12 @@ def validate_crystal_aura():
     errors = []
     source = (ROOT / "src/modules/combat/crystal_aura.cpp").read_text(encoding="utf-8")
     header = (ROOT / "src/modules/combat/crystal_aura.hpp").read_text(encoding="utf-8")
-    engine = (ROOT / "src/modules/combat/crystal_aura_engine.hpp").read_text(encoding="utf-8")
     if "void run(::cache&) override {}" not in header or "render_when_disabled() const override { return true; }" not in header:
-        errors.append("Crystal Aura must act and clean JNI state on client frames, not the worker")
-    for guard in ("capture_client_context(ctx)", "GetForegroundWindow()", "gui::should_unload", "ctx.screen",
-                  "ctx.player.isAlive.call()", "state.session.observe({ctx.world,ctx.player})", "getEntityById.call",
-                  "friends::is_friend(entity)", "services::anti_bot::is_bot(entity)", "entity.isSpectator.call()",
-                  "getEntityInteractionRange.call()", "getBlockInteractionRange.call()", "fresh_crosshair_entity",
-                  "read_cooldown", "clear_site(ctx", "hits_top(hit,clicked)", "restore_if_owned",
-                  "claim_crystal_aura", "release_crystal_aura", "try_crystal_aura_action", "config.switch_delay_ms"):
-        if guard not in source: errors.append(f"Missing Crystal Aura action/session guard: {guard}")
-    for guard in ("entity.is_instance_of<maps::MobEntity>()", "logic::supports_target(config.target_mode,target.kind)",
-                  "logic::target_allowed(config.target_mode,target)", "if (player)", "config.target_mode == 0",
-                  "find_target(ctx,eye", "state.engine.target(),config", "observed.target_is_mob"):
-        if guard not in source: errors.append(f"Missing Crystal Aura mob targeting guard: {guard}")
-    if "seen.target_is_mob && config.mob_ground_test" not in engine:
-        errors.append("Crystal Aura's optional grounded test must apply to mobs only")
-    if source.count("attack_entity(") != 1 or source.count("interactBlock.call(") != 1:
-        errors.append("Crystal Aura must centralize melee/crystal attacks and block interactions")
-    if any(token in source for token in ("sendPacket.call", "Sleep(", "setVelocity.call", "setPosition.call")):
-        errors.append("Crystal Aura must not fake knockback, teleport, block the client or forge packets")
-    if any(token in engine for token in ("Windows.h", "mappings.hpp", "ImGui::", "jni::")):
-        errors.append("Crystal Aura engine must remain offline-testable and platform-independent")
+        errors.append("Crystal Aura must publish settings from client frames and cancel while disabled")
+    if "world_bridge::tick_aura" not in source or "world_bridge::cancel_aura" not in source or "on_render_shutdown" not in header:
+        errors.append("Crystal Aura must use the Java controller and expose lifecycle cleanup")
+    if any(token in source for token in ("crystal_aura_engine.hpp", "maps::", ".call(", "GetForegroundWindow", "Sleep(")):
+        errors.append("Crystal Aura native module must contain no game reads, decisions or interactions")
     return errors
 
 

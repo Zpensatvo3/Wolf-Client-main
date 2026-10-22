@@ -161,6 +161,31 @@ void modules::inv_walk::cancel_on_client_thread()
     platform::jni_context::clear_exception();
 }
 
+bool modules::inv_walk::gate_inventory_input(UINT message, WPARAM key, LPARAM data)
+{
+    if (!enabled || gui::draw || gui::loader_visible || gui::should_unload) return false;
+    int kind=2,code=0;
+    switch(message) {
+    case WM_KEYDOWN: case WM_SYSKEYDOWN:
+        if (key==VK_RSHIFT || key==VK_END || key==VK_LWIN || key==VK_RWIN || key==VK_MENU ||
+            (message==WM_SYSKEYDOWN && key==VK_F4)) return false;
+        kind=0;code=static_cast<int>((data>>16)&0x1ff);break;
+    case WM_LBUTTONDOWN: case WM_RBUTTONDOWN: case WM_MBUTTONDOWN: case WM_XBUTTONDOWN:
+    case WM_LBUTTONDBLCLK: case WM_RBUTTONDBLCLK: case WM_MBUTTONDBLCLK: case WM_XBUTTONDBLCLK:
+    case WM_MOUSEWHEEL: case WM_MOUSEHWHEEL: break;
+    case WM_INPUT: {
+        RAWINPUT raw{};UINT size=sizeof(raw);
+        if (GetRawInputData(reinterpret_cast<HRAWINPUT>(data),RID_INPUT,&raw,&size,sizeof(RAWINPUTHEADER))!=sizeof(raw) ||
+            raw.header.dwType!=RIM_TYPEMOUSE || !(raw.data.mouse.usButtonFlags &
+            (RI_MOUSE_LEFT_BUTTON_DOWN|RI_MOUSE_RIGHT_BUTTON_DOWN|RI_MOUSE_MIDDLE_BUTTON_DOWN|
+             RI_MOUSE_BUTTON_4_DOWN|RI_MOUSE_BUTTON_5_DOWN|RI_MOUSE_WHEEL|RI_MOUSE_HWHEEL))) return false;
+        break;
+    }
+    default: return false;
+    }
+    return !services::game::client_bridge::prepare_walk_action(kind,code);
+}
+
 void modules::inv_walk::render_overlay()
 {
     std::lock_guard lock(runtime_mutex);
@@ -176,7 +201,7 @@ void modules::inv_walk::render_overlay()
         inv_walk_engine::observation state;
         state.enabled = enabled;
         state.focused = window && GetForegroundWindow() == window;
-        state.client_blocked = gui::draw || gui::loader_visible || gui::should_unload;
+        state.client_blocked = gui::draw || gui::loader_visible || gui::should_unload || services::game::client_bridge::is_inventory_busy();
         if (!state.enabled || !state.focused || state.client_blocked) { release_owned(false); services::game::client_bridge::release_walk(false); return; }
         namespace bridge = services::game::client_bridge;
         bridge::walk_snapshot observed;
@@ -213,6 +238,9 @@ void modules::inv_walk::render_overlay()
         {
             release_owned(mode == inv_walk_engine::mode::vanilla); return;
         }
+        if (context.player && context.player.isSprinting.call() == JNI_TRUE && !platform::jni_context::clear_exception())
+            context.player.setSprinting.call(JNI_FALSE);
+        platform::jni_context::clear_exception();
         auto options = context.instance.options.get();
         if (platform::jni_context::clear_exception() || !options) { release_owned(false); return; }
         const std::array<maps::KeyBinding, inv_walk_engine::key_count> keys{
@@ -229,7 +257,8 @@ void modules::inv_walk::render_overlay()
             // Unknown bindings remain released, never guessed or hard-coded.
             physical[index] = held.value_or(false);
         }
-        const auto desired = inv_walk_engine::desired_keys(config, physical);
+        const bool mouse_interacting = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0 || (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
+        const auto desired = mouse_interacting ? std::array<bool, inv_walk_engine::key_count>{} : inv_walk_engine::desired_keys(config, physical);
         world_ = context.world; player_ = context.player;
         if (platform::jni_context::clear_exception()) { release_owned(false); return; }
         for (unsigned index = 0; index < keys.size(); ++index) update_key(index, keys[index], desired[index]);
@@ -240,5 +269,5 @@ void modules::inv_walk::render_overlay()
 void modules::inv_walk::render_options()
 {
     gui::settings::render(settings_, module_settings::inv_walk::schema());
-    ImGui::TextWrapped("%s", "Pauses while typing. Does not change attack/use keys or send packets.");
+    ImGui::TextWrapped("%s", "Pauses while typing and briefly before inventory clicks, hotkeys or closing. Walking resumes after the action. Server compatibility varies.");
 }

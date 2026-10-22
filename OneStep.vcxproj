@@ -52,6 +52,12 @@
     <MakeDir Directories="$(ProjectDir)assets\hybrid" />
     <Exec Command="javac --release 17 -encoding UTF-8 -g:none -d &quot;$(ProjectDir)assets\hybrid&quot; &quot;$(ProjectDir)src\bridge\GameBridge.java&quot; &quot;$(ProjectDir)src\bridge\UtilityBridge.java&quot; &quot;$(ProjectDir)src\bridge\ItemBridge.java&quot; &quot;$(ProjectDir)src\bridge\InventoryBridge.java&quot; &quot;$(ProjectDir)src\bridge\WorldBridge.java&quot; &quot;$(ProjectDir)src\bridge\ClientBridge.java&quot; &quot;$(ProjectDir)src\bridge\AnchorEvents.java&quot;" />
   </Target>
+  <Target Name="ValidateGameBridgeContracts" BeforeTargets="ResourceCompile" DependsOnTargets="BuildGameBridge">
+    <Exec Command="python -X utf8 &quot;$(ProjectDir)scripts\Check-GameBridgeContracts.py&quot;" />
+  </Target>
+  <Target Name="ValidatePackagedGameBridges" AfterTargets="Link" Condition="Exists('$(TargetPath)')">
+    <Exec Command="python -X utf8 &quot;$(ProjectDir)scripts\Check-GameBridgeContracts.py&quot; --dll &quot;$(TargetPath)&quot;" />
+  </Target>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
@@ -112,6 +118,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(LocalTestDll)' == 'true'">
     <TargetName>Onestep-TEST-NO-LAUNCHER</TargetName>
+    <LinkIncremental>false</LinkIncremental>
     <OutDir>$(ProjectDir)build\local-test\$(MinecraftVersion)\</OutDir>
     <IntDir>$(ProjectDir)build\etc\local-test\$(MinecraftVersion)\</IntDir>
   </PropertyGroup>
@@ -200,11 +207,17 @@
   <ItemDefinitionGroup Condition="'$(LocalTestDll)' == 'true'">
     <ClCompile>
       <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <StringPooling>true</StringPooling>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.hpp</PrecompiledHeaderFile>
       <ForcedIncludeFiles>pch.hpp;%(ForcedIncludeFiles)</ForcedIncludeFiles>
     </ClCompile>
+    <Link>
+      <OptimizeReferences>true</OptimizeReferences>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+    </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="src\ui\grim_ui.hpp" />
@@ -671,6 +684,7 @@
     <ClInclude Include="src\sdk\minecraft\common\*.hpp" />
     <None Include="src\sdk\minecraft\common\manifest.json" />
     <ClInclude Include="src\platform\jni\jvm_session.hpp" />
+    <ClInclude Include="src\platform\test_crash_report.hpp" />
     <ClInclude Include="src\platform\jni\member_id_cache.hpp" />
     <ClInclude Include="src\app\runtime.hpp" />
     <ClInclude Include="src\app\module_loop.hpp" />

@@ -17,7 +17,7 @@ public class WorldBridge {
     private final Class<?> clientType, playerType;
     private final Field instance, player, world, screen, options, manager;
     private final Method onThread, alive;
-    private final boolean[] prepared = new boolean[8];
+    private final boolean[] prepared = new boolean[9];
     private Field sneak, bound, keySymbol, scanCode, mouse, vx, vz, minX, minY, minZ, maxX, maxZ;
     private Field selected, main, pearlItem, cooldown;
     private Method pressed, setPressed, code, category, ground, velocity, bounds, mainHand, empty, item, count, copy, same;
@@ -90,8 +90,9 @@ public class WorldBridge {
         throw new NoSuchMethodException(name);
     }
     public void prepare(int feature) throws ReflectiveOperationException {
-        if (stopped || feature < 1 || feature > 7 || (feature < 3 && target != 12111)) throw new IllegalStateException("World feature/lifecycle");
+        if (stopped || feature < 1 || feature > 8 || (feature < 3 && target != 12111)) throw new IllegalStateException("World feature/lifecycle");
         if (prepared[feature]) return;
+        if (feature == 8) { prepareAura(); prepared[8] = true; return; }
         if (feature == 7) { prepareTotem(); prepared[7] = true; return; }
         if (feature == 6) { prepareAnchor(); prepared[6] = true; return; }
         if (feature == 5) { prepareJump(); prepared[5] = true; return; }
@@ -268,6 +269,7 @@ public class WorldBridge {
     private Class<?> crystalType, crystalHitType, crystalEntityHitType;
     private Field crystalHitEntity;
     private Field crystalCrosshair, crystalSelected, crystalPosition, crystalX, crystalY, crystalZ;
+    private Field crystalYaw, crystalPitch;
     private Field crystalMinX, crystalMinY, crystalMinZ, crystalMaxX, crystalMaxY, crystalMaxZ;
     private Method crystalInventory, crystalStack, crystalEmpty, crystalItem, crystalUsing, crystalSync;
     private Method crystalStateAt, crystalIsOf, crystalAir, crystalEntities, crystalById, crystalId, crystalAlive;
@@ -309,6 +311,8 @@ public class WorldBridge {
         crystalCrosshair = mappedField(clientType, "field_1765", hit, false);
         crystalSelected = mappedField(inv, "field_7545", int.class, false);
         crystalPosition = mappedField(entity, "field_22467", vec, false);
+        crystalYaw = mappedField(entity, "field_6031", float.class, false);
+        crystalPitch = mappedField(entity, "field_5965", float.class, false);
         crystalX = mappedField(vec, "field_1352", double.class, false);
         crystalY = mappedField(vec, "field_1351", double.class, false);
         crystalZ = mappedField(vec, "field_1350", double.class, false);
@@ -358,6 +362,7 @@ public class WorldBridge {
         if (crystalItemValue == null || crystalObsidian == null || crystalBedrock == null || crystalHand == null ||
             crystalUp == null || crystalBlockType == null || crystalCollider == null || crystalNoFluid == null)
             throw new IllegalStateException("Uninitialized crystal bindings");
+        prepareTickLifecycle();
     }
     private boolean crystalHeld(Object inv, int slot) throws ReflectiveOperationException {
         if (slot < 0 || slot > 8) return false;
@@ -415,6 +420,7 @@ public class WorldBridge {
         return true;
     }
     public boolean cancelCrystal(int kind, int keyCode, boolean physical) throws ReflectiveOperationException {
+        crystalTickActive = false;
         if (!prepared[3]) return true;
         Object c = client(); if (c == null) return false;
         crystalRequireRelease = true;
@@ -482,8 +488,70 @@ public class WorldBridge {
         Object hit = crystalRaycast.invoke(crystalWorld, ray);
         return hit != null && crystalGetType.invoke(hit) != crystalBlockType;
     }
+    private static boolean rayIntersectsAABB(double ox, double oy, double oz, double dx, double dy, double dz,
+        double minX, double minY, double minZ, double maxX, double maxY, double maxZ, double maxDist) {
+        double tmin = 0.0;
+        double tmax = maxDist;
+        if (Math.abs(dx) < 1e-7) {
+            if (ox < minX || ox > maxX) return false;
+        } else {
+            double invD = 1.0 / dx;
+            double t1 = (minX - ox) * invD;
+            double t2 = (maxX - ox) * invD;
+            if (t1 > t2) { double tmp = t1; t1 = t2; t2 = tmp; }
+            tmin = Math.max(tmin, t1);
+            tmax = Math.min(tmax, t2);
+            if (tmin > tmax) return false;
+        }
+        if (Math.abs(dy) < 1e-7) {
+            if (oy < minY || oy > maxY) return false;
+        } else {
+            double invD = 1.0 / dy;
+            double t1 = (minY - oy) * invD;
+            double t2 = (maxY - oy) * invD;
+            if (t1 > t2) { double tmp = t1; t1 = t2; t2 = tmp; }
+            tmin = Math.max(tmin, t1);
+            tmax = Math.min(tmax, t2);
+            if (tmin > tmax) return false;
+        }
+        if (Math.abs(dz) < 1e-7) {
+            if (oz < minZ || oz > maxZ) return false;
+        } else {
+            double invD = 1.0 / dz;
+            double t1 = (minZ - oz) * invD;
+            double t2 = (maxZ - oz) * invD;
+            if (t1 > t2) { double tmp = t1; t1 = t2; t2 = tmp; }
+            tmin = Math.max(tmin, t1);
+            tmax = Math.min(tmax, t2);
+            if (tmin > tmax) return false;
+        }
+        return tmax >= 0.0 && tmin <= maxDist;
+    }
+    private boolean crystalAimingAt(Object c, Object e) throws ReflectiveOperationException {
+        Object hit = crystalCrosshair.get(c);
+        if (crystalEntityHitType.isInstance(hit) && crystalHitEntity.get(hit) == e) return true;
+        if (crystalYaw == null || crystalPitch == null || crystalPlayer == null) return true;
+        Object eye = crystalPosition.get(crystalPlayer), b = crystalBounds.invoke(e);
+        if (eye == null || b == null) return false;
+        double ox = crystalX.getDouble(eye), oy = (double) crystalEyeY.invoke(crystalPlayer), oz = crystalZ.getDouble(eye);
+        double lx = crystalMinX.getDouble(b), ly = crystalMinY.getDouble(b), lz = crystalMinZ.getDouble(b);
+        double hx = crystalMaxX.getDouble(b), hy = crystalMaxY.getDouble(b), hz = crystalMaxZ.getDouble(b);
+        if (!Double.isFinite(lx) || !Double.isFinite(ly) || !Double.isFinite(lz) || !Double.isFinite(hx) ||
+            !Double.isFinite(hy) || !Double.isFinite(hz) || lx > hx || ly > hy || lz > hz) return false;
+        float yaw = crystalYaw.getFloat(crystalPlayer), pitch = crystalPitch.getFloat(crystalPlayer);
+        if (!Float.isFinite(yaw) || !Float.isFinite(pitch)) return false;
+        double yawRad = -Math.toRadians(yaw);
+        double pitchRad = -Math.toRadians(pitch);
+        double cosPitch = Math.cos(pitchRad);
+        double dx = Math.sin(yawRad) * cosPitch;
+        double dy = -Math.sin(Math.toRadians(pitch));
+        double dz = Math.cos(yawRad) * cosPitch;
+        double reach = (double) crystalEntityRange.invoke(crystalPlayer) + 0.05;
+        if (!Double.isFinite(reach) || reach <= 0) reach = 3.05;
+        return rayIntersectsAABB(ox, oy, oz, dx, dy, dz, lx, ly, lz, hx, hy, hz, reach);
+    }
     private boolean breakCrystal(Object c, Object e, long now, int delay) throws ReflectiveOperationException {
-        if (!crystalSession(c) || !crystalMatches(e) || !crystalVisible(e)) return false;
+        if (!crystalSession(c) || !crystalMatches(e) || !crystalVisible(e) || !crystalAimingAt(c, e)) return false;
         int id = (int) crystalId.invoke(e);
         if (crystalById.invoke(crystalWorld, id) != e) return false;
         crystalTarget = e; crystalTargetId = id;
@@ -501,11 +569,30 @@ public class WorldBridge {
         if (!prepared[3]) { if (!active || !held) return; prepare(3); }
         crystalRestore = restore;
         if (!active || !held) {
+            crystalTickActive = false;
             crystalRequireRelease = held;
             try { resetCrystal(restore); } finally { releaseCrystalUse(c, kind, keyCode, physicalUse); }
             return;
         }
         if (crystalFailed || crystalRequireRelease) return;
+        crystalAutoSwitchArg = autoSwitch;
+        crystalRestoreArg = restore;
+        crystalPlaceDelayArg = placeDelay;
+        crystalBreakDelayArg = breakDelay;
+        crystalKindArg = kind;
+        crystalKeyCodeArg = keyCode;
+        crystalPhysicalUseArg = physicalUse;
+        crystalTickActive = true;
+        crystalLastConfigTime = System.nanoTime();
+
+        if (!clientTickHooked) {
+            tickCrystalDirect(c, active, held, kind, keyCode, physicalUse, autoSwitch, restore, placeDelay, breakDelay);
+        }
+    }
+
+    private void tickCrystalDirect(Object c, boolean active, boolean held, int kind, int keyCode, boolean physicalUse,
+        boolean autoSwitch, boolean restore, int placeDelay, int breakDelay)
+        throws ReflectiveOperationException {
         placeDelay = Math.max(0, Math.min(250, placeDelay)); breakDelay = Math.max(0, Math.min(200, breakDelay));
         try {
             Object p = player.get(c), w = world.get(c), m = manager.get(c);
@@ -639,6 +726,13 @@ public class WorldBridge {
     private Constructor<?> triggerMouseInputConstructor;
     private Object triggerMouseKeyType;
     private boolean triggerTickHooked;
+    private boolean clientTickHooked;
+    private volatile boolean crystalTickActive;
+    private volatile long crystalLastConfigTime;
+    private volatile boolean crystalAutoSwitchArg, crystalRestoreArg;
+    private volatile int crystalPlaceDelayArg, crystalBreakDelayArg;
+    private volatile int crystalKindArg, crystalKeyCodeArg;
+    private volatile boolean crystalPhysicalUseArg;
     private volatile boolean triggerActive;
     private volatile long triggerLastConfigTime;
     private volatile long triggerGenerationArg, triggerManualArg;
@@ -716,8 +810,8 @@ public class WorldBridge {
         prepareTriggerLifecycle();
     }
 
-    private void prepareTriggerLifecycle() {
-        if (triggerTickHooked) return;
+    private void prepareTickLifecycle() {
+        if (clientTickHooked) return;
         try {
             Class<?> eventsClass = Class.forName("net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents", true, loader);
             Class<?> listenerType = Class.forName("net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents$StartTick", true, loader);
@@ -727,17 +821,61 @@ public class WorldBridge {
                 if (m.getDeclaringClass() == Object.class) {
                     if (m.getName().equals("hashCode")) return System.identityHashCode(p);
                     if (m.getName().equals("equals")) return p == a[0];
-                    return "WorldBridgeTriggerTick";
+                    return "WorldBridgeTick";
                 }
                 if (a != null && a.length >= 1) {
                     onTriggerTick(a[0]);
+                    onCrystalTick(a[0]);
+                    onSafeAnchorTick(a[0]);
+                    onAuraTick(a[0]);
                 }
                 return null;
             });
             Class.forName("net.fabricmc.fabric.api.event.Event", true, loader).getMethod("register", Object.class).invoke(event, proxy);
+            clientTickHooked = true;
             triggerTickHooked = true;
         } catch (Throwable ignored) {
+            clientTickHooked = false;
             triggerTickHooked = false;
+        }
+    }
+
+    private void prepareTriggerLifecycle() {
+        prepareTickLifecycle();
+    }
+
+    private native void safeAnchorNativeTick();
+    private volatile boolean safeAnchorTickActive;
+    public void setSafeAnchorActive(boolean active) {
+        safeAnchorTickActive = active;
+        if (active) {
+            prepareTickLifecycle();
+            try { installAnchorEvents(); } catch (Throwable ignored) {}
+        }
+    }
+    public boolean isSafeAnchorActive() {
+        return safeAnchorTickActive && (clientTickHooked || legitEvents != null);
+    }
+    private void onSafeAnchorTick(Object c) {
+        if (!safeAnchorTickActive || stopped || c == null) return;
+        try {
+            safeAnchorNativeTick();
+        } catch (Throwable ignored) {}
+    }
+
+    private void onCrystalTick(Object c) {
+        if (!crystalTickActive || crystalFailed || stopped || c == null) return;
+        final long now = System.nanoTime();
+        if (now - crystalLastConfigTime > 200_000_000L) {
+            try { cancelCrystal(crystalKindArg, crystalKeyCodeArg, crystalPhysicalUseArg); } catch (ReflectiveOperationException ignored) {}
+            return;
+        }
+        try {
+            tickCrystalDirect(c, true, true, crystalKindArg, crystalKeyCodeArg, crystalPhysicalUseArg,
+                crystalAutoSwitchArg, crystalRestoreArg, crystalPlaceDelayArg, crystalBreakDelayArg);
+        } catch (Throwable t) {
+            crystalFailed = true;
+            try { cancelCrystal(crystalKindArg, crystalKeyCodeArg, crystalPhysicalUseArg); } catch (Throwable cleanup) { t.addSuppressed(cleanup); }
         }
     }
 
@@ -1252,7 +1390,7 @@ public class WorldBridge {
     private Field anchorCrosshair, anchorSelected, anchorPos, anchorX, anchorY, anchorZ, anchorTicks;
     private Field anchorUseKey, anchorUseCount, anchorRightClicked;
     private Method anchorInventory, anchorStack, anchorEmpty, anchorItem, anchorSync, anchorUsing;
-    private Method anchorStateAt, anchorIsOf, anchorAir, anchorProperty, anchorSide, anchorDx, anchorDy, anchorDz;
+    private Method anchorStateAt, anchorIsOf, anchorReplaceable, anchorProperty, anchorSide, anchorDx, anchorDy, anchorDz;
     private Method anchorGetPos, anchorGetType, anchorGetX, anchorGetY, anchorGetZ, anchorEyeY, anchorRange;
     private Method anchorRaycast, anchorInteract, anchorAccepted, anchorSwing, anchorPlayers, anchorAlive;
     private Method anchorPressed, anchorSetPressed, anchorGetWindow, anchorGetHandle, anchorGlfwMouse, anchorGlfwKey, anchorGlfwScan, anchorGlfwAttrib;
@@ -1293,7 +1431,7 @@ public class WorldBridge {
         anchorFoodComponent = mappedMethod(stack,target >= 12108 ? "method_58694" : "method_57824",Object.class,componentType);
         anchorStateAt = mappedMethod(w,"method_8320",state,pos);
         anchorIsOf = mappedMethod(state,"method_27852",boolean.class,target >= 26100 ? Object.class : block);
-        anchorAir = mappedMethod(state,"method_26215",boolean.class);
+        anchorReplaceable = mappedMethod(state,"method_45474",boolean.class);
         anchorProperty = mappedMethod(state,"method_11654",Comparable.class,load("class_2769"));
         anchorGetPos = mappedMethod(anchorHitType,"method_17777",pos); anchorSide = mappedMethod(anchorHitType,"method_17780",dir);
         anchorGetType = mappedMethod(hit,"method_17783",type);
@@ -1561,7 +1699,8 @@ public class WorldBridge {
                     int z=(int) anchorGetZ.invoke(anchorSupport)+(int) anchorDz.invoke(anchorFace);
                     anchorTarget=anchorPosCtor.newInstance(x,y,z);
                     Object emptyState=anchorStateAt.invoke(w,anchorTarget);
-                    if (emptyState == null || !(boolean) anchorAir.invoke(emptyState)) { finishAnchor(); return; }
+                    // Fire occupies a non-air state but is a valid vanilla placement destination.
+                    if (emptyState == null || !(boolean) anchorReplaceable.invoke(emptyState)) { finishAnchor(); return; }
                 }
                 if (charge >= 0 && flags[3] && !anchorOwned.contains(anchorKey(anchorTarget))) { finishAnchor(); return; }
                 anchorStarted=now; anchorLastTick=-1;
@@ -1590,7 +1729,7 @@ public class WorldBridge {
             if (tick < anchorDueTick) return;
             if (anchorStage == 2) {
                 Object state=anchorStateAt.invoke(w,anchorTarget);
-                if (!anchorHeld(anchorOwnedSlot,anchorItemValue) || state == null || !(boolean) anchorAir.invoke(state)) { finishAnchor(); return; }
+                if (!anchorHeld(anchorOwnedSlot,anchorItemValue) || state == null || !(boolean) anchorReplaceable.invoke(state)) { finishAnchor(); return; }
                 Object hit=anchorHit(anchorSupport,anchorFace); anchorStage=3;
                 if (!anchorUse(c,hit)) finishAnchor(); return;
             }
@@ -1659,6 +1798,8 @@ public class WorldBridge {
     private void onCombatTick(Object c) {
         onTotemTick(c);
         onAnchorLegitTick(c);
+        onSafeAnchorTick(c);
+        onAuraTick(c);
     }
     private void prepareAnchorLegit() throws ReflectiveOperationException {
         if (legitPrepared) return;
@@ -2041,7 +2182,573 @@ public class WorldBridge {
         }
     }
 
-    public void stop() {
+    // Independent place/break controller, with bounded planning on the game thread.
+    // References and design comparison: docs/CRYSTAL_AURA_REDESIGN.md.
+    protected native long auraService(int operation, Object entity, int id, long generation, long epoch);
+    private Class<?> auraLiving, auraPlayerClass, auraMobClass;
+    private Method auraSpectator, auraHealth, auraOpaque, auraSide, auraCamera, auraOffhand;
+    private Method auraArmor, auraAttribute, auraAbsorption, auraEffect, auraAmplifier, auraEquipped;
+    private Method auraEnchantments, auraEnchantEntries, auraEnchantmentId, auraDifficulty, auraDifficultyId, auraAbilities;
+    private Field auraYaw, auraPitch, auraTicks, auraInvulnerable;
+    private Object auraObsidianItem, auraOffHand, auraToughness, auraResistance, auraWeakness, auraStrength;
+    private Object[] auraArmorSlots;
+    private volatile boolean auraActive;
+    private volatile long auraConfigTime;
+    private long auraGeneration, auraEpoch, auraPlaceReady, auraBreakReady, auraDeadline, auraSwitchReady, auraManualPause;
+    private int[] auraConfig, auraBase, auraAimBase;
+    private boolean auraFailed;
+    private Object auraPlayer, auraWorld, auraManager, auraInv, auraTarget, auraCrystal, auraAimVictim;
+    private int auraPhase, auraTargetId=-1, auraOldSlot=-1, auraOwnedSlot=-1;
+    private int auraAimAction=-1, auraAimTick=-1, auraStatus, auraLastTick=-1;
+    private int auraPendingAction=-1, auraPendingSlot=-1;
+    private Object auraPendingVictim;
+    private Object auraPendingHand;
+    private int[] auraPendingBase;
+    private double[] auraPendingAim;
+    private List<Object[]> auraScene=List.of();
+    private final Map<Object,double[]> auraDefenses=new java.util.IdentityHashMap<>();
+    private final Map<Object,Integer> auraBreakAttempts=new java.util.IdentityHashMap<>();
+    private final Map<String,Long> auraRejectedSites=new HashMap<>();
+    private final List<int[]> auraSites=new java.util.ArrayList<>();
+    private int auraSitesTick=-1, auraSiteEvaluations;
+    private double[] auraSitesOrigin;
+    private int auraDifficultyValue=2;
+    private boolean auraSawDamageRejection, auraSawLowDamage, auraSawRetryLimit;
+    private boolean auraWeaponPrepared;
+    private Class<?> auraSwordClass, auraAxeClass;
+    private Method auraItemEntry, auraSwordTagTest;
+    private Object auraSwordTag;
+
+    private void prepareAura() throws ReflectiveOperationException {
+        prepare(3);
+        Class<?> entity=load("class_1297"), entry=load("class_6880"), stack=load("class_1799");
+        auraLiving=load("class_1309"); auraPlayerClass=load("class_1657"); auraMobClass=load("class_1308");
+        auraSpectator=mappedMethod(entity,"method_7325",boolean.class);
+        auraHealth=mappedMethod(auraLiving,"method_6032",float.class);
+        auraOpaque=mappedMethod(load("class_2680"),"method_26225",boolean.class);
+        auraSide=mappedMethod(crystalHitType,"method_17780",load("class_2350"));
+        auraCamera=mappedMethod(clientType,"method_1560",entity);
+        auraOffhand=mappedMethod(auraLiving,"method_6079",stack);
+        auraYaw=mappedField(entity,"field_6031",float.class,false);
+        auraPitch=mappedField(entity,"field_5965",float.class,false);
+        auraTicks=mappedField(entity,"field_6012",int.class,false);
+        auraObsidianItem=mappedField(load("class_1802"),"field_8281",load("class_1792"),true).get(null);
+        auraOffHand=mappedField(load("class_1268"),"field_5810",load("class_1268"),true).get(null);
+        auraArmor=mappedMethod(auraLiving,"method_6096",int.class);
+        auraAttribute=mappedMethod(auraLiving,"method_45325",double.class,entry);
+        auraAbsorption=mappedMethod(auraLiving,"method_6067",float.class);
+        auraEffect=mappedMethod(auraLiving,"method_6112",load("class_1293"),entry);
+        auraAmplifier=mappedMethod(load("class_1293"),"method_5578",int.class);
+        auraToughness=mappedField(load("class_5134"),"field_23725",entry,true).get(null);
+        Class<?> effects=load("class_1294");
+        auraResistance=mappedField(effects,"field_5907",entry,true).get(null);
+        auraWeakness=mappedField(effects,"field_5911",entry,true).get(null);
+        auraStrength=mappedField(effects,"field_5910",entry,true).get(null);
+        Class<?> equipment=load("class_1304");
+        auraEquipped=mappedMethod(auraLiving,"method_6118",stack,equipment);
+        auraArmorSlots=new Object[4]; String[] slots={"field_6166","field_6172","field_6174","field_6169"};
+        for (int i=0;i<4;i++) auraArmorSlots[i]=mappedField(equipment,slots[i],equipment,true).get(null);
+        auraEnchantments=mappedMethod(stack,"method_58657",load("class_9304"));
+        auraEnchantEntries=mappedMethod(load("class_9304"),"method_57539",java.util.Set.class);
+        auraEnchantmentId=mappedMethod(entry,"method_55840",String.class);
+        auraDifficulty=mappedMethod(load("class_638"),"method_8407",load("class_1267"));
+        auraDifficultyId=mappedMethod(load("class_1267"),"method_5461",int.class);
+        auraAbilities=mappedMethod(auraPlayerClass,"method_31549",load("class_1656"));
+        auraInvulnerable=mappedField(load("class_1656"),"field_7480",boolean.class,false);
+        if (auraObsidianItem==null || auraOffHand==null || auraToughness==null || auraResistance==null || auraWeakness==null || auraStrength==null)
+            throw new IllegalStateException("Crystal Aura registry bindings");
+        prepareTickLifecycle();
+    }
+    private boolean auraFlag(int mask) { return (auraConfig[10]&mask)!=0; }
+    private double auraSetting(int index) { return auraConfig[index]/1000.; }
+    private static double auraDistance(double[] a,double[] b) {
+        double x=a[0]-b[0],y=a[1]-b[1],z=a[2]-b[2]; return x*x+y*y+z*z;
+    }
+    private double[] auraPosition(Object entity) throws ReflectiveOperationException {
+        Object pos=crystalPosition.get(entity);
+        double[] p={crystalX.getDouble(pos),crystalY.getDouble(pos),crystalZ.getDouble(pos)};
+        for(double v:p) if(!Double.isFinite(v)) throw new IllegalStateException("Aura nonfinite position");
+        return p;
+    }
+    private double[] auraBox(Object entity) throws ReflectiveOperationException {
+        Object box=crystalBounds.invoke(entity);
+        double[] b={crystalMinX.getDouble(box),crystalMinY.getDouble(box),crystalMinZ.getDouble(box),
+            crystalMaxX.getDouble(box),crystalMaxY.getDouble(box),crystalMaxZ.getDouble(box)};
+        for(double v:b) if(!Double.isFinite(v)) throw new IllegalStateException("Aura nonfinite bounds");
+        for(int i=0;i<3;i++) if(b[i]>=b[i+3]) throw new IllegalStateException("Aura empty bounds");
+        return b;
+    }
+    private static double[] auraCenter(double[] b) { return new double[]{(b[0]+b[3])*.5,(b[1]+b[4])*.5,(b[2]+b[5])*.5}; }
+    private static double auraBoxDistance(double[] p,double[] b) {
+        double sum=0; for(int i=0;i<3;i++) { double d=p[i]-Math.max(b[i],Math.min(p[i],b[i+3])); sum+=d*d; } return sum;
+    }
+    private Object auraRay(double[] from,double[] to) throws ReflectiveOperationException {
+        return crystalRaycast.invoke(auraWorld,crystalRayCtor.newInstance(
+            crystalVecCtor.newInstance(from[0],from[1],from[2]),crystalVecCtor.newInstance(to[0],to[1],to[2]),
+            crystalCollider,crystalNoFluid,auraPlayer));
+    }
+    private boolean auraVisible(double[] from,double[] to) throws ReflectiveOperationException {
+        Object hit=auraRay(from,to); return hit!=null && crystalGetType.invoke(hit)!=crystalBlockType;
+    }
+    private Object auraState(int x,int y,int z) throws ReflectiveOperationException {
+        return crystalStateAt.invoke(auraWorld,crystalPosCtor.newInstance(x,y,z));
+    }
+    private boolean auraBaseReady(int[] base) throws ReflectiveOperationException {
+        Object state=auraState(base[0],base[1],base[2]);
+        return state!=null && ((boolean)crystalIsOf.invoke(state,crystalObsidian) || (boolean)crystalIsOf.invoke(state,crystalBedrock));
+    }
+    private boolean auraAir(int x,int y,int z) throws ReflectiveOperationException {
+        Object state=auraState(x,y,z); return state!=null && (boolean)crystalAir.invoke(state);
+    }
+    private static String auraSiteKey(int[] b) { return b[0]+":"+b[1]+":"+b[2]; }
+    private static boolean auraOverlap(double[] box,int[] b,boolean support) {
+        double bottom=b[1]+(support?0:1),top=bottom+(support?1:2);
+        return box[0]<b[0]+1 && box[3]>b[0] && box[1]<top && box[4]>bottom && box[2]<b[2]+1 && box[5]>b[2];
+    }
+    private boolean auraEmpty(int[] b,boolean support) throws ReflectiveOperationException {
+        double bottom=b[1]+(support?0:1),top=bottom+(support?1:2);
+        Object volume=crystalBoxCtor.newInstance((double)b[0],bottom,(double)b[2],b[0]+1.,top,b[2]+1.);
+        List<?> entities=(List<?>)crystalEntities.invoke(auraWorld,null,volume);
+        if(entities==null || entities.size()>4096 || auraOverlap(auraBox(auraPlayer),b,support)) return false;
+        for(Object e:entities) if((boolean)crystalAlive.invoke(e)) return false;
+        return true;
+    }
+    private boolean auraClear(int[] b,boolean existing) throws ReflectiveOperationException {
+        // Modern EndCrystalItem requires air in the first block, with a 1x2x1
+        // entity query. A second air block is only a legacy 1.12 restriction.
+        return auraAir(b[0],b[1]+1,b[2]) && (existing || (auraAir(b[0],b[1],b[2]) && auraEmpty(b,true))) && auraEmpty(b,false);
+    }
+    private Object auraCrystalAt(int[] b) throws ReflectiveOperationException {
+        double[] spawn={b[0]+.5,b[1]+1.,b[2]+.5};
+        for(Object[] row:auraScene) if(crystalType.isInstance(row[0]) && (boolean)crystalAlive.invoke(row[0]) && auraDistance((double[])row[2],spawn)<.25) return row[0];
+        return null;
+    }
+    private boolean auraHitsTop(Object hit,int[] b) throws ReflectiveOperationException {
+        if(!crystalHitType.isInstance(hit) || crystalGetType.invoke(hit)!=crystalBlockType || auraSide.invoke(hit)!=crystalUp) return false;
+        Object p=crystalGetBlock.invoke(hit);
+        return p!=null && (int)crystalGetX.invoke(p)==b[0] && (int)crystalGetY.invoke(p)==b[1] && (int)crystalGetZ.invoke(p)==b[2];
+    }
+    private static double[] auraTop(int[] b) { return new double[]{b[0]+.5,b[1]+.999,b[2]+.5}; }
+    private boolean auraReachTop(double[] eye,int[] b,double range) throws ReflectiveOperationException {
+        return auraDistance(eye,auraTop(b))<=range*range && auraHitsTop(auraRay(eye,auraTop(b)),b);
+    }
+    private boolean auraEligible(Object e) throws ReflectiveOperationException {
+        if(e==null || e==auraPlayer || !auraLiving.isInstance(e) || !(boolean)crystalAlive.invoke(e) || (boolean)auraSpectator.invoke(e)) return false;
+        boolean player=auraPlayerClass.isInstance(e);
+        if(!(player?auraConfig[0]!=2:auraMobClass.isInstance(e) && auraConfig[0]!=0)) return false;
+        float health=(float)auraHealth.invoke(e); int id=(int)crystalId.invoke(e);
+        return Float.isFinite(health) && health>0 && id>=0 && crystalById.invoke(auraWorld,id)==e &&
+            (!player || auraService(0,e,id,auraGeneration,auraEpoch)!=0);
+    }
+    private boolean auraScan(double[] eye) throws ReflectiveOperationException {
+        double range=Math.max(18,auraSetting(5));
+        Object volume=crystalBoxCtor.newInstance(eye[0]-range,eye[1]-range,eye[2]-range,eye[0]+range,eye[1]+range,eye[2]+range);
+        List<?> entities=(List<?>)crystalEntities.invoke(auraWorld,auraPlayer,volume);
+        if(entities==null || entities.size()>4096) return false;
+        List<Object[]> scene=new java.util.ArrayList<>();
+        for(Object e:entities) if((boolean)crystalAlive.invoke(e)) scene.add(new Object[]{e,auraBox(e),auraPosition(e)});
+        auraScene=scene; return true;
+    }
+    private Object auraChoose(double[] eye) throws ReflectiveOperationException {
+        Object best=null; double nearest=Double.POSITIVE_INFINITY; int bestId=Integer.MAX_VALUE;
+        double range=auraSetting(5);
+        for(Object[] row:auraScene) {
+            Object e=row[0]; if(!auraEligible(e)) continue;
+            double distance=auraBoxDistance(eye,(double[])row[1]); if(distance>range*range) continue;
+            if(e==auraTarget) return e;
+            int id=(int)crystalId.invoke(e);
+            if(distance<nearest || (distance==nearest && id<bestId)) {best=e;nearest=distance;bestId=id;}
+        }
+        return best;
+    }
+    private double[] auraDefense(Object e) throws ReflectiveOperationException {
+        double[] cached=auraDefenses.get(e); if(cached!=null) return cached;
+        double armor=(int)auraArmor.invoke(e),tough=(double)auraAttribute.invoke(e,auraToughness);
+        float health=(float)auraHealth.invoke(e),absorption=(float)auraAbsorption.invoke(e);
+        Object resistance=auraEffect.invoke(e,auraResistance);
+        int level=resistance==null?-1:(int)auraAmplifier.invoke(resistance),protection=0;
+        for(Object equipment:auraArmorSlots) {
+            Object stack=auraEquipped.invoke(e,equipment); if(stack==null || (boolean)crystalEmpty.invoke(stack)) continue;
+            Object component=auraEnchantments.invoke(stack);
+            java.util.Set<?> entries=(java.util.Set<?>)auraEnchantEntries.invoke(component);
+            if(entries.size()>256) throw new IllegalStateException("Aura enchantment limit");
+            for(Object value:entries) {
+                Map.Entry<?,?> entry=(Map.Entry<?,?>)value;
+                String id=(String)auraEnchantmentId.invoke(entry.getKey());
+                int amount=Math.max(0,Math.min(255,((Number)entry.getValue()).intValue()));
+                if("minecraft:protection".equals(id)) protection+=amount;
+                if("minecraft:blast_protection".equals(id)) protection+=2*amount;
+            }
+        }
+        boolean invulnerable=false;
+        if(auraPlayerClass.isInstance(e)) {Object abilities=auraAbilities.invoke(e); invulnerable=abilities!=null && auraInvulnerable.getBoolean(abilities);}
+        if(!Double.isFinite(tough) || !Float.isFinite(health) || !Float.isFinite(absorption)) throw new IllegalStateException("Aura defense values");
+        double[] result={armor,Math.max(0,tough),level,Math.min(20,protection),health+absorption,invulnerable?1:0};
+        auraDefenses.put(e,result); return result;
+    }
+    private static boolean auraSegmentBox(double[] from,double[] to,int[] base) {
+        double enter=0,leave=1;
+        for(int i=0;i<3;i++) {
+            double delta=to[i]-from[i];
+            if(Math.abs(delta)<1e-12) {if(from[i]<=base[i] || from[i]>=base[i]+1.) return false;continue;}
+            double a=(base[i]-from[i])/delta,b=(base[i]+1.-from[i])/delta;
+            enter=Math.max(enter,Math.min(a,b)); leave=Math.min(leave,Math.max(a,b));
+            if(enter>=leave) return false;
+        }
+        return leave>1e-6 && enter<1-1e-6;
+    }
+    private double auraExposure(Object e,double[] explosion,int[] virtualSupport) throws ReflectiveOperationException {
+        double[] box=auraBox(e);
+        double sx=1/(2*(box[3]-box[0])+1),sy=1/(2*(box[4]-box[1])+1),sz=1/(2*(box[5]-box[2])+1);
+        double ox=(1-Math.floor(1/sx)*sx)*.5,oz=(1-Math.floor(1/sz)*sz)*.5;
+        int clear=0,total=0;
+        // Vanilla sampling, bounded for nonstandard oversized entities.
+        int nx=Math.min(16,(int)Math.floor(1/sx)+1),ny=Math.min(16,(int)Math.floor(1/sy)+1),nz=Math.min(16,(int)Math.floor(1/sz)+1);
+        if(nx*ny*nz>256) {nx=3;ny=5;nz=3;sx=.5;sy=.25;sz=.5;ox=oz=0;}
+        for(int x=0;x<nx;x++) for(int y=0;y<ny;y++) for(int z=0;z<nz;z++) {
+            double[] sample={box[0]+(box[3]-box[0])*Math.min(1,x*sx)+ox,box[1]+(box[4]-box[1])*Math.min(1,y*sy),box[2]+(box[5]-box[2])*Math.min(1,z*sz)+oz};
+            ++total;
+            if((virtualSupport==null || !auraSegmentBox(sample,explosion,virtualSupport)) && auraVisible(sample,explosion)) ++clear;
+        }
+        return total==0?0:(double)clear/total;
+    }
+    private double auraDamage(Object e,double[] explosion,int[] virtualSupport) throws ReflectiveOperationException {
+        double[] defense=auraDefense(e); if(defense[5]!=0) return 0;
+        double distance=Math.sqrt(auraDistance(auraPosition(e),explosion)); if(distance>12) return 0;
+        double impact=(1-distance/12)*auraExposure(e,explosion,virtualSupport);
+        if(impact<=0) return 0;
+        double damage=(impact*impact+impact)*42+1;
+        if(auraPlayerClass.isInstance(e)) {
+            if(auraDifficultyValue==0) return 0;
+            if(auraDifficultyValue==1) damage=Math.min(damage,damage*.5+1);
+            if(auraDifficultyValue==3) damage*=1.5;
+        }
+        double armor=Math.max(defense[0]*.2,Math.min(20,defense[0]-damage/(2+defense[1]/4)));
+        damage*=1-armor/25;
+        if(defense[2]>=0) damage*=Math.max(0,1-.2*(defense[2]+1));
+        damage*=1-defense[3]/25;
+        return Math.max(0,damage);
+    }
+    private double auraScore(double[] explosion,int[] virtualSupport) throws ReflectiveOperationException {
+        double target=auraDamage(auraTarget,explosion,virtualSupport);
+        if(target<auraSetting(8)) {auraSawLowDamage=true;return -1;}
+        double self=auraDamage(auraPlayer,explosion,virtualSupport);
+        if(auraFlag(32)) {
+            if(self>auraSetting(9) || self>=auraDefense(auraPlayer)[4]) {auraSawDamageRejection=true;return -1;}
+            for(Object[] row:auraScene) if(auraPlayerClass.isInstance(row[0]) && auraService(5,row[0],0,auraGeneration,auraEpoch)!=0) {
+                double friend=auraDamage(row[0],explosion,virtualSupport);
+                if(friend>auraSetting(9) || friend>=auraDefense(row[0])[4]) {auraSawDamageRejection=true;return -1;}
+            }
+        }
+        return Math.max(.001,target-self*.1);
+    }
+    private int auraItemSlot(Object wanted) throws ReflectiveOperationException {
+        int selected=crystalSelected.getInt(auraInv);
+        if(selected>=0 && selected<9 && auraHolds(crystalStack.invoke(auraInv,selected),wanted)) return selected;
+        for(int i=0;i<9;i++) if(auraHolds(crystalStack.invoke(auraInv,i),wanted)) return i;
+        return -1;
+    }
+    private boolean auraHolds(Object stack,Object item) throws ReflectiveOperationException {
+        return stack!=null && !(boolean)crystalEmpty.invoke(stack) && crystalItem.invoke(stack)==item;
+    }
+    private void prepareAuraWeapons() throws ReflectiveOperationException {
+        if(auraWeaponPrepared) return;
+        auraAxeClass=load("class_1743");
+        if(target<12108) auraSwordClass=load("class_1829");
+        else {
+            Class<?> reference=load("class_6880$class_6883"),tag=load("class_6862");
+            auraItemEntry=mappedMethod(load("class_1792"),"method_40131",reference);
+            auraSwordTagTest=mappedMethod(reference,"method_40220",boolean.class,tag);
+            auraSwordTag=mappedField(load("class_3489"),"field_42611",tag,true).get(null);
+        }
+        auraWeaponPrepared=true;
+    }
+    private boolean auraWeaknessWeapon(Object stack) throws ReflectiveOperationException {
+        if(stack==null || (boolean)crystalEmpty.invoke(stack)) return false;
+        Object item=crystalItem.invoke(stack);
+        if(auraAxeClass.isInstance(item)) return true;
+        if(auraSwordClass!=null) return auraSwordClass.isInstance(item);
+        Object entry=auraItemEntry.invoke(item);
+        return entry!=null && (boolean)auraSwordTagTest.invoke(entry,auraSwordTag);
+    }
+    private int auraWeaknessSlot() throws ReflectiveOperationException {
+        Object weakness=auraEffect.invoke(auraPlayer,auraWeakness),strength=auraEffect.invoke(auraPlayer,auraStrength);
+        if(weakness==null || (strength!=null && (int)auraAmplifier.invoke(strength)>(int)auraAmplifier.invoke(weakness))) return crystalSelected.getInt(auraInv);
+        prepareAuraWeapons();
+        int selected=crystalSelected.getInt(auraInv);
+        if(auraWeaknessWeapon(crystalStack.invoke(auraInv,selected))) return selected;
+        if(auraFlag(4)) for(int i=0;i<9;i++) if(auraWeaknessWeapon(crystalStack.invoke(auraInv,i))) return i;
+        return -1;
+    }
+    private void auraClearAim() {auraAimAction=-1;auraAimTick=-1;auraAimVictim=null;auraAimBase=null;}
+    private void auraCycle() {
+        auraPhase=0;auraTarget=null;auraTargetId=-1;auraBase=null;auraCrystal=null;
+        auraClearAim();auraPendingAction=-1;auraPendingVictim=null;auraPendingBase=null;auraPendingAim=null;auraPendingHand=null;
+        auraSites.clear();auraSitesTick=-1;auraSitesOrigin=null;
+    }
+    public synchronized void cancelAura() throws ReflectiveOperationException {
+        if(prepared[8] && client()==null) return;
+        auraActive=false;
+        Object p=auraPlayer,w=auraWorld,m=auraManager,inv=auraInv;
+        int old=auraOldSlot,owned=auraOwnedSlot; boolean restore=auraConfig!=null && auraFlag(8);
+        auraPlayer=auraWorld=auraManager=auraInv=null;auraOldSlot=auraOwnedSlot=-1;auraLastTick=-1;
+        auraStatus=0;auraCycle();auraScene=List.of();auraDefenses.clear();auraBreakAttempts.clear();auraRejectedSites.clear();
+        auraPlaceReady=auraBreakReady=auraDeadline=auraSwitchReady=0;
+        if(prepared[8]) auraService(2,null,-1,0,0);
+        if(!prepared[8] || !restore || old<0 || old>8 || inv==null) return;
+        Object c=client();
+        if(c!=null && player.get(c)==p && world.get(c)==w && manager.get(c)==m && crystalInventory.invoke(p)==inv && crystalSelected.getInt(inv)==owned) {
+            crystalSelected.setInt(inv,old);crystalSync.invoke(m);
+        }
+    }
+    public synchronized int[] tickAura(boolean active,long generation,int[] config) throws ReflectiveOperationException {
+        if(!active || auraFailed || stopped) {cancelAura();return new int[]{-1,0,auraFailed?4:0};}
+        Object c=client();if(c==null) return new int[]{auraTargetId,auraPhase,auraStatus};
+        prepare(8);
+        if(config==null || config.length!=11 || config[0]<0 || config[0]>2 || config[1]<50 || config[1]>300 ||
+            config[2]<500 || config[2]>3000 || config[3]<0 || config[3]>1000 || config[4]<0 || config[4]>1000 ||
+            config[5]<1000 || config[5]>12000 || config[6]<1000 || config[6]>6000 || config[7]<1000 || config[7]>6000 ||
+            config[8]<0 || config[8]>36000 || config[9]<0 || config[9]>36000 || config[10]<0 || config[10]>63)
+            throw new IllegalArgumentException("Aura config");
+        if(generation!=auraGeneration || !java.util.Arrays.equals(config,auraConfig)) {
+            cancelAura();auraConfig=config.clone();auraGeneration=generation;
+        }
+        auraConfigTime=System.nanoTime();auraActive=true;
+        if(!clientTickHooked) onAuraTick(c);
+        return new int[]{auraTargetId,auraPhase,auraStatus};
+    }
+    private boolean auraSession(Object c) throws ReflectiveOperationException {
+        return c!=null && auraActive && !auraFailed && System.nanoTime()-auraConfigTime<=500_000_000L &&
+            live(c,auraPlayer,auraWorld) && player.get(c)==auraPlayer && world.get(c)==auraWorld && manager.get(c)==auraManager &&
+            crystalInventory.invoke(auraPlayer)==auraInv && auraService(4,null,-1,auraGeneration,auraEpoch)!=0;
+    }
+    private boolean auraPrepare(int slot,double[] eye,double[] to,int action,Object victim,int[] base,long now) throws ReflectiveOperationException {
+        int selected=crystalSelected.getInt(auraInv);
+        if(slot<0 || slot>8 || selected<0 || selected>8) return false;
+        if(selected!=slot && !auraFlag(4)) {auraStatus=8;return false;}
+        if(auraOldSlot<0) auraOldSlot=selected;
+        boolean changed=false;
+        if(selected!=slot) {
+            auraOwnedSlot=slot;crystalSelected.setInt(auraInv,slot);crystalSync.invoke(auraManager);
+            auraSwitchReady=now+auraConfig[1]*1_000_000L;changed=true;
+        }
+        auraOwnedSlot=slot;
+        int tick=auraTicks.getInt(auraPlayer);
+        if(auraAimAction!=action || auraAimVictim!=victim || !java.util.Arrays.equals(auraAimBase,base)) {
+            auraAimAction=action;auraAimVictim=victim;auraAimBase=base==null?null:base.clone();auraAimTick=tick;changed=true;
+        }
+        double dx=to[0]-eye[0],dy=to[1]-eye[1],dz=to[2]-eye[2];
+        float yaw=(float)(Math.toDegrees(Math.atan2(dz,dx))-90),pitch=(float)-Math.toDegrees(Math.atan2(dy,Math.hypot(dx,dz)));
+        float oldYaw=auraYaw.getFloat(auraPlayer),oldPitch=auraPitch.getFloat(auraPlayer);
+        if(!Float.isFinite(oldYaw) || !Float.isFinite(oldPitch)) return false;
+        if(Math.abs(Math.IEEEremainder(oldYaw-yaw,360.))>.25 || Math.abs(oldPitch-pitch)>.25) {
+            auraYaw.setFloat(auraPlayer,yaw);auraPitch.setFloat(auraPlayer,Math.max(-90,Math.min(90,pitch)));
+            auraAimTick=tick;changed=true;
+        }
+        if(changed || now<auraSwitchReady || tick<=auraAimTick) {auraStatus=5;return false;}
+        return true;
+    }
+    private void auraCacheSites(double[] eye,double blockRange) throws ReflectiveOperationException {
+        int tick=auraTicks.getInt(auraPlayer);
+        if(auraSitesTick>=0 && tick-auraSitesTick<4 && auraSitesOrigin!=null && auraDistance(eye,auraSitesOrigin)<.25) return;
+        auraSites.clear();auraSitesTick=tick;auraSitesOrigin=eye.clone();
+        double[] target=auraPosition(auraTarget);int range=(int)Math.ceil(blockRange);
+        int cx=(int)Math.floor(eye[0]),cy=(int)Math.floor(eye[1]),cz=(int)Math.floor(eye[2]);
+        if(Math.abs(eye[0])>30000000 || Math.abs(eye[1])>30000000 || Math.abs(eye[2])>30000000) return;
+        for(int x=cx-range;x<=cx+range;x++) for(int y=cy-range;y<=cy+range;y++) for(int z=cz-range;z<=cz+range;z++) {
+            int[] b={x,y,z};if(auraDistance(new double[]{x+.5,y+1.,z+.5},target)>36) continue;
+            if(auraDistance(eye,auraTop(b))>blockRange*blockRange+1) continue;
+            boolean existing=auraBaseReady(b);
+            if(!existing && (!auraFlag(16) || !auraAir(x,y,z))) continue;
+            auraSites.add(new int[]{x,y,z,existing?0:1});
+        }
+        auraSites.sort(java.util.Comparator.<int[]>comparingDouble(b -> b[3]*4+auraDistance(new double[]{b[0]+.5,b[1]+1.,b[2]+.5},target)));
+    }
+    private double[] auraCrystalAim(double[] eye,double[] box,double range) throws ReflectiveOperationException {
+        double[] near=new double[3];
+        for(int i=0;i<3;i++) near[i]=Math.max(box[i]+.01,Math.min(eye[i],box[i+3]-.01));
+        double[] center=auraCenter(box);
+        double[][] points={near,center,new double[]{center[0],box[1]+.05,center[2]},
+            new double[]{center[0],box[4]-.05,center[2]}};
+        for(double[] point:points) if(auraDistance(eye,point)<=range*range && auraVisible(eye,point)) return point;
+        return null;
+    }
+    private Object auraBestCrystal(double[] eye,double range) throws ReflectiveOperationException {
+        Object best=null;double score=-1;int evaluated=0;
+        if(auraAimAction==3 && auraAimVictim!=null) for(Object[] row:auraScene) if(row[0]==auraAimVictim) {
+            if(auraBreakAttempts.getOrDefault(row[0],0)<3 && auraBoxDistance(eye,(double[])row[1])<=range*range &&
+                auraCrystalAim(eye,(double[])row[1],range)!=null) {
+                ++evaluated;if(auraScore((double[])row[2],null)>=0) return row[0];
+            }
+            break;
+        }
+        for(Object[] row:auraScene) {
+            if(evaluated>=32) break;
+            Object e=row[0];if(!crystalType.isInstance(e) || auraBoxDistance(eye,(double[])row[1])>range*range) continue;
+            if(auraBreakAttempts.getOrDefault(e,0)>=3) {auraSawRetryLimit=true;continue;}
+            if(auraCrystalAim(eye,(double[])row[1],range)==null) continue;
+            double value=auraScore((double[])row[2],null);
+            if(value>score) {score=value;best=e;}
+            if(++evaluated>=32) break;
+        }
+        return best;
+    }
+    private double auraSiteScore(int[] b,double[] eye,double blockRange,double entityRange,long now) throws ReflectiveOperationException {
+        if(auraRejectedSites.getOrDefault(auraSiteKey(b),0L)>now) return -1;
+        boolean existing=auraBaseReady(b);
+        if(!existing && (!auraFlag(16) || auraItemSlot(auraObsidianItem)<0)) return -1;
+        int[] clicked={b[0],b[1]-(existing?0:1),b[2]};
+        if(!existing) {Object state=auraState(clicked[0],clicked[1],clicked[2]);if(state==null || !(boolean)auraOpaque.invoke(state)) return -1;}
+        if(!auraClear(b,existing) || !auraReachTop(eye,clicked,blockRange)) return -1;
+        double[] spawn={b[0]+.5,b[1]+1.,b[2]+.5};
+        double[] crystalBox={b[0]-.5,b[1]+1.,b[2]-.5,b[0]+1.5,b[1]+3.,b[2]+1.5};
+        if(auraFlag(2) && auraBoxDistance(eye,crystalBox)>entityRange*entityRange) return -1;
+        if(auraSiteEvaluations>=16) return -1;
+        ++auraSiteEvaluations;
+        return auraScore(spawn,existing?null:b);
+    }
+    private int[] auraPlan(double[] eye,double blockRange,double entityRange,long now) throws ReflectiveOperationException {
+        int[] best=null;double score=-1;auraSiteEvaluations=0;
+        // A moving target must not continually restart an already valid aim.
+        if((auraAimAction==1 || auraAimAction==2) && auraAimBase!=null &&
+            auraSiteScore(auraAimBase,eye,blockRange,entityRange,now)>=0) return auraAimBase.clone();
+        auraCacheSites(eye,blockRange);
+        for(int[] candidate:auraSites) {
+            if(auraSiteEvaluations>=16) break;
+            int[] b={candidate[0],candidate[1],candidate[2]};
+            double value=auraSiteScore(b,eye,blockRange,entityRange,now);
+            if(value<0) continue;
+            boolean existing=auraBaseReady(b);
+            // Prefer an existing base at equal damage, instead of needless support.
+            if(value>=0 && (!existing)) value-=.01;
+            if(value>score) {score=value;best=b;}
+        }
+        return best;
+    }
+    // Synchronous callback under the native shared combat lock; all final game
+    // validation and vanilla actions remain here, with no queued click replay.
+    private boolean executeAuraAction() throws ReflectiveOperationException {
+        int action=auraPendingAction,slot=auraPendingSlot;Object victim=auraPendingVictim,hand=auraPendingHand;
+        int[] base=auraPendingBase;double[] aim=auraPendingAim;
+        auraPendingAction=-1;
+        Object c=client();
+        if(action<1 || action>3 || !auraSession(c) || !auraEligible(auraTarget) || auraCamera.invoke(c)!=auraPlayer ||
+            crystalSelected.getInt(auraInv)!=slot || (boolean)crystalUsing.invoke(auraPlayer)) return false;
+        auraDefenses.clear();
+        double[] eye=auraPosition(auraPlayer);eye[1]=(double)crystalEyeY.invoke(auraPlayer);
+        double er=Math.min(auraSetting(7),(double)crystalEntityRange.invoke(auraPlayer));
+        double br=Math.min(auraSetting(6),(double)crystalBlockRange.invoke(auraPlayer));
+        if(!Double.isFinite(eye[1]) || !Double.isFinite(er) || !Double.isFinite(br) || er<=0 || br<=0) return false;
+        if(action==3) {
+            if(!auraFlag(2) || victim==null || !crystalType.isInstance(victim) || !(boolean)crystalAlive.invoke(victim) ||
+                crystalById.invoke(auraWorld,(int)crystalId.invoke(victim))!=victim || auraBoxDistance(eye,auraBox(victim))>er*er ||
+                !auraVisible(eye,aim) || auraScore(auraPosition(victim),null)<0 || auraWeaknessSlot()!=slot) return false;
+            crystalAttack.invoke(auraManager,auraPlayer,victim);crystalSwing.invoke(auraPlayer,crystalHand);
+            return true;
+        }
+        if(!auraFlag(1) || base==null || hand==null) return false;
+        boolean support=action==1;
+        int[] clicked={base[0],base[1]-(support?1:0),base[2]};
+        if(!(support?auraAir(base[0],base[1],base[2]):auraBaseReady(base)) || !auraClear(base,!support) || !auraReachTop(eye,clicked,br)) return false;
+        if(support) {Object state=auraState(clicked[0],clicked[1],clicked[2]);if(state==null || !(boolean)auraOpaque.invoke(state)) return false;}
+        Object stack=hand==auraOffHand?auraOffhand.invoke(auraPlayer):crystalStack.invoke(auraInv,slot);
+        if(!auraHolds(stack,support?auraObsidianItem:crystalItemValue) || auraScore(new double[]{base[0]+.5,base[1]+1.,base[2]+.5},support?base:null)<0) return false;
+        double[] top=auraTop(clicked);
+        Object hit=crystalHitCtor.newInstance(crystalVecCtor.newInstance(top[0],top[1],top[2]),crystalUp,
+            crystalPosCtor.newInstance(clicked[0],clicked[1],clicked[2]),false);
+        Object result=crystalPlace.invoke(auraManager,auraPlayer,hand,hit);
+        boolean accepted=result!=null && (boolean)crystalAccepted.invoke(result);
+        if(accepted) crystalSwing.invoke(auraPlayer,hand);
+        return accepted;
+    }
+    private void auraFinishWait() {auraPhase=0;auraBase=null;auraCrystal=null;auraClearAim();}
+    private synchronized void onAuraTick(Object c) {
+        if(!auraActive || auraFailed || stopped) return;
+        try {runAuraTick(c);}
+        catch(Throwable error) {
+            auraFailed=true;
+            try {cancelAura();} catch(Throwable cleanup) {error.addSuppressed(cleanup);}
+            auraStatus=4;System.err.println("[OneStep] Crystal Aura Java controller suspended");error.printStackTrace();
+        }
+    }
+    private void runAuraTick(Object c) throws ReflectiveOperationException {
+        if(c!=client() || auraService(4,null,-1,auraGeneration,auraEpoch)==0 || System.nanoTime()-auraConfigTime>500_000_000L) {cancelAura();return;}
+        Object p=player.get(c),w=world.get(c),m=manager.get(c);
+        if(!live(c,p,w) || m==null || auraCamera.invoke(c)!=p) {cancelAura();return;}
+        Object inv=crystalInventory.invoke(p);
+        if(p!=auraPlayer || w!=auraWorld || m!=auraManager || inv!=auraInv) {
+            auraService(2,null,-1,0,0);auraCycle();auraOldSlot=auraOwnedSlot=-1;
+            auraBreakAttempts.clear();auraRejectedSites.clear();auraPlaceReady=auraBreakReady=0;
+            auraPlayer=p;auraWorld=w;auraManager=m;auraInv=inv;auraLastTick=-1;auraEpoch=next();if(auraEpoch==0) return;
+        }
+        int tick=auraTicks.getInt(p);if(tick==auraLastTick) return;auraLastTick=tick;
+        long now=System.nanoTime();if(now<auraManualPause) {auraStatus=9;return;}
+        int selected=crystalSelected.getInt(inv);if(selected<0 || selected>8) {cancelAura();return;}
+        if(auraOwnedSlot>=0 && selected!=auraOwnedSlot) {cancelAura();auraManualPause=now+300_000_000L;auraStatus=9;return;}
+        if((boolean)crystalUsing.invoke(p)) {cancelAura();auraStatus=3;return;}
+        double[] eye=auraPosition(p);eye[1]=(double)crystalEyeY.invoke(p);
+        double er=Math.min(auraSetting(7),(double)crystalEntityRange.invoke(p)),br=Math.min(auraSetting(6),(double)crystalBlockRange.invoke(p));
+        if(!Double.isFinite(eye[1]) || !Double.isFinite(er) || !Double.isFinite(br) || er<=0 || br<=0 || !auraScan(eye)) {cancelAura();return;}
+        Object chosen=auraChoose(eye);if(chosen==null) {cancelAura();return;}
+        if(chosen!=auraTarget) {auraCycle();auraTarget=chosen;auraTargetId=(int)crystalId.invoke(chosen);}
+        if(auraService(1,auraTarget,auraTargetId,auraGeneration,auraEpoch)==0) {cancelAura();auraStatus=3;return;}
+        auraDefenses.clear();auraSawDamageRejection=auraSawLowDamage=auraSawRetryLimit=false;auraStatus=0;
+        Object difficulty=auraDifficulty.invoke(w);auraDifficultyValue=difficulty==null?2:(int)auraDifficultyId.invoke(difficulty);
+        auraRejectedSites.entrySet().removeIf(entry -> entry.getValue()<=now);
+        java.util.Set<Object> liveEntities=java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        for(Object[] row:auraScene) liveEntities.add(row[0]);
+        auraBreakAttempts.keySet().removeIf(e -> !liveEntities.contains(e));
+        if(auraBreakAttempts.size()>128) {auraStatus=11;return;}
+        if(auraPhase==2) {
+            if(auraBaseReady(auraBase)) auraFinishWait();
+            else if(now>=auraDeadline) {auraRejectedSites.put(auraSiteKey(auraBase),now+500_000_000L);auraFinishWait();auraStatus=10;return;}
+            else {auraStatus=6;return;}
+        } else if(auraPhase==4) {
+            if(auraCrystalAt(auraBase)!=null) auraFinishWait();
+            else if(now>=auraDeadline) {auraRejectedSites.put(auraSiteKey(auraBase),now+500_000_000L);auraFinishWait();auraStatus=10;return;}
+            else {auraStatus=6;return;}
+        } else if(auraPhase==6) {
+            Object live=crystalById.invoke(w,(int)crystalId.invoke(auraCrystal));
+            if(live==null || !(boolean)crystalAlive.invoke(auraCrystal)) auraFinishWait();
+            else if(live!=auraCrystal) {auraFinishWait();auraStatus=10;return;}
+            else if(now>=auraDeadline) {auraFinishWait();auraStatus=10;return;}
+            else {auraStatus=6;return;}
+        }
+        Object victim=auraFlag(2) && now>=auraBreakReady?auraBestCrystal(eye,er):null;
+        int action=-1,slot=selected;Object hand=crystalHand;int[] base=null;double[] aim=null;
+        if(victim!=null) {
+            slot=auraWeaknessSlot();if(slot<0) {auraStatus=12;return;}
+            action=3;aim=auraCrystalAim(eye,auraBox(victim),er);auraPhase=5;
+        } else if(auraFlag(1) && now>=auraPlaceReady) {
+            boolean offhand=auraHolds(auraOffhand.invoke(p),crystalItemValue);
+            int crystals=auraItemSlot(crystalItemValue);
+            if(!offhand && crystals<0) {auraStatus=1;return;}
+            base=auraPlan(eye,br,er,now);
+            if(base==null) {auraStatus=auraSawDamageRejection?7:auraSawLowDamage?13:2;return;}
+            boolean support=!auraBaseReady(base);action=support?1:2;
+            slot=support?auraItemSlot(auraObsidianItem):offhand?selected:crystals;
+            hand=!support && offhand?auraOffHand:crystalHand;
+            int[] clicked={base[0],base[1]-(support?1:0),base[2]};aim=auraTop(clicked);auraPhase=support?1:3;
+        } else {auraStatus=auraSawDamageRejection?7:auraSawLowDamage?13:auraSawRetryLimit?11:0;return;}
+        if(!auraPrepare(slot,eye,aim,action,victim,base,now)) return;
+        auraPendingAction=action;auraPendingSlot=slot;auraPendingVictim=victim;auraPendingBase=base;auraPendingAim=aim;auraPendingHand=hand;
+        boolean submitted;
+        try {submitted=auraService(3,auraTarget,auraTargetId,auraGeneration,auraEpoch)!=0;}
+        finally {auraPendingAction=-1;auraPendingVictim=null;auraPendingBase=null;auraPendingAim=null;auraPendingHand=null;}
+        if(action==3) auraBreakReady=now+Math.max(50,auraConfig[4])*1_000_000L;
+        else auraPlaceReady=now+Math.max(50,auraConfig[3])*1_000_000L;
+        if(submitted) {
+            auraPhase=action==1?2:action==2?4:6;auraBase=base;auraCrystal=victim;auraDeadline=now+auraConfig[2]*1_000_000L;
+            if(action==3) auraBreakAttempts.put(victim,auraBreakAttempts.getOrDefault(victim,0)+1);
+            auraStatus=6;
+        } else {auraPhase=0;auraStatus=10;}
+    }
+
+    public synchronized void stop() {
+        try { cancelAura(); } catch (ReflectiveOperationException ignored) {}
+        auraActive=false; auraPlayer=auraWorld=auraManager=auraInv=null; auraCycle();
+        auraScene=List.of();auraDefenses.clear();auraBreakAttempts.clear();auraRejectedSites.clear();
+        safeAnchorTickActive=false;
         cancelTotem();
         legitActive=false; legitFakeUse=false; legitPulses.clear(); legitUseOwner=null; legitPulseMouse=null;
         if (legitEvents != null) try { legitStopEvents.invoke(null,this); } catch (ReflectiveOperationException ignored) {}
