@@ -23,7 +23,7 @@ std::string modules::export_public_config()
     return output + "]}";
 }
 
-bool modules::apply_public_config(const std::string& payload, std::string& message)
+bool modules::apply_public_config(const std::string& payload, std::string& message, bool restore_keybinds)
 {
     using config_json::kind;
     const auto document = config_json::parse(payload);
@@ -151,7 +151,7 @@ bool modules::apply_public_config(const std::string& payload, std::string& messa
     }
     for (const auto& item : pending) {
         item.target->enabled = item.enabled;
-        item.target->set_keybind(item.keybind);
+        if (restore_keybinds) item.target->set_keybind(item.keybind);
     }
     message = std::to_string(pending.size()) + " module settings loaded.";
     return true;

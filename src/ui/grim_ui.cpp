@@ -1208,6 +1208,7 @@ void gui::grim::render(const ImGuiViewport* viewport, const page_callbacks& call
             state.current != page::themes && state.current != page::hud && state.current != page::keybinds)))
             render_module_settings(ImVec2(settings_box.x, settings_box.y), main_size.y, settings_box.width);
     }
+    gui::keybinds_page::render_storage_consent();
     ImGui::End();
     ImGui::PopStyleVar(2);
     const bool popup_open = ImGui::IsPopupOpen(nullptr, popup_flags);

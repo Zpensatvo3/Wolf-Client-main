@@ -78,6 +78,10 @@ int main()
     assert(a.count == 7 && a.enabled && a.get_keybind() == 65);
     assert(modules::apply_public_config("{\"version\":3," + saved.substr(1), message));
     assert(modules::export_public_config() == saved);
+    a.set_keybind(66);
+    assert(modules::apply_public_config(saved, message, false));
+    assert(a.get_keybind() == 66); // Loading a local profile must not reset session bindings.
+    a.set_keybind(65);
 
     for (const std::string invalid : {
         "", "{}", "[]", "{\"modules\":[]}", "{\"modules\":[", "{\"modules\":[]}garbage",

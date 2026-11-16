@@ -42,6 +42,22 @@ namespace
         if (!found || found->type != json::kind::string) throw std::runtime_error("Invalid profile metadata.");
         return found->text;
     }
+    void write_profile(const std::filesystem::path& destination, const std::string& text)
+    {
+        auto temporary = destination; temporary += ".tmp";
+        if (std::filesystem::is_symlink(temporary)) throw std::runtime_error("Invalid temporary profile path.");
+        {
+            std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
+            stream.write(text.data(), static_cast<std::streamsize>(text.size())); stream.close();
+            if (!stream) throw std::runtime_error("Could not save local profile.");
+        }
+#ifdef _WIN32
+        if (!MoveFileExW(temporary.c_str(), destination.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+            throw std::runtime_error("Could not replace local profile.");
+#else
+        std::filesystem::rename(temporary, destination);
+#endif
+    }
     void refresh_entries()
     {
         std::vector<configs::public_config> entries;
@@ -51,6 +67,17 @@ namespace
             const auto text = read(entry.path());
             const auto document = json::parse(text);
             if (!document) throw std::runtime_error("A local profile contains invalid JSON.");
+            const auto original_payload = field(*document, "payload");
+            const auto clean_payload = json::without_keybinds(original_payload);
+            if (!clean_payload) throw std::runtime_error("Invalid profile payload.");
+            if (*clean_payload != original_payload) {
+                std::string clean = "{";
+                for (const auto& [key, value] : document->members) {
+                    if (clean.size() > 1) clean += ',';
+                    clean += json_string(key) + ':' + (key == "payload" ? json_string(*clean_payload) : std::string(value.raw));
+                }
+                write_profile(entry.path(), clean + '}');
+            }
             const auto* id = document->find("id");
             const auto number = id ? id->integer() : std::nullopt;
             if (!number || *number <= 0 || file(*number).filename() != entry.path().filename())
@@ -115,8 +142,9 @@ void configs::publish(int id, const std::string& name, const std::string& descri
 {
     operation([&] {
         const auto parsed = json::parse(payload);
+        const auto clean_payload = json::without_keybinds(payload);
         const auto* list = parsed ? parsed->find("modules") : nullptr;
-        if (!list || list->type != json::kind::array || name.empty() || name.size() > 128 ||
+        if (!clean_payload || !list || list->type != json::kind::array || name.empty() || name.size() > 128 ||
             description.size() > 4096 || author_name.size() > 128 || module_count < 0 || module_count > 128)
             throw std::runtime_error("Invalid local profile.");
         refresh_entries();
@@ -145,23 +173,9 @@ void configs::publish(int id, const std::string& name, const std::string& descri
         const auto text = "{\"id\":" + std::to_string(id) + ",\"name\":" + json_string(name) +
             ",\"description\":" + json_string(description) + ",\"author_name\":" + json_string(author_name) +
             ",\"created_at\":" + json_string(created) + ",\"updated_at\":" + json_string(stamp) +
-            ",\"module_count\":" + std::to_string(module_count) + ",\"payload\":" + json_string(payload) + "}";
+            ",\"module_count\":" + std::to_string(module_count) + ",\"payload\":" + json_string(*clean_payload) + "}";
         if (text.size() > maximum_bytes) throw std::runtime_error("Profile exceeds the 96 KB limit.");
-        const auto destination = file(id);
-        auto temporary = destination; temporary += ".tmp";
-        if (std::filesystem::is_symlink(temporary)) throw std::runtime_error("Invalid temporary profile path.");
-        {
-            std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
-            stream.write(text.data(), static_cast<std::streamsize>(text.size()));
-            stream.close();
-            if (!stream) throw std::runtime_error("Could not save local profile.");
-        }
-#ifdef _WIN32
-        if (!MoveFileExW(temporary.c_str(), destination.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
-            throw std::runtime_error("Could not replace local profile.");
-#else
-        std::filesystem::rename(temporary, destination);
-#endif
+        write_profile(file(id), text);
         refresh_entries();
         state.status = "Local profile saved.";
     });

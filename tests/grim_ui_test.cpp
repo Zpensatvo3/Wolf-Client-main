@@ -144,9 +144,9 @@ namespace {
         const auto* descriptor = platform::keys::find(code); assert(descriptor);
         const auto* surface = active_window("##keybinds_surface");
         const float unit = (surface->Size.x - 2.f * surface->WindowPadding.x) / 23.f;
-        const auto origin = surface->DC.CursorStartPos;
+        const auto origin = active_window("##keyboard_layout")->DC.CursorStartPos;
         click({origin.x + (descriptor->x + descriptor->w * .5f) * unit,
-            origin.y + ImGui::GetIO().FontDefault->FontSize + 6.f + (descriptor->y + descriptor->h * .5f) * unit});
+            origin.y + (descriptor->y + descriptor->h * .5f) * unit});
     }
     void select_binding_row(int index, bool clear = false) {
         const auto* list = active_window("##module_selection");
@@ -154,6 +154,12 @@ namespace {
             list->DC.CursorStartPos.y + ImGui::GetIO().FontDefault->FontSize + 6.f + index * 38.f + 16.f});
     }
 }
+bool initialize_saved(const std::filesystem::path& path)
+{
+    { std::ofstream marker(path.string() + ".consent"); marker << "accepted\n"; }
+    return configs::keybind_profile::initialize(path);
+}
+
 int main(int argc, char** argv)
 {
     std::signal(SIGABRT, [](int) {
@@ -201,13 +207,41 @@ int main(int argc, char** argv)
     }
     assert(argc > 2);
     const auto profile_path = std::filesystem::path(argv[2]);
-    assert(configs::keybind_profile::initialize(profile_path));
+    // No binding is read or written without an explicit decision.
+    const auto consent_test_path = profile_path.parent_path() / "consent-test.json";
+    using configs::keybind_profile::consent;
+    assert(configs::keybind_profile::initialize(consent_test_path));
+    assert(configs::keybind_profile::storage_consent() == consent::pending);
+    entries[0]->set_keybind(65);
+    assert(configs::keybind_profile::flush(true) && !std::filesystem::exists(consent_test_path));
+    assert(configs::keybind_profile::set_storage_consent(true));
+    assert(std::filesystem::exists(consent_test_path));
+    entries[0]->set_keybind(0);
+    assert(configs::keybind_profile::initialize(consent_test_path));
+    assert(configs::keybind_profile::storage_consent() == consent::accepted && entries[0]->get_keybind() == 65);
+    assert(configs::keybind_profile::set_storage_consent(false));
+    assert(entries[0]->get_keybind() == 65 && !std::filesystem::exists(consent_test_path));
+    entries[0]->set_keybind(66);
+    assert(configs::keybind_profile::flush(true) && !std::filesystem::exists(consent_test_path));
+    assert(configs::keybind_profile::initialize(consent_test_path));
+    assert(configs::keybind_profile::storage_consent() == consent::declined);
+    // A pre-consent profile is preserved until the user decides, never loaded.
+    std::filesystem::remove(consent_test_path.string() + ".consent");
+    { std::ofstream legacy(consent_test_path); legacy << modules::export_keybind_config(); }
+    entries[0]->set_keybind(0);
+    assert(configs::keybind_profile::initialize(consent_test_path));
+    assert(entries[0]->get_keybind() == 0 && configs::keybind_profile::storage_consent() == consent::pending);
+    assert(configs::keybind_profile::set_storage_consent(true));
+    assert(entries[0]->get_keybind() == 66);
+    assert(configs::keybind_profile::set_storage_consent(false));
+    assert(!std::filesystem::exists(consent_test_path));
+    assert(initialize_saved(profile_path));
     // Save and reopen a real local file using production config parsing. Only
     // bindings may change; startup loading must not enable gameplay modules.
     entries[0]->set_keybind(platform::keys::num_enter);
     assert(configs::keybind_profile::flush(true) && std::filesystem::exists(profile_path));
     entries[0]->set_keybind(0); entries[0]->enabled = true;
-    assert(configs::keybind_profile::initialize(profile_path));
+    assert(initialize_saved(profile_path));
     assert(entries[0]->get_keybind() == platform::keys::num_enter && entries[0]->enabled);
     const auto saved_bindings = modules::export_keybind_config();
     std::string import_message;
@@ -250,7 +284,7 @@ int main(int argc, char** argv)
     // A failing path must be reported, not counted as a successful save.
     const auto blocked = profile_path.parent_path() / "blocked";
     { std::ofstream file(blocked); file << "not a directory"; }
-    assert(!configs::keybind_profile::initialize(blocked / "keybinds.json"));
+    assert(!initialize_saved(blocked / "keybinds.json"));
     entries[0]->set_keybind('A');
     assert(!configs::keybind_profile::flush(true) && !configs::keybind_profile::healthy());
     // Invalid existing profiles must neither partially apply nor be silently
@@ -259,7 +293,7 @@ int main(int argc, char** argv)
     const std::string broken = R"({"modules":[{"id":"click_aim_assist","keybind":66},{"id":"triggerbot","keybind":256}]})";
     { std::ofstream file(corrupt); file << broken; }
     const auto before_corrupt = modules::export_keybind_config();
-    assert(!configs::keybind_profile::initialize(corrupt));
+    assert(!initialize_saved(corrupt));
     assert(modules::export_keybind_config() == before_corrupt);
     assert(!configs::keybind_profile::flush(true));
     { std::ifstream file(corrupt); assert(std::string((std::istreambuf_iterator<char>(file)),{}) == broken); }
@@ -268,12 +302,12 @@ int main(int argc, char** argv)
     const auto directory_target = profile_path.parent_path() / "directory.json";
     std::filesystem::create_directory(directory_target);
     { std::ofstream file(directory_target / "keep"); file << "keep"; }
-    assert(!configs::keybind_profile::initialize(directory_target));
+    assert(!initialize_saved(directory_target));
     entries[0]->set_keybind('B');
     assert(!configs::keybind_profile::flush(true));
     assert(std::filesystem::exists(directory_target / "keep"));
     assert(!std::filesystem::exists(directory_target.string() + ".tmp"));
-    assert(configs::keybind_profile::initialize(profile_path));
+    assert(initialize_saved(profile_path));
     entries[0]->set_keybind(0); entries[0]->enabled = false;
     assert(configs::keybind_profile::flush(true));
     frame(3);
@@ -441,7 +475,7 @@ int main(int argc, char** argv)
     assert(entries[0]->get_keybind() == platform::keys::num_enter && entries[1]->get_keybind() == 0x75);
     io.AddMousePosEvent(-100,-100); frame(2);
     capture(capture_dir,"keybinds-assignment");
-    assert(configs::keybind_profile::initialize(profile_path));
+    assert(initialize_saved(profile_path));
     assert(entries[0]->get_keybind() == platform::keys::num_enter);
     // The visually unified category control must open from either its label
     // or arrow, and Escape must dismiss the popup without closing the menu.
@@ -550,6 +584,21 @@ int main(int argc, char** argv)
         assert(!first.empty() && first!=next);
         const auto still=border_colors(true); assert(still==border_colors(true));
     }
+    // The actual consent modal appears for an undecided user, and the saved
+    // refusal prevents another prompt on subsequent starts.
+    const auto prompt_path = profile_path.parent_path() / "prompt.json";
+    assert(configs::keybind_profile::initialize(prompt_path));
+    gui::should_unload = false; gui::draw = true;
+    frame(3);
+    const auto* prompt = active_window("Save keybinds locally?");
+    assert(prompt->Flags & ImGuiWindowFlags_Modal);
+    assert(!std::filesystem::exists(prompt_path));
+    assert(configs::keybind_profile::set_storage_consent(false));
+    ImGui::ClosePopupToLevel(0, true);
+    assert(configs::keybind_profile::initialize(prompt_path));
+    frame(3);
+    for (const auto* window : GImGui->Windows)
+        assert(!window->Active || !std::strstr(window->Name, "Save keybinds locally?"));
     ImGui::DestroyContext();
     std::cout << "PASS: real GrimUI cards/settings, Other > Keybinds navigation, keyboard assignment/move/remove/shared keys, dynamic categories/search, plain modules, reserved keys, profile restart/corruption/I/O failure, public config roundtrip, viewport bounds, Escape and reset\n";
 }

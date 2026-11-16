@@ -406,7 +406,7 @@ namespace gui::config_page
         std::string payload, loaded_name;
         if (configs::consume_pending_payload(payload, loaded_name)) {
             std::string result;
-            const bool applied = modules::apply_public_config(payload, result);
+            const bool applied = modules::apply_public_config(payload, result, false);
             if (applied) state.selected = state.pending_id;
             gui::push_workspace_toast(loaded_name + ": " + result, applied);
         }

@@ -221,4 +221,31 @@ namespace modules::config_json
         }
         return output;
     }
+    // Local config profiles never store bindings; their persistence has its
+    // own consent-controlled file. Preserve all other JSON fields verbatim.
+    inline std::optional<std::string> without_keybinds(const std::string& input)
+    {
+        const auto document = parse(input);
+        const auto* list = document ? document->find("modules") : nullptr;
+        if (!list || list->type != kind::array) return {};
+        std::string modules = "[";
+        for (const auto& entry : list->items) {
+            if (entry.type != kind::object) return {};
+            if (modules.size() > 1) modules += ',';
+            modules += '{'; bool first = true;
+            for (const auto& [key, value] : entry.members) {
+                if (!first) modules += ',';
+                first = false;
+                modules += '"' + escape(key) + "\":" + (key == "keybind" ? "0" : std::string(value.raw));
+            }
+            modules += '}';
+        }
+        modules += ']';
+        std::string output = "{";
+        for (const auto& [key, value] : document->members) {
+            if (output.size() > 1) output += ',';
+            output += '"' + escape(key) + "\":" + (key == "modules" ? modules : std::string(value.raw));
+        }
+        return output + '}';
+    }
 }

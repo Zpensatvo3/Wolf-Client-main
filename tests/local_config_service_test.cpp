@@ -30,6 +30,28 @@ int main(int argc, char** argv)
     configs::remove(id);
     assert(configs::get_snapshot().success && configs::get_snapshot().entries.empty());
     configs::shutdown();
+    const std::string with_binding = R"({"modules":[{"id":"click_aim_assist","enabled":true,"keybind":65,"settings":{"mode":1}}]})";
+    configs::initialize(directory);
+    configs::publish(0, "Private", "", "Player", with_binding, 1);
+    assert(configs::get_snapshot().success);
+    const auto private_id = configs::get_snapshot().entries[0].id;
+    configs::load(private_id);
+    assert(configs::consume_pending_payload(loaded, name));
+    assert(loaded.find("\"keybind\":0") != std::string::npos && loaded.find("\"keybind\":65") == std::string::npos);
+    configs::shutdown();
+    const auto legacy_file = directory / (std::to_string(private_id) + ".json");
+    std::string legacy;
+    { std::ifstream input(legacy_file); legacy.assign(std::istreambuf_iterator<char>(input), {}); }
+    const std::string zero_binding = "\\\"keybind\\\":0";
+    const auto offset = legacy.find(zero_binding);
+    assert(offset != std::string::npos);
+    legacy.replace(offset, zero_binding.size(), "\\\"keybind\\\":65");
+    { std::ofstream output(legacy_file); output << legacy; }
+    configs::initialize(directory);
+    assert(configs::get_snapshot().success);
+    { std::ifstream input(legacy_file); legacy.assign(std::istreambuf_iterator<char>(input), {}); }
+    assert(legacy.find("\\\"keybind\\\":65") == std::string::npos);
+    configs::shutdown();
     const auto blocked = directory / "blocked";
     { std::ofstream stream(blocked); stream << "not a directory"; }
     configs::initialize(blocked);

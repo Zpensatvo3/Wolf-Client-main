@@ -215,6 +215,30 @@ namespace {
 }
 
 void gui::keybinds_page::reset() { state = {}; }
+void gui::keybinds_page::render_storage_consent()
+{
+    using namespace configs::keybind_profile;
+    if (storage_consent() == consent::pending && !ImGui::IsPopupOpen("Save keybinds locally?"))
+        ImGui::OpenPopup("Save keybinds locally?");
+    ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, {.5f,.5f});
+    ImGui::SetNextWindowSize({(std::min)(420.f, (std::max)(200.f, ImGui::GetMainViewport()->WorkSize.x - 24.f)),0}, ImGuiCond_Appearing);
+    if (ImGui::BeginPopupModal("Save keybinds locally?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x);
+        ImGui::TextUnformatted("Allow OneStep to save your keybinds on this computer and restore them next time?");
+        ImGui::TextUnformatted("If you decline, bindings work for this session only and previously saved bindings are removed. You can change this in Keybinds.");
+        ImGui::PopTextWrapPos();
+        if (ImGui::Button("Accept")) {
+            if (!set_storage_consent(true)) gui::push_workspace_toast(status(), false);
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Decline")) {
+            if (!set_storage_consent(false)) gui::push_workspace_toast(status(), false);
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+}
 void gui::keybinds_page::render()
 {
     typography::scoped_font workspace_font(regular());
@@ -234,6 +258,11 @@ void gui::keybinds_page::render()
     if (ImGui::BeginChild("##keybinds_surface",{0,0},ImGuiChildFlags_AlwaysUseWindowPadding,ImGuiWindowFlags_NoScrollbar)) {
         const float width = ImGui::GetContentRegionAvail().x;
         ImGui::TextUnformatted("Keyboard");
+        bool save_locally = configs::keybind_profile::storage_consent() == configs::keybind_profile::consent::accepted;
+        if (ImGui::Checkbox("Save keybinds on this computer", &save_locally)) {
+            if (!configs::keybind_profile::set_storage_consent(save_locally))
+                gui::push_workspace_toast(configs::keybind_profile::status(), false);
+        }
         keyboard(width);
         state.reveal = approach(state.reveal,state.selected ? 1.f : 0.f);
         if (state.selected) {

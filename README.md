@@ -17,7 +17,9 @@ Solution/proje: `OneStep.slnx` / `OneStep.vcxproj`. 1.21.1 çıktısı `build/On
 
 ## Config ve tuş profilleri
 
-Config ekranı profilleri bu bilgisayarda `%APPDATA%/OneStep/configs` altında saklar. Kaydetme, güncelleme, yükleme, silme ve favoriler yerel çalışır. Mevcut modül JSON alanları ve eski config dönüşümleri korunur. Tuş profilleri kendi mevcut yerel dosyasını kullanır.
+Config ekranı profilleri bu bilgisayarda `%APPDATA%/OneStep/configs` altında saklar. Kaydetme, güncelleme, yükleme, silme ve favoriler yerel çalışır. Config dosyaları keybind saklamaz; eski yerel config'lerdeki keybind alanları açılışta sıfırlanır. Config yüklemek oturumun mevcut tuş atamalarını değiştirmez.
+
+İlk menü açılışında keybind'leri bu bilgisayarda saklamak için onay sorulur. Kabul edilirse `%LOCALAPPDATA%/onestep/keybinds.json` kaydedilir ve sonraki açılışta yüklenir. Reddedilirse eski keybind dosyası silinir; atamalar yalnız oturumda kullanılır. Karar ayrı bir `.consent` dosyasında tutulur. Keybinds sayfasındaki “Save keybinds on this computer” seçeneğiyle karar değiştirilebilir. Onay verilmeden mevcut keybind dosyası yüklenmez veya yeni atamalar diske yazılmaz.
 
 ## Doğrulama
 
