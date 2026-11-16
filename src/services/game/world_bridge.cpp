@@ -1,6 +1,4 @@
 #include "world_bridge.hpp"
-#include "../../auth/client.hpp"
-#include "../../auth/auth.hpp"
 #include "../../gui/gui.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../input/input_service.hpp"
@@ -158,7 +156,7 @@ namespace
     }
     bool permitted() {
         const HWND window = gui::get_window();
-        return auth::permitted(auth::scope::bridge) && window && GetForegroundWindow() == window &&
+        return window && GetForegroundWindow() == window &&
             !gui::draw && !gui::loader_visible && !gui::should_unload;
     }
     jboolean JNICALL jump_permitted(JNIEnv*, jobject, jlong generation) {
@@ -235,7 +233,7 @@ namespace
     }
     jlong JNICALL aura_service(JNIEnv* env, jobject self, jint operation, jobject entity, jint id, jlong generation, jlong epoch) {
         if (operation == 2) { services::combat::release_crystal_aura(); return 1; }
-        if (!permitted() || !auth::permitted(auth::scope::input) || !aura_reset_source ||
+        if (!permitted() || !aura_reset_source ||
             static_cast<std::uint64_t>(generation) != aura_expected_generation ||
             aura_reset_source->load(std::memory_order_acquire) != aura_expected_generation) return 0;
         try {
@@ -694,7 +692,7 @@ namespace
     }
     services::game::hybrid::result prepare(unsigned feature) {
         using services::game::hybrid::result;
-        if (!auth::permitted(auth::scope::bridge)) return result::unavailable;
+
         if (feature < 1 || feature > 8) return result::unavailable;
         if constexpr (mc::target.build_id != 12111) if (feature < 3) return result::native_fallback;
         if (!permitted() || !platform::jni_context::bind_current_thread() || suspended[feature]) return result::unavailable;
@@ -835,7 +833,7 @@ bool services::game::world_bridge::release_pearl()
 }
 void services::game::world_bridge::tick_crystal(bool active, bool auto_switch, bool restore_slot, int place_delay, int break_delay)
 {
-    if (!active || !permitted() || !auth::permitted(auth::scope::input)) { cancel_crystal(); return; }
+    if (!active || !permitted()) { cancel_crystal(); return; }
     if (!platform::jni_context::bind_current_thread()) return;
     jni::frame frame{48};
     const bool held = services::input::physical_button_down(services::input::mouse_button::right);
@@ -994,7 +992,7 @@ std::array<int,3> services::game::world_bridge::tick_aura(const module_settings:
     const std::atomic<std::uint64_t>& generation, std::uint64_t expected_generation)
 {
     std::array<int,3> status{-1,0,0};
-    if (!active || !permitted() || !auth::permitted(auth::scope::input) ||
+    if (!active || !permitted() ||
         generation.load(std::memory_order_acquire) != expected_generation) { cancel_aura(); return status; }
     if (!platform::jni_context::bind_current_thread()) { services::combat::release_crystal_aura(); return status; }
     jni::frame frame{64};

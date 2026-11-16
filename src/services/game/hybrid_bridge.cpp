@@ -1,6 +1,4 @@
 #include "hybrid_bridge.hpp"
-#include "../../auth/client.hpp"
-#include "../../auth/auth.hpp"
 #include "../../gui/gui.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../../sdk/minecraft/common/client.hpp"
@@ -21,7 +19,7 @@ namespace
     bool permitted()
     {
         const HWND window = gui::get_window();
-        return auth::permitted(auth::scope::bridge) && !gui::should_unload && !gui::draw && !gui::loader_visible &&
+        return !gui::should_unload && !gui::draw && !gui::loader_visible &&
             window && GetForegroundWindow() == window;
     }
 
@@ -81,7 +79,7 @@ namespace
 services::game::hybrid::result services::game::hybrid::capture(feature operation, snapshot& out)
 {
     out = {};
-    if (!auth::permitted(auth::scope::bridge)) return result::unavailable;
+
         if constexpr (mc::target.build_id != 12111) return result::native_fallback;
     if (!permitted() || !platform::jni_context::bind_current_thread()) return result::unavailable;
     auto env = jni::get_env();

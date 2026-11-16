@@ -1,6 +1,4 @@
 #include "client_bridge.hpp"
-#include "../../auth/client.hpp"
-#include "../../auth/auth.hpp"
 #include "../../gui/gui.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../input/input_service.hpp"
@@ -22,7 +20,7 @@ namespace
     bool failed = false;
     std::array<bool, 3> prepared{}, rejected{}, suspended{};
     bool permitted(unsigned feature) {
-        if (!auth::permitted(auth::scope::bridge) || gui::loader_visible || gui::should_unload) return false;
+        if (gui::loader_visible || gui::should_unload) return false;
         if (feature == 2) return true; // Visual: keep the overlay while menus/other windows have focus.
         const HWND window = gui::get_window();
         return !gui::draw && window && GetForegroundWindow() == window;
@@ -71,7 +69,7 @@ namespace
     }
     services::game::hybrid::result prepare(unsigned feature) {
         using services::game::hybrid::result;
-        if (!auth::permitted(auth::scope::bridge)) return result::unavailable;
+
         if constexpr (mc::target.build_id != 12111) return result::native_fallback;
         if (!permitted(feature) || !platform::jni_context::bind_current_thread() || suspended[feature]) return result::unavailable;
         if (rejected[feature] || !connect(jni::get_env())) return result::native_fallback;

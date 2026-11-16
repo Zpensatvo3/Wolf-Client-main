@@ -3,9 +3,6 @@
 #endif
 
 #include "gui.hpp"
-#include "auth_screen.hpp"
-#include "../auth/client.hpp"
-#include "../auth/auth.hpp"
 #include "ui_state.hpp"
 #include "theme_palette.hpp"
 #include "surface_style.hpp"
@@ -427,7 +424,7 @@ static LRESULT CALLBACK detour_WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			return;
 		previous = pressed;
 		services::input::observe_physical(left ? services::input::mouse_button::left : services::input::mouse_button::right, pressed);
-		if (!auth::permitted(auth::scope::render)) return;
+
 		if (left)
 		{
 			modules::left_clicker::notify_manual_click(pressed);
@@ -490,9 +487,6 @@ static LRESULT CALLBACK detour_WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		{
 			const USHORT flags = raw.data.mouse.usButtonFlags;
 			const auto tag = static_cast<std::uintptr_t>(raw.data.mouse.ulExtraInformation);
-            if (static_cast<std::uint32_t>(tag)==static_cast<std::uint32_t>(modules::synthetic_mouse_tag) &&
-                !auth::permitted(auth::scope::input) && (flags & (RI_MOUSE_LEFT_BUTTON_DOWN|RI_MOUSE_RIGHT_BUTTON_DOWN)))
-                return DefWindowProcA(hWnd,msg,wParam,lParam);
 			if (services::input::restore_tag(tag))
 			{
 				if (services::input::accept_restore_event(tag))
@@ -518,8 +512,6 @@ static LRESULT CALLBACK detour_WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	const auto mouse_tag = static_cast<std::uintptr_t>(GetMessageExtraInfo());
 	const bool key_down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
 	const bool key_up = msg == WM_KEYUP || msg == WM_SYSKEYUP;
-    if (static_cast<std::uint32_t>(mouse_tag)==static_cast<std::uint32_t>(modules::synthetic_mouse_tag) &&
-        !auth::permitted(auth::scope::input) && (key_down || msg==WM_LBUTTONDOWN || msg==WM_RBUTTONDOWN)) return 0;
 	if (gui::draw && (key_down || key_up) && services::game::menu_input::system_shortcut(
 		static_cast<unsigned>(wParam), msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP || (lParam & (1LL << 29))))
 		return CallWindowProcA(original_WndProc, hWnd, msg, wParam, lParam);
@@ -640,7 +632,6 @@ static void uninit(HWND hWnd, HDC device)
 	gui::grim::reset_runtime_state();
 	configs::keybind_profile::flush(true);
 	gui::reset_widget_runtime_state();
-	gui::clear_auth_screen();
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplWin32_Shutdown();
 	ImGui::DestroyContext(imGuiContext);
@@ -797,7 +788,7 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 		if (!gui::arraylist_font) {
 			gui::arraylist_font = gui::ui_font;
 		}
-		
+
 		// Timewarp-inspired dark card theme.
 		{
 			auto& style = ImGui::GetStyle();
@@ -830,37 +821,37 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 			colors[ImGuiCol_PopupBg]                = ImVec4(0.020f, 0.018f, 0.027f, 0.92f);
 			colors[ImGuiCol_Border]                 = ImVec4(0.62f, 0.32f, 1.00f, 0.12f);
 			colors[ImGuiCol_BorderShadow]           = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
-			
+
 			colors[ImGuiCol_FrameBg]                = ImVec4(0.055f, 0.052f, 0.068f, 0.68f);
 			colors[ImGuiCol_FrameBgHovered]         = ImVec4(0.090f, 0.082f, 0.110f, 0.80f);
 			colors[ImGuiCol_FrameBgActive]          = ImVec4(0.120f, 0.105f, 0.150f, 0.88f);
-			
+
 			colors[ImGuiCol_TitleBg]                = ImVec4(0.08f, 0.08f, 0.09f, 1.00f);
 			colors[ImGuiCol_TitleBgActive]          = ImVec4(0.08f, 0.08f, 0.09f, 1.00f);
 			colors[ImGuiCol_TitleBgCollapsed]       = ImVec4(0.08f, 0.08f, 0.09f, 1.00f);
-			
+
 			colors[ImGuiCol_ScrollbarBg]            = ImVec4(0.08f, 0.08f, 0.09f, 0.00f);
 			colors[ImGuiCol_ScrollbarGrab]          = ImVec4(0.0f, 0.0f, 0.0f, 0.00f);
 			colors[ImGuiCol_ScrollbarGrabHovered]   = ImVec4(0.0f, 0.0f, 0.0f, 0.00f);
 			colors[ImGuiCol_ScrollbarGrabActive]    = ImVec4(0.0f, 0.0f, 0.0f, 0.00f);
-			
+
 			// Rose accent used by the selected navigation pill.
 			colors[ImGuiCol_CheckMark]              = ImVec4(0.62f, 0.30f, 1.00f, 1.00f);
 			colors[ImGuiCol_SliderGrab]             = ImVec4(0.62f, 0.30f, 1.00f, 1.00f);
 			colors[ImGuiCol_SliderGrabActive]       = ImVec4(0.76f, 0.47f, 1.00f, 1.00f);
-			
+
 			colors[ImGuiCol_Button]                 = ImVec4(0.085f, 0.050f, 0.120f, 0.72f);
 			colors[ImGuiCol_ButtonHovered]          = ImVec4(0.66f, 0.36f, 0.96f, 0.85f);
 			colors[ImGuiCol_ButtonActive]           = ImVec4(0.66f, 0.36f, 0.96f, 1.00f);
-			
+
 			colors[ImGuiCol_Header]                 = ImVec4(0.16f, 0.09f, 0.23f, 0.72f);
 			colors[ImGuiCol_HeaderHovered]          = ImVec4(0.66f, 0.36f, 0.96f, 0.40f);
 			colors[ImGuiCol_HeaderActive]           = ImVec4(0.66f, 0.36f, 0.96f, 0.80f);
-			
+
 			colors[ImGuiCol_Separator]              = ImVec4(0.18f, 0.17f, 0.22f, 1.00f);
 			colors[ImGuiCol_SeparatorHovered]       = ImVec4(0.66f, 0.36f, 0.96f, 0.80f);
 			colors[ImGuiCol_SeparatorActive]        = ImVec4(0.66f, 0.36f, 0.96f, 1.00f);
-			
+
 			colors[ImGuiCol_Tab]                    = ImVec4(0.11f, 0.11f, 0.13f, 1.00f);
 			colors[ImGuiCol_TabHovered]             = ImVec4(0.66f, 0.36f, 0.96f, 0.80f);
 			colors[ImGuiCol_TabActive]              = ImVec4(0.16f, 0.15f, 0.20f, 1.00f);
@@ -875,15 +866,6 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 
 	wglMakeCurrent(device, new_context);
 
-	const bool auth_open = auth::client::login_required();
-	static bool previous_auth_open = false;
-	if (auth_open) gui::draw = true;
-	else if (previous_auth_open)
-	{
-		gui::draw = false;
-		gui::suppress_menu_key_until_release = true;
-	}
-	previous_auth_open = auth_open;
 	const bool focus_interrupted = focus_reset_pending.exchange(false, std::memory_order_acq_rel);
 
 	// Poll the fixed Right Shift shortcut every frame. GLFW does not reliably
@@ -902,7 +884,7 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 		else if (shortcut_pressed && !gui::menu_key_scanning &&
 			!std::any_of(modules::get_modules().begin(), modules::get_modules().end(),
 				[](const modules::module* entry) { return entry->is_keybind_capture_active(); }) &&
-			!gui::should_unload && !gui::loader_visible && !auth_open)
+			!gui::should_unload && !gui::loader_visible)
 		{
 			gui::draw = !gui::draw;
 		}
@@ -931,8 +913,7 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 		ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Right, accept_buttons && right_down);
 	}
 	ImGui::NewFrame();
-	if (auth::permitted(auth::scope::render)) platform::client_dispatcher::drain();
-	else platform::client_dispatcher::clear();
+	platform::client_dispatcher::drain();
 
 
 	// Update dynamic accent colors in style
@@ -966,7 +947,7 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 		style.Colors[ImGuiCol_ScrollbarGrabActive] = accent;
 	}
 
-	// The standalone launcher owns the visible loading experience.
+	// Runtime initialization controls readiness.
 	// Inside Minecraft we only keep a headless readiness gate so gameplay
 	// modules cannot run before JNI/JVMTI initialization has finished.
 	if (gui::loader_visible)
@@ -991,11 +972,11 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 	// Render HUD and ArrayList overlays
 	gui::hud_editor::restore_saved_layout();
 	gui::hud_editor_active = gui::draw && gui::hud_layout_editor_active;
-	if (!gui::loader_visible && auth::permitted(auth::scope::render))
+	if (!gui::loader_visible)
 	{
 		for (modules::module* module : modules::get_modules())
 		{
-			if (!auth::permitted(auth::scope::render)) break;
+
 			if (module->enabled || module->render_when_disabled())
 				module->render_overlay();
 		}
@@ -1020,7 +1001,7 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
             trigger->cancel_on_client_thread();
 	}
 
-	if (gui::draw && !gui::loader_visible && auth::permitted(auth::scope::render))
+	if (gui::draw && !gui::loader_visible)
 	{
 		const ImGuiViewport* reference_viewport = ImGui::GetMainViewport();
 
@@ -1031,9 +1012,8 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 
 
 	}
-	if (auth::permitted(auth::scope::render)) gui::render_notifications();
-	if (!gui::loader_visible) gui::render_auth_screen();
-	// Escape/auth can close the panel inside the UI render. Restore capture on
+	gui::render_notifications();
+	// Escape can close the panel inside the UI render. Restore capture on
 	// that same frame and neutralize any input written by earlier callbacks.
 	sync_panel_input();
 	gui::ui_state::flush_preferences(false, ImGui::IsAnyItemActive());
@@ -1057,7 +1037,7 @@ bool gui::init()
 {
 	gui::ui_state::load_preferences();
 	HMODULE opengl = GetModuleHandleA("opengl32.dll");
-	if (!opengl) 
+	if (!opengl)
 	{
 		loader_ui::fail("OpenGL runtime was not loaded");
 		return false;
@@ -1070,19 +1050,19 @@ bool gui::init()
 		return false;
 	}
 
-	if (MH_Initialize() != MH_OK) 
+	if (MH_Initialize() != MH_OK)
 	{
 		loader_ui::fail("Native hook engine initialization failed");
 		return false;
 	}
 
-	if (MH_CreateHook(wglSwapBuffers, detour_wglSwapBuffers, (void**)&original_wglSwapBuffers) != MH_OK) 
+	if (MH_CreateHook(wglSwapBuffers, detour_wglSwapBuffers, (void**)&original_wglSwapBuffers) != MH_OK)
 	{
 		loader_ui::fail("OpenGL hook creation failed");
 		return false;
 	}
 
-	if (MH_EnableHook(wglSwapBuffers) != MH_OK) 
+	if (MH_EnableHook(wglSwapBuffers) != MH_OK)
 	{
 		loader_ui::fail("OpenGL hook activation failed");
 		return false;

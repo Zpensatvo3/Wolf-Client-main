@@ -94,12 +94,12 @@ int main()
     assert(drawn.contains("max_delay_ms") && int_low == 700 && int_high == 1000);
     module_settings::crystal_aura aura;
     drawn.clear();
-    gui::settings::render(aura,module_settings::crystal_aura::schema().subspan(1,1));
+    gui::settings::render(aura,module_settings::crystal_aura::schema().subspan(16,1));
     assert(!drawn.contains("mob_ground_test"));
     drawn.clear();
     gui::settings::render(aura,module_settings::crystal_aura::schema());
     assert(aura.target_mode == 2); // Combo stub selects Mobs Only.
-    assert(drawn == (std::set<std::string>{"target_mode","mob_ground_test","action_delay_ms","switch_delay_ms","launch_timeout_ms","confirm_timeout_ms"}));
+    assert(drawn == (std::set<std::string>{"target_mode","place_enabled","break_enabled","auto_switch","restore_slot","support","target_range","place_range","break_range","place_delay_ms","break_delay_ms","damage_check","min_damage","max_self_damage","switch_delay_ms","confirm_timeout_ms"}));
     module_settings::anchor_macro anchor;
     drawn.clear();
     gui::settings::render(anchor,module_settings::anchor_macro::schema());

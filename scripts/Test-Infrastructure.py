@@ -361,7 +361,7 @@ def validate():
                 errors.append(f"Direct module hotbar write: {path.relative_to(ROOT)}")
 
     main = (ROOT / "src/main.cpp").read_text(encoding="utf-8")
-    if len(main.splitlines()) > 60 or any(term in main for term in ("mappings.hpp", "cache.hpp", "auth.hpp")):
+    if len(main.splitlines()) > 60 or any(term in main for term in ("mappings.hpp", "cache.hpp")):
         errors.append("DLL entry must delegate application logic to src/app")
     pch = (ROOT / "include/pch.hpp").read_text(encoding="utf-8")
     if re.search(r'^\s*#\s*include\s*"', pch, re.M):

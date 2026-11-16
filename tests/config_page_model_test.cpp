@@ -13,18 +13,17 @@ int main()
         { 4, "Explorer", "Alex", "Night profile", 3, 20, "2026-10-14", "", false }
     };
     const std::unordered_set<int> favourites{ 2 };
-    auto list = model::filter(library, model::collection::community, "", favourites, model::order::newest);
-    assert(list.size() == 2 && list[0]->id == 4 && list[1]->id == 2);
-    for (const auto* entry : list) assert(!entry->mine);
-    list = model::filter(library, model::collection::community, "  COMBAT  ", favourites, model::order::popular);
+    auto list = model::filter(library, model::collection::local, "", favourites, model::order::newest);
+    assert(list.size() == 4 && list[0]->id == 4 && list[1]->id == 3);
+    list = model::filter(library, model::collection::local, "  COMBAT  ", favourites, model::order::popular);
     assert(list.size() == 1 && list[0]->id == 2);
-    list = model::filter(library, model::collection::mine, "wolf", favourites, model::order::name);
+    list = model::filter(library, model::collection::local, "wolf", favourites, model::order::name);
     assert(list.size() == 2 && list[0]->id == 3);
     for (const auto* entry : list) assert(entry->mine);
     list = model::filter(library, model::collection::favourites, "", favourites, model::order::popular);
     assert(list.size() == 1 && list[0]->id == 2);
-    assert(model::filter(library, model::collection::mine, "Arena", favourites, model::order::name).empty());
-    assert(model::filter(library, model::collection::community, "Survival", favourites, model::order::name).empty());
+    assert(model::filter(library, model::collection::local, "Arena", favourites, model::order::name).size() == 1);
+    assert(model::filter(library, model::collection::local, "Survival", favourites, model::order::name).size() == 1);
     assert(model::trim("  \n \t").empty());
     char short_text[4]{};
     model::copy_utf8(short_text, "ab\xc4\xb1" "c");

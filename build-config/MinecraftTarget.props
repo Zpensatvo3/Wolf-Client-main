@@ -10,7 +10,7 @@
     <MinecraftTargetId Condition="'$(MinecraftVersion)' == '26.1.1'">26101</MinecraftTargetId>
     <MinecraftTargetId Condition="'$(MinecraftVersion)' == '26.1.2'">26102</MinecraftTargetId>
     <MinecraftDefines>ONESTEP_MINECRAFT_VERSION=$(MinecraftTargetId);</MinecraftDefines>
-    <!-- Preserve the existing launcher/release path for the default target. -->
+    <!-- Preserve the existing release path for the default target. -->
     <MinecraftOutputDir Condition="'$(MinecraftVersion)' == '1.21.1'">$(MSBuildProjectDirectory)\build\</MinecraftOutputDir>
     <MinecraftOutputDir Condition="'$(MinecraftVersion)' != '1.21.1'">$(MSBuildProjectDirectory)\build\minecraft\$(MinecraftVersion)\</MinecraftOutputDir>
   </PropertyGroup>

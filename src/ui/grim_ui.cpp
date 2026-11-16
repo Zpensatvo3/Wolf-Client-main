@@ -1,7 +1,6 @@
 #include "grim_ui.hpp"
 #include "hud_editor.hpp"
 #include "menu_background.hpp"
-#include "profile_model.hpp"
 #include "keybinds_page.hpp"
 #include "dock_layout.hpp"
 #include "module_categories.hpp"
@@ -79,7 +78,6 @@ namespace
         bool search_completion_pending = false;
         float player_preview_yaw = 0.0f;
         double profile_refreshed_at = -10.0;
-        std::string license_label;
         bool had_popup = false;
         int rendered_frame = -1;
         bool positioned = false;
@@ -578,7 +576,7 @@ namespace
     }
 
 
-    void render_hud_editor_launcher(const ImVec2& minimum, const ImVec2& size)
+    void render_hud_editor_button(const ImVec2& minimum, const ImVec2& size)
     {
         ImGui::SetCursorScreenPos(minimum);
         ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
@@ -690,8 +688,6 @@ namespace
         if (now < state.profile_refreshed_at || now - state.profile_refreshed_at >= 1.0)
         {
             modules::player_esp::refresh_local_skin_texture();
-            state.license_label = gui::profile::license_label(auth::client::snapshot(),
-                std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now()));
             state.profile_refreshed_at = now;
         }
         ImDrawList* draw = ImGui::GetWindowDrawList();
@@ -728,8 +724,6 @@ namespace
         const ImVec4 clip(position.x + 53.f, position.y, position.x + width, position.y + 46.f);
         draw->AddText(gui::ui_bold_font ? gui::ui_bold_font : ImGui::GetFont(), 14.f,
             ImVec2(position.x + 53.f, position.y + 4.f), primary, player.c_str(), nullptr, 0, &clip);
-        draw->AddText(gui::ui_font ? gui::ui_font : ImGui::GetFont(), 12.f,
-            ImVec2(position.x + 53.f, position.y + 26.f), muted, state.license_label.c_str(), nullptr, 0, &clip);
     }
 
     void render_module_options(modules::module* module, const ImVec2& position, float width, float height, float opacity)
@@ -1189,7 +1183,7 @@ void gui::grim::render(const ImGuiViewport* viewport, const page_callbacks& call
         }
         else if (state.current == page::hud)
         {
-            render_hud_editor_launcher(body, body_size);
+            render_hud_editor_button(body, body_size);
         }
         else if (state.current == page::themes)
         {

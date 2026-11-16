@@ -2,7 +2,7 @@
 
 // A local test DLL must leave evidence for CRT aborts; the Minecraft Java log
 // otherwise ends at "Stopping!" without a native stack. Preserve CRT behavior.
-#if defined(ONESTEP_AUTH_INSECURE_TEST_BUILD) && ONESTEP_AUTH_INSECURE_TEST_BUILD == 1
+#if defined(ONESTEP_LOCAL_TEST_BUILD) && ONESTEP_LOCAL_TEST_BUILD == 1
 #include <Windows.h>
 #include <csignal>
 #include <cstdio>

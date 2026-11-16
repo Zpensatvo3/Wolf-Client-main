@@ -1,6 +1,4 @@
 #include "utility_bridge.hpp"
-#include "../../auth/client.hpp"
-#include "../../auth/auth.hpp"
 #include "../../gui/gui.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../../sdk/minecraft/common/client.hpp"
@@ -71,14 +69,14 @@ namespace
 services::game::hybrid::result services::game::utility::update(feature operation, bool active, int value, bool physical_use_held)
 {
     using hybrid::result;
-    if (active && !auth::permitted(auth::scope::bridge)) { release(operation); return result::unavailable; }
+
     if constexpr (mc::target.build_id != 12111) return result::native_fallback;
     const auto index = static_cast<std::size_t>(operation);
     if (index < 1 || index > 3) return result::unavailable;
     if (rejected[index] || connection_failed) return result::native_fallback;
     if (!platform::jni_context::bind_current_thread()) return result::unavailable;
     const HWND window = gui::get_window();
-    active = active && auth::permitted(auth::scope::bridge) && !gui::should_unload && !gui::loader_visible;
+    active = active && !gui::should_unload && !gui::loader_visible;
     if (operation != feature::full_bright)
         active = active && !gui::draw && window && GetForegroundWindow() == window;
     // Do not install or resolve bindings just because a disabled module renders for cleanup.

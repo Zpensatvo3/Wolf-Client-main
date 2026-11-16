@@ -1,7 +1,7 @@
 """Headless test of the shipping GrimUI/widgets with inert platform services.
 
 Optional --preview-dir exports real ImGui draw data as PPM images. No downloads,
-Minecraft, auth requests, GPU or DLL injection. Windows builds use real Windows.h;
+Minecraft, GPU or DLL injection. Windows builds use real Windows.h;
 the small shim is confined to this Linux test's include path.
 """
 import argparse
@@ -57,7 +57,7 @@ def main():
         for name in ("combat-grid", "combat-settings", "combat-1280", "settings-detail", "keybinds-keyboard", "keybinds-assignment", "hud-controls", "hud-controls-narrow"):
             with image_module.open(args.preview_dir / (name + ".ppm")) as preview:
                 preview.save(args.preview_dir / (name + ".png"))
-        print("Preview: real ImGui draw data; game/auth services are inert fixtures")
+        print("Preview: real ImGui draw data; game services are inert fixtures")
 
 
 if __name__ == "__main__":

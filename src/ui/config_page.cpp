@@ -23,7 +23,7 @@ namespace gui::config_page
             bool requested = false, focus_name = false;
             int selected = 0, editing = 0, deleting = 0, saving = 0, pending_id = 0;
             float expansion = 0.f;
-            model::collection tab = model::collection::mine;
+            model::collection tab = model::collection::local;
             std::unordered_set<int> favourites;
             char name[49]{}, description[181]{};
             operation pending = operation::none;
@@ -210,7 +210,7 @@ namespace gui::config_page
                     wrapped(deleting ? "Delete config?" : "Update config?", primary);
                 }
                 wrapped(state.confirm_name.c_str(), primary);
-                wrapped(deleting ? "This permanently removes the public config."
+                wrapped(deleting ? "This permanently removes the local profile."
                     : "Replace this config's shared settings with your current module settings?");
                 ImGui::Dummy(ImVec2(0, 4));
                 const auto half = (ImGui::GetContentRegionAvail().x - 8) / 2;
@@ -268,7 +268,7 @@ namespace gui::config_page
                 label(ImGui::GetCursorScreenPos(), "Description (optional)", 11.f);
                 ImGui::Dummy(ImVec2(0, 22));
                 ImGui::InputTextMultiline("##description", state.description, IM_ARRAYSIZE(state.description), ImVec2(-1, 54));
-                label(ImGui::GetCursorScreenPos(), "Shared publicly with your current settings.", 10.f, faint, false, width);
+                label(ImGui::GetCursorScreenPos(), "Saved on this computer with your current settings.", 10.f, faint, false, width);
                 ImGui::Dummy(ImVec2(0, 24));
                 ImGui::BeginDisabled(friends::local_player_name().empty());
                 if (button("publish", state.editing ? "Save changes" : "Create config", ImVec2(152, 38)))
@@ -288,7 +288,7 @@ namespace gui::config_page
         {
             const auto width = ImGui::GetContentRegionAvail().x;
             const auto heading = ImGui::GetCursorScreenPos();
-            const char* collections[] = { "Public Configs", "My Configs", "Favourites" };
+            const char* collections[] = { "Local Profiles", "Favourites" };
             const float selector_width = std::min(200.f, std::max(1.f, width - 42.f));
             const float selector_height = ImGui::GetFrameHeight();
             auto* draw = ImGui::GetWindowDrawList();
@@ -306,7 +306,7 @@ namespace gui::config_page
             if (open) {
               {
                 typography::scoped_font choice_font(font());
-                for (int i = 0; i < 3; ++i) {
+                for (int i = 0; i < 2; ++i) {
                     const bool selected = static_cast<int>(state.tab) == i;
                     ImGui::PushID(i);
                     if (popup_controls::choice("##collection_row", collections[i], selected, font(), ImGui::ColorConvertU32ToFloat4(accent())))
@@ -391,9 +391,8 @@ namespace gui::config_page
                 }
                 if (entries.empty()) {
                     ImGui::Dummy(ImVec2(0, 12));
-                    wrapped(library.busy ? "Fetching configs..." : state.tab == model::collection::favourites
-                        ? "No favourites yet." : state.tab == model::collection::community
-                        ? "No public configs yet." : "You haven't created any configs yet.");
+                    wrapped(library.busy ? "Reading profiles..." : state.tab == model::collection::favourites
+                        ? "No favourites yet." : "No local profiles yet.");
                 }
             }
             ImGui::EndChild();
@@ -404,12 +403,12 @@ namespace gui::config_page
     void render(bool embedded)
     {
         ImGui::PushID("config_workspace");
-        std::string payload, downloaded_name;
-        if (configs::consume_pending_payload(payload, downloaded_name)) {
+        std::string payload, loaded_name;
+        if (configs::consume_pending_payload(payload, loaded_name)) {
             std::string result;
             const bool applied = modules::apply_public_config(payload, result);
             if (applied) state.selected = state.pending_id;
-            gui::push_workspace_toast(downloaded_name + ": " + result, applied);
+            gui::push_workspace_toast(loaded_name + ": " + result, applied);
         }
         auto library = configs::get_snapshot();
         if (!state.requested && !library.busy) {
@@ -422,7 +421,7 @@ namespace gui::config_page
             if (library.success) {
                 if (state.pending == operation::publish) {
                     clear_editor();
-                    state.tab = model::collection::mine;
+                    state.tab = model::collection::local;
                 } else if (state.pending == operation::remove) {
                     if (state.editing == state.pending_id) clear_editor();
                     if (state.selected == state.pending_id) state.selected = 0;
@@ -432,7 +431,7 @@ namespace gui::config_page
             if (state.pending != operation::load || !library.success) gui::push_workspace_toast(library.status, library.success);
             state.pending = operation::none;
         }
-        if (!embedded) gui::page_header("Configs", "Save and share your setups");
+        if (!embedded) gui::page_header("Configs", "Save your setups on this computer");
         // Keep the native input/body widgets consistent with custom-drawn text.
         typography::scoped_font workspace_font(font());
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(12, 10));

@@ -16,19 +16,6 @@ not a reversal of the exact development targets enabled later.
 
 ## Patch release verification (26.1.1 and 26.1.2)
 
-Each official patch client jar was verified against its release metadata, size
-and SHA-1, then audited using its own compiled target ID: `26101` and `26102`.
-Both passed **740/740** SDK/raw-JNI records. Byte comparison against 26.1 found
-**no changes in 274 referenced client classes**, including their declaring
-superclasses/interfaces. This is not a claim that the entire game is unchanged.
-Java 25, authlib 7.0.63, fastutil 8.5.18 and JOML 1.10.8 remain unchanged.
-
-The targets share the 26.1 binding profile through an explicit three-ID compile
-guard. Java bridge target allowlists, build properties, build script, manifest
-and CI matrix include both patches. Every DLL retains exact-version rejection;
-`26103`, prereleases and later releases are unsupported. No copied SDK or module
-tree, gameplay change, launcher publication or remote change was needed.
-
 Repeat for each patch, replacing `<patch>` with `26.1.1` or `26.1.2`:
 
 ```sh
@@ -107,12 +94,6 @@ the unused account-type helper and unused ClientLevelData time/weather helpers.
 No active module was disabled or skipped. The valid ClientLevelData game-time
 getter and its class/field remain. No production data or resources were accessed.
 
-External audit fixtures: the client metadata's authlib `7.0.63` and fastutil
-`8.5.18`, JOML `1.10.8`, Fabric Loader `0.19.5`, the rendering jars below, and JDK
-25. These are test inputs, not additional shipping dependencies. Store
-`version-26.1.json` next to `client-26.1.jar`; store dependency jars in an external
-library directory:
-
 ```sh
 python scripts/Test-MinecraftSdk.py --client /path/to/client-cache/client-26.1.jar --library-dir /path/to/test-libraries --java-home /path/to/jdk25 --output /path/to/sdk-26.1.json
 python -m unittest discover -s tests -p 'test_minecraft*.py' -v
@@ -184,12 +165,6 @@ python scripts/Test-MinecraftBridges.py --fixture-dir /path/to/client-cache --li
 ```
 
 ### Exact development targets
-
-IDs `26100`, `26101` and `26102` are explicit build targets. Unknown IDs,
-prereleases and DLL/game mismatches are rejected; no wildcard/fallback is enabled.
-Use the canonical [build table](MINECRAFT_TARGETS.md#build) and Java 25 for the
-matching Fabric version. A development artifact is not a production release
-approval; no launcher manifest is automatically published.
 
 ### Tests for this batch
 
@@ -328,10 +303,6 @@ not inherited; method/field kinds, descriptors and static flags are checked.
 Unresolved or ambiguous baseline mappings fail the audit, not silently disappear.
 Possible class relocations are hints only, never automatic runtime mappings.
 
-Exit zero means the report was successfully generated, **not that a 26.x target
-is ready**. JSON explicitly includes `supported: false`. No build targets, DLLs,
-launcher manifests or remote resources are generated or changed by this tool.
-
 ## Current acceptance boundary
 
 The isolated 26.1 name table, native SDK/raw-JNI adaptation, inventory/FOV/item
@@ -343,7 +314,3 @@ The remaining checklist is the [shared per-target acceptance checklist](MINECRAF
 26.2/26.3 remain discovery-only; audit their full SDK/bridge/render contracts
 before enabling any target, especially the 26.3 renderpearl changes.
 Do not skip modules to declare compatibility.
-
-No deployment, Git push, auth migration or gameplay-to-Java rewrite was part
-of this dated native-port audit. Current security/protocol requirements are
-documented separately in [launcher v2](LAUNCHER_V2.md).

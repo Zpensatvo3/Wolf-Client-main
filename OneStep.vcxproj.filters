@@ -597,18 +597,6 @@
     <ClCompile Include="src\modules\module_catalog.cpp">
       <Filter>Source Files\src\modules</Filter>
     </ClCompile>
-    <ClCompile Include="src\auth\auth.cpp">
-      <Filter>Source Files\src\auth</Filter>
-    </ClCompile>
-    <ClCompile Include="src\auth\client.cpp">
-      <Filter>Source Files\src\auth</Filter>
-    </ClCompile>
-    <ClCompile Include="src\auth\device_proof.cpp">
-      <Filter>Source Files\src\auth</Filter>
-    </ClCompile>
-    <ClCompile Include="src\gui\auth_screen.cpp">
-      <Filter>Source Files\src\gui</Filter>
-    </ClCompile>
     <ClCompile Include="src\configs\configs.cpp">
       <Filter>Source Files\src\configs</Filter>
     </ClCompile>
@@ -630,9 +618,6 @@
       <Filter>Header Files\src\ui</Filter>
     </ClInclude>
     <ClInclude Include="src\ui\menu_background.hpp">
-      <Filter>Header Files\src\ui</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ui\profile_model.hpp">
       <Filter>Header Files\src\ui</Filter>
     </ClInclude>
     <ClInclude Include="src\platform\adapter\game_adapter.hpp">

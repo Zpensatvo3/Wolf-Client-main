@@ -8,12 +8,12 @@ $msbuild = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuil
 if (!$msbuild) { throw 'Visual Studio C++ Build Tools are required.' }
 Push-Location $PSScriptRoot
 try {
-    $dll = Join-Path $PSScriptRoot "build\local-test\$MinecraftVersion\Onestep-TEST-NO-LAUNCHER.dll"
+    $dll = Join-Path $PSScriptRoot "build\local-test\$MinecraftVersion\Onestep-TEST.dll"
     if (Test-Path -LiteralPath $dll) {
         $stamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
         Move-Item -LiteralPath $dll -Destination "$dll.previous-$stamp"
     }
-    & $msbuild 'OneStep.vcxproj' /m /t:Build /nologo /v:minimal /p:Configuration=Debug /p:Platform=x64 "/p:MinecraftVersion=$MinecraftVersion" /p:LocalTestDll=true /p:AuthRequired=false
+    & $msbuild 'OneStep.vcxproj' /m /t:Build /nologo /v:minimal /p:Configuration=Debug /p:Platform=x64 "/p:MinecraftVersion=$MinecraftVersion" /p:LocalTestDll=true
     if ($LASTEXITCODE -ne 0) { throw "Test DLL build failed ($LASTEXITCODE)." }
     if (!(Test-Path -LiteralPath $dll)) { throw 'Test DLL was not produced.' }
     Write-Host "Local test DLL (Fabric $MinecraftVersion): $dll"

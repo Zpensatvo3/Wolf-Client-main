@@ -21,19 +21,6 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: server/package-lock.json
-      - name: Validate auth configuration and Worker locally
-        run: |
-          python scripts/Test-AuthConfiguration.py
-          npm ci --prefix server
-          npm test --prefix server
-          npm run test:v2 --prefix server
-          npm run test:v2:runtime --prefix server
-          npm run test:runtime --prefix server
       - name: Validate infrastructure and source boundaries
         run: |
           python scripts/Test-Infrastructure.py
@@ -52,6 +39,12 @@ jobs:
           python scripts/Test-AutoTotem.py --asm-classpath "$RUNNER_TEMP/anchor-asm/asm.jar:$RUNNER_TEMP/anchor-asm/asm-tree.jar"
       - name: Compile and run offline tests
         run: python scripts/Test-Offline.py --jobs 2
+      - name: Check local profile persistence
+        run: |
+          g++ -std=c++20 -Wall -Wextra -pthread tests/local_config_service_test.cpp src/configs/configs.cpp -o "$RUNNER_TEMP/local-config-test"
+          "$RUNNER_TEMP/local-config-test" "$RUNNER_TEMP/local-config-profiles"
+          g++ -std=c++20 -Wall -Wextra tests/config_page_model_test.cpp -o "$RUNNER_TEMP/config-page-model-test"
+          "$RUNNER_TEMP/config-page-model-test"
       - name: Exercise GrimUI layout and input without Minecraft
         run: python scripts/Test-GrimUI.py
       - name: Test 26.x migration audit helpers without game downloads
@@ -120,29 +113,5 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.dll }}
-          if-no-files-found: error
-          retention-days: 14
-
-  windows-launcher:
-    needs: offline-tests
-    runs-on: windows-2025
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build launcher and native permission checks
-        shell: pwsh
-        run: |
-          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $builder = & $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1
-          & $builder launcher/launcher.vcxproj /m /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /v:minimal /nologo
-          if ($LASTEXITCODE) { throw 'Launcher build failed' }
-          & $builder tests/auth_v2_native.vcxproj /m /p:Configuration=Debug /p:Platform=x64 /p:PlatformToolset=v143 /v:minimal /nologo
-          if ($LASTEXITCODE) { throw 'Native permission test build failed' }
-          & ./build/launcher-v2/tests/auth-v2-test.exe
-          if ($LASTEXITCODE) { throw 'Native permission test failed' }
-      - uses: actions/upload-artifact@v4
-        with:
-          name: OneStep-Launcher-Windows-x64
-          path: build/launcher/Onestep-Launcher.exe
           if-no-files-found: error
           retention-days: 14

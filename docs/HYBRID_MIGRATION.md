@@ -14,12 +14,6 @@
 - Bridge Assist ve Pearl Macro: `src/bridge/WorldBridge.java`.
 - Inv Walk ve Glow ESP: `src/bridge/ClientBridge.java`.
 
-No Jump Delay politikası ve Fast Stop release-edge hesaplama motoru C++'ta
-aynen korunur. Fast Place'ın gecikme ayarı, Sprint'in eşya kullanımı tercihi ve
-Full Bright'ın 16.0 hedefi değişmez. UI, module ID, config, keybind, launcher,
-lisans ve kalan modüller değişmez. Bu sekiz grubun diğer altı hedefi mevcut native yolu kullanır.
-Bu aşama bütün modüllerin Java'ya taşındığı anlamına gelmez.
-
 **Hit Crystal** ayrı bir tam Java denetleyicisidir: WorldBridge'in 3 numaralı
 özelliği desteklenen yedi tam hedef için kaynakta bağlanır. Kararlar, zamanlama,
 hedef takibi, slot ve oyun işlemleri Java'dadır; C++ UI/config, fiziksel giriş,
@@ -72,11 +66,6 @@ yalnızca yatay hızı sıfırlar, dikey hızı korur. İki backend aynı karede
 Java kurulumu başarısızsa native yol korunur; runtime JNI hatası olan karede
 işlem iptal olur, sonraki kare native'e geçerken Fast Stop state'i sıfırlanır.
 Menü/oyun dışı geçici snapshot yokluğu backend arızası sayılmaz.
-
-Köprü aktifliği/kalıcı hata Windows debug çıktısına bir kez yazılır; arayüze
-açıklama/status satırı eklenmez. Auth/odak/native UI koşulları hem capture hem
-apply öncesi kontrol edilir. Kapatırken render callback'leri bitirildikten sonra
-Java stop ve global ref temizliği yapılır; mevcut JVM session daha sonra kapanır.
 
 ### İkinci grup: utility yaşam döngüsü
 
@@ -254,12 +243,6 @@ boyunca tekrarlayan kullanım yoktur. Dwell hâlâ slot geri dönüşünden önc
 Manuel slot değişimi pending kullanımı iptal eder ve eski slotla ezilmez.
 Restore yalnızca aynı oturum ve hâlâ sahip olunan seçili slot için yapılır.
 
-Kurulum/binding hatasında eski backend kullanılabilir. Runtime exception'ında
-ilgili özellik askıya alınır; mümkün olan sahiplik cleanup'ı render thread'inde
-denenir, mutasyon başka backend üzerinden tekrarlanmaz. Renderer cleanup sonrası
-Java stop yalnızca referansları/durumu bırakır; oyuna yazmaz. Auth, launcher veya
-combat/hotbar koordinatörleri yeniden yazılmadı.
-
 ### Sekizinci grup: envanterde hareket ve glow
 
 ClientBridge bağımsız yüklenir; Inv Walk ve Glow ESP bindingleri ayrı hazırlanır.
@@ -288,14 +271,6 @@ AntiBot'un veri okuması/belleği Java'ya taşınmadı veya başka hesapla deği
 Boolean izin maskesi aynı packet sırasındadır; Java apply öncesi oturumu, entity
 kimliğini, dünyada hâlâ yüklü oluşunu ve alive durumunu tekrar doğrular. Tarama
 16384 entity/4096 player ile sınırlıdır; paketler tek kullanımlıdır.
-
-Glow'un local değeri ve flag 6 ilk yazmadan önce ayrı saklanır. Yalnızca değişen
-değerler sahiplenilir; kapanış/yeni bot kararı yalnızca bu değerleri geri alır.
-Önceden true olan doğal glow silinmez, unload olmuş veya eski dünyaya ait entity'ye
-gecikmiş cleanup yazılmaz. Aynı true değerini sonradan başka kaynak da yazarsa
-bunun kaynağı ayırt edilemez; bu mekanizma bir sunucu sahiplik protokolü değildir.
-Görsel modül menü/odak kaybında aktif kalabilir; auth/loader/unload yeni yazmayı
-durdurur. Normal worker yolu pasiftir; disable yalnızca atomik iptal ister.
 
 Her iki özellikte kurulum/binding hatası eski backend'i korur. Runtime exception
 ilgili özelliği bu yükleme boyunca askıya alır; kendi durumunu cleanup etmeye devam
@@ -342,41 +317,10 @@ mevcut Java kaynak bağımlılığı üzerinden yeniden üretilir.
 
 ## Derleme ve sınırlı kontroller
 
-- JDK 17+ ile `scripts/Build-GameBridge.ps1`; sınıf bytecode hedefi Java 17'dir.
-- MSBuild resource adımından önce kaynak değişmişse altı köprü yeniden derlenir.
-  Java kodu/resources birlikte sürümlenir; ayrı launcher indirmesi gerekmez.
-- `python scripts/Test-HybridBridge.py`: sahte 1.21.11 oyun nesneleriyle source
-  ve gömülü class davranışı; ilk grubun 41, utility grubunun 34, item grubunun 36,
-  clicker grubunun 27, envanter grubunun 32, container grubunun 31, world grubunun 35,
-  client grubunun 31 kontrolü
-  vardır. Çalışan Minecraft'a bağlanmaz, native DLL üretmez.
-- Mevcut `no_jump_delay` ve `fast_stop_engine` offline testleri hesaplama
-  davranışını doğrular. Oyun içi uyumluluk/performance ayrıca denenmelidir.
-- `auto_tool_scoring` offline testi eski uygunluk/hız/epsilon kuralını korur.
-- `gear_policy` offline testi eski zırh puanı, elytra koruması, slot eşleme ve
-  ana envanter/hotbar önceliğini korur.
-- `pot_refill_engine` offline kontrolü iksir motorunun mevcut kurallarını doğrular.
-- `bridge_assist_logic` offline kontrolü geometri, yönlü tahmin, iki edge/üç
-  safe örneği, manuel sneak ve bırakma gecikmesi kurallarını doğrular.
-- Mevcut `inv_walk_engine` ve `anti_bot_engine` offline testleri ekran/hareket
-  politikası ile ortak bot filtresi kurallarının korunduğunu doğrular.
-
 Sonraki modüller aynı sınır üzerinden tek tek taşınabilir; combat hesaplamaları
 veya ortak input/hotbar sahipliği bu sekiz grupta yeniden yazılmamıştır.
 
 ## Referans / kaynak bildirimi
-
-Kullanıcının verdiği `6vb8h8/VapeV4.21-main` klasöründeki `README_EN.md`,
-`LICENSE`, `native/README.md`, `NativeBridge.java` ve
-`NativeBridgeLifecycleAdapter.java` incelendi. Yararlanılan fikir yalnızca
-native kabuk ile Java oyun adaptörünü ayırmak ve açık bir kapatma sınırı kurmaktır.
-Bu projedeki mevcut Sky/NameProtect loader yaklaşımı da kullanıldı.
-
-Referans README'si bunun resmî kaynak değil bir recovery/decompile projesi olduğunu
-ve CC0 bildiriminin üçüncü taraf haklarını kapsamadığını söyler. **Oradan Java/C++
-kod, modül algoritması, auth, anti-analysis, native blob veya asset kopyalanmadı.**
-Yeni GameBridge özgün OneStep uygulamasıdır; recovered kodun doğruluğu veya
-lisanslanabilirliği hakkında garanti verilmez.
 
 İkinci–sekizinci gruplarda bu referanstan ek kod/algoritma alınmadı; mevcut
 OneStep kaynakları ve Yarn'ın exact sürüm API/mapping belgeleri kullanıldı.

@@ -6,7 +6,6 @@
 #include "../../platform/adapter/game_adapter.hpp"
 #include "../../services/input/input_service.hpp"
 #include "../../services/game/hotbar_service.hpp"
-#include "../../auth/auth.hpp"
 
 #include <Windows.h>
 #include <algorithm>
@@ -535,8 +534,7 @@ bool anchor_engine::tick(config& settings, runtime& state, profile mode)
 	{ reset_runtime(state); return false; }
 	state.session.observe({world,player});
 
-	if (!auth::permitted(auth::scope::input) || !auth::permitted(auth::scope::bridge) ||
-		!window || GetForegroundWindow() != window || gui::draw || gui::loader_visible || gui::should_unload ||
+	if (!window || GetForegroundWindow() != window || gui::draw || gui::loader_visible || gui::should_unload ||
 		instance.currentScreen.get() || player.isAlive.call() != JNI_TRUE || platform::jni_context::clear_exception())
 	{
 		return finish();

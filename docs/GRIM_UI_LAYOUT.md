@@ -31,12 +31,6 @@ kontrolleri; `src/ui/` uygulama sayfalarını yönetir. İki dizin de aktiftir.
 
 ## Arama, profil ve giriş sahipliği
 
-Arama sol altta profilin üstündedir. Yarı saydam kutuya doğrudan yazılır;
-ayrı sonuç paneli açılmaz. Oklar/Enter, otomatik tamamlama ve X ile temizleme
-korunur. Tamamlama odak kaybında iptal edilir. Profilde yerel skin kafası ve adı,
-doğrulanmış lisans süresi veya `Lifetime` gösterilir; bilinmeyen süre lifetime
-sayılmaz. Bu etiket oturum yetkisi sağlamaz.
-
 ESC önce açık arama/popup/onayı kapatır; sonra ana menüyü kapatır.
 Eski keybind yakalayıcısında ESC atamayı siler, menüyü kapatmaz.
 HUD yerleştirmede ESC menüye döner. Kapatma ESC'sinin tekrarı oyuna iletilmez.
@@ -127,16 +121,6 @@ Hata toast/metinle bildirilir; cloud yüklemesi veya ikinci dispatch sistemi yok
 
 ## Temizlik ve uyumluluk
 
-Çağrı/başvuru denetiminde kullanılmayan eski stepper, coordinate row, status badge,
-module-card çizici zinciri ve okunmayan geometry-reset flag'i kaldırılmıştır.
-Config/HUD forwarding wrapper'ları tek çağrı noktasına indirildi.
-Historical preference alanları parser/serialization kullandığı için korunur;
-Widget uyumluluk girişleri `ImGui::OneStep*`, tercih servisi `gui::ui_state`
-olarak adlandırılır. Eski kullanıcı klasörü ve `##ThedoriusGrimUI` pencere kimliği
-uyumluluk için korunur. Font/texture sahipliği, authentication kapıları ve
-mevcut platform hooks değişmez.
-Kapanış GrimUI ve ortak widget animasyon önbelleklerini ImGui'den önce temizler.
-
 ## Doğrulama
 
 ```sh
@@ -146,12 +130,6 @@ python scripts/Test-GrimUI.py
 python scripts/Test-GrimUI.py --preview-dir out/ui-preview
 git diff --check
 ```
-
-Gerçek ImGui testi kartlar/ayarlar, HUD kontrolleri, keybind atama/taşıma/silme,
-104 tuşun hit target'ları, shared key, arama/popup/ESC, çubuksuz kaydırma,
-yerel dosya yeniden yükleme/bozulma/I/O hatası ve dar viewport'ları denetler.
-Oyun, auth ve platform bağımlılıkları test karşılıklarıdır; gerçek oyuna bağlanmaz.
-Tercih parser'ı gerçek kullanıcı dosyasına erişmeden ayrıca test edilir.
 
 Önizlemeler gerçek ImGui üçgenleri/font atlasından 2× yoğunlukla rasterize edilir;
 eski görsel büyütülüp keskinleştirilmez. Pillow yalnızca opsiyonel PNG export içindir.

@@ -32,14 +32,7 @@ dated results, not the current test inventory.
   game operations also execute in Java on every exact target. C++ retains
   UI/config, physical input and permission/lifecycle boundaries.
 
-The runtime reads the Minecraft mod version from Fabric Loader metadata before
-registering modules, initializing auth, or installing rendering hooks. An unknown
-version, a prerelease, or a version different from the DLL target stops initialization
-with an explanation. Window titles are not a source of version compatibility.
-
 ## Build
-
-In a Windows Developer PowerShell with the existing auth build properties configured:
 
 ```powershell
 .\scripts\Build-Release.ps1 -MinecraftVersion 1.21.1 -SkipSign
@@ -71,14 +64,6 @@ module implementations. Both patch jars passed all 740 SDK/JNI checks; 274
 referenced client classes (including parents/interfaces) were byte-identical to
 26.1. Each binary still accepts only its own exact game version, not the family.
 
-Each file keeps the `Onestep.dll` filename, preserving the launcher's loaded-module
-identity. The default 1.21.1 path, release artifact name and signed release protocol
-are unchanged. The launcher is **not** a multi-version release selector. The
-recorded v2 release targets 1.21.11; a development artifact is not automatically
-an approved production release. See the [launcher guide](../launcher/README.md).
-No production manifest, release, credential, API or Cloudflare resource is
-changed by adding these build targets.
-
 The checked-in Java class resources must be rebuilt when bridge sources change:
 
 ```powershell
@@ -91,35 +76,7 @@ These use Java 17 bytecode and the ASM already supplied by Fabric. Minecraft's
 existing Java/JOML/Fabric libraries remain runtime requirements; no extra client mod
 or frontend framework is introduced.
 
-Rebuild the six hybrid classes with `scripts/Build-GameBridge.ps1` when their
-Java sources change. Those bridges use JDK reflection rather than ASM.
-Optional code signing still looks up the historical
-`CN=Thedorius Lite Test` certificate in the user's certificate store; that name
-has not been cosmetically renamed. Protector/device-key limitations are
-documented in [AUTH_HARDENING](../server/AUTH_HARDENING.md#vmprotect-isteğe-bağlı-doğrulanmış-koruma-iddiası-yok).
-
 ## Actual differences handled
-
-- FOV returns float after 1.21.1; the render tick counter field changes in 1.21.4.
-- Jump input becomes a `PlayerInput` record; movement axes later become a vector.
-- `fallDistance` becomes double, and sword classification uses the sword tag when
-  the old `SwordItem` class no longer exists.
-- Armor/offhand access uses the inventory equipment contract after the old lists
-  disappear. Inventory actions still go through vanilla interaction methods.
-- Texture IDs come from `GpuTexture`/`GlTexture`; 1.21.11 skins use texture assets.
-- 1.21.11 authlib profiles use `name()`/`id()` record accessors.
-- Fresh crosshair queries move to `ClientPlayerEntity` in 1.21.11.
-- Chams uses an owned player render state after 1.21.1, without modifying the
-  renderer's shared state or replacing the game's renderer.
-- Item icons read GUI render layers, tint arrays, changed transformations and
-  packed UVs, then retain the HUD's existing native projection/drawing.
-- NameProtect verifies seven/six/eight/eight/eight/eight/eight font entry points
-  for the seven targets in the order listed above.
-- Sky reads legacy fog uniforms, the 1.21.4 Fog record, or newer GPU uniform slices.
-  1.21.11 uses the new Fabric rendering package and per-frame sky state; fog color
-  is filtered at a verified return site. The fog helper lives in the game's loader,
-  contains no native methods and is disabled on shutdown. Its separate JVMTI
-  environment removes its own transformation when shutting down.
 
 ## Offline validation
 
@@ -169,11 +126,6 @@ reload/shutdown, NameProtect, Chams animations, all Target HUD equipment icons,
 player heads, Sky presets/fog and Iris behavior. Exercise special item models and
 resource packs, which may not expose ordinary baked quads. Confirm that injecting
 a DLL built for another target stops before hooks or modules start.
-
-The existing config keys, module IDs and auth protocol are shared across targets.
-This does not assert that game behavior or every resource-pack model is identical
-between Minecraft versions. Unsupported versions (including 26.1.3 and later) require
-explicit additional validation and an exact target; they never use an approximate fallback.
 
 The 26.1 SDK/JNI audit, NameProtect/Sky bridges and exact offline test results are
 documented in [MINECRAFT_26_PORT.md](MINECRAFT_26_PORT.md). The three exact 26.1 build

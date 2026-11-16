@@ -5,7 +5,7 @@ import re
 import xml.etree.ElementTree as ET
 from urllib.parse import unquote, urlsplit
 
-AREAS = ("src", "launcher", "server", "scripts", "tests", "docs", "assets", ".github")
+AREAS = ("src", "tools", "scripts", "tests", "docs", "assets", ".github")
 SKIP_DIRS = {"node_modules", ".wrangler", ".credentials", "__pycache__", "archive"}
 TEXT_TYPES = {".cpp", ".hpp", ".h", ".inl", ".java", ".js", ".mjs", ".py",
               ".ps1", ".md", ".sql", ".props", ".json", ".jsonc", ".yml",

@@ -1,6 +1,4 @@
 #include "item_bridge.hpp"
-#include "../../auth/client.hpp"
-#include "../../auth/auth.hpp"
 #include "../../gui/gui.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../../services/input/input_service.hpp"
@@ -22,7 +20,7 @@ namespace
     bool permitted()
     {
         const HWND window = gui::get_window();
-        return auth::permitted(auth::scope::bridge) && !gui::draw && !gui::loader_visible && !gui::should_unload &&
+        return !gui::draw && !gui::loader_visible && !gui::should_unload &&
             window && GetForegroundWindow() == window;
     }
     template<class T> T checked(JNIEnv* env, T value)
@@ -88,7 +86,7 @@ namespace
     {
         using services::game::hybrid::result;
         if (feature < 1 || feature > 4) return result::unavailable;
-        if (!auth::permitted(auth::scope::bridge)) return result::unavailable;
+
         if constexpr (mc::target.build_id != 12111) return result::native_fallback;
         if (!permitted() || !platform::jni_context::bind_current_thread()) return result::unavailable;
         if (failed[feature] || !connect(jni::get_env())) return result::native_fallback;

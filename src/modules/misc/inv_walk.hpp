@@ -18,7 +18,7 @@ namespace modules
         void on_enable(::cache&) override { reset_requested.store(true); }
         void on_disable(::cache&) override { reset_requested.store(true); }
         void cancel_on_client_thread();
-        bool gate_inventory_input(UINT message, WPARAM key, LPARAM data);
+        bool gate_inventory_input(unsigned int message, std::uintptr_t key, std::intptr_t data);
         void on_render_shutdown() override { cancel_on_client_thread(); }
         void render_options() override;
         float get_options_height() override { return 200.f; }

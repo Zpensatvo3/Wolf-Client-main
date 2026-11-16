@@ -3,6 +3,7 @@
 #include <string>
 #include <cstdint>
 #include <vector>
+#include <filesystem>
 
 namespace configs
 {
@@ -28,7 +29,7 @@ namespace configs
 		std::uint64_t revision = 0; // Completed requests, not frame or queue updates.
 	};
 
-	void initialize();
+	void initialize(const std::filesystem::path& directory = {});
 	void shutdown();
 	snapshot get_snapshot();
 	void refresh();
@@ -37,7 +38,6 @@ namespace configs
 	void load(int id);
 	void remove(int id);
 
-	// Called by the menu thread. A downloaded config is never applied from the
-	// networking worker, avoiding races with in-game module execution.
+	// The menu applies loaded profiles at its existing config boundary.
 	bool consume_pending_payload(std::string& payload, std::string& config_name);
 }

@@ -7,15 +7,6 @@ OneStep'in Hit Crystal, Triggerbot, Jump Reset, Anchor Macro ve Auto Totem modü
 - Minecraft hedefi: `1.21` (1.21.1 değil)
 - Durum: Depo sahibi tarafından arşivlenmiş; GitHub üzerinde salt okunur.
 
-## Lisans ve kullanım
-
-Argon deposundaki [LICENSE](https://github.com/LvStrnggg/Argon/blob/main/LICENSE)
-dosyası tüm hakları saklı tutuyor. README değişiklik ve yeniden yayımlamaya izin
-veren ifadeler içeriyor; ancak bu izin lisans dosyasında açıkça tanımlanmıyor.
-Bu nedenle Argon'un kaynak kodu veya derlenmiş istemcisi OneStep'e kopyalanıp
-dağıtılmamalı. Kodun projeye alınması için hak sahibinden açık izin veya net bir
-lisans alınmalı.
-
 Argon yalnızca davranış referansı olarak kullanıldı; kaynak kodu kopyalanmadı.
 OneStep'in denetleyicisi `src/bridge/WorldBridge.java` içindedir. Argon'un `1.21`
 kaynağı OneStep'in hedef sürümleri için doğrudan uyumlu kabul edilmez.

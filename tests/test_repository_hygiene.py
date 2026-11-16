@@ -43,8 +43,8 @@ class RepositoryHygieneTest(unittest.TestCase):
         return path
 
     def test_empty_source_is_rejected_but_vendor_archive_and_cache_are_excluded(self):
-        for name in ("include/glm/empty.inl", "server/node_modules/x/empty.js",
-                     "server/archive/wolf/history.js", "server/.credentials/local.json"):
+        for name in ("include/glm/empty.inl", "tools/node_modules/x/empty.js",
+                     "tools/archive/wolf/history.js", "tools/.credentials/local.json"):
             self.write(name, "")
         self.assertEqual(validate_repository(self.root), [])
         self.write("src/empty.cpp", " \n\t")
@@ -58,10 +58,10 @@ class RepositoryHygieneTest(unittest.TestCase):
         self.assertTrue(any("Broken quoted include" in e for e in validate_repository(self.root)))
 
     def test_static_and_dynamic_relative_js_imports(self):
-        self.write("server/helper.mjs", "export const value = 1;")
-        self.write("server/worker.js", "import {value} from './helper.mjs';\nimport('node:crypto');")
+        self.write("tools/helper.mjs", "export const value = 1;")
+        self.write("tools/worker.js", "import {value} from './helper.mjs';\nimport('node:crypto');")
         self.assertEqual(validate_repository(self.root), [])
-        self.write("server/worker.js", "await import('./removed.mjs');")
+        self.write("tools/worker.js", "await import('./removed.mjs');")
         self.assertTrue(any("Broken JS import" in e for e in validate_repository(self.root)))
 
     def test_resources_include_generated_classes_and_reject_missing_or_duplicate_ids(self):
@@ -92,12 +92,12 @@ class RepositoryHygieneTest(unittest.TestCase):
         manifest = json.loads((ROOT / "src/modules/settings_manifest.json").read_text(encoding="utf-8"))
         self.assertEqual({entry["id"] for entry in manifest["modules"]}, set(BASELINE_IDS))
 
-    def test_solution_launcher_and_native_test_build_paths(self):
+    def test_solution_and_native_test_build_paths(self):
         self.write("OneStep.slnx", '<Solution><Project Path="OneStep.vcxproj"/></Solution>')
         self.write("OneStep.vcxproj", '<Project><ClCompile Include="src/source.cpp"/></Project>')
         self.write("src/source.cpp", "// source fixture")
         self.assertEqual(validate_repository(self.root), [])
-        self.write("launcher/launcher.vcxproj", '<Project><ClCompile Include="removed.cpp"/></Project>')
+        self.write("tests/native.vcxproj", '<Project><ClCompile Include="removed.cpp"/></Project>')
         self.assertTrue(any("Missing build file" in e for e in validate_repository(self.root)))
 
     def test_duplicate_build_entries_are_not_hidden_by_set_comparison(self):

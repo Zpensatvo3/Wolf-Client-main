@@ -1,7 +1,6 @@
 #include "attack_service.hpp"
 #include "anti_bot_service.hpp"
 #include "client_context.hpp"
-#include "../../auth/auth.hpp"
 
 #include "../../platform/jni/jni_context.hpp"
 #include <cmath>
@@ -23,7 +22,7 @@ bool services::attack::read_cooldown(const maps::ClientPlayerEntity& player, flo
 
 bool services::attack::swing_main_hand(const maps::ClientPlayerEntity& player)
 {
-    if (!auth::permitted(auth::scope::input)) return false;
+
     if (!player)
         return false;
     maps::Hand hand = maps::Hand{}.MAIN_HAND.get();
@@ -57,7 +56,7 @@ bool services::attack::attack_entity(const maps::ClientPlayerInteractionManager&
     const maps::Entity& target,
     bool swing)
 {
-    if (!auth::permitted(auth::scope::input)) return false;
+
     if (!manager || !player || !target)
         return false;
     if (services::anti_bot::is_bot(target)) return false;

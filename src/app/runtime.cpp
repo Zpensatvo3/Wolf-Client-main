@@ -1,8 +1,5 @@
 #include "runtime.hpp"
 #include "module_loop.hpp"
-#include "../auth/auth.hpp"
-#include "../auth/client.hpp"
-#include "../auth/config.hpp"
 #include "../cache/cache.hpp"
 #include "../configs/configs.hpp"
 #include "../configs/keybind_profile.hpp"
@@ -51,7 +48,6 @@ namespace
             gui::should_unload.store(true, std::memory_order_release);
             services::input::cancel_automatic_inputs();
             if (configs_started) configs::shutdown();
-            auth::client::shutdown();
             loader_ui::closing();
             gui::draw = false;
             if (renderer_started) gui::shutdown();
@@ -97,8 +93,6 @@ void app::run()
 
         cache game;
         runtime_services services{game};
-        auth::configure_config_service(auth::config::server_domain);
-        auth::client::initialize();
         // Register before enabling render callbacks: the module list stays fixed
         // until gui::shutdown has joined the render side.
         loader_ui::stage(3, "Registering client modules");
@@ -111,19 +105,11 @@ void app::run()
         services.renderer_started = true;
         loader_ui::ready();
 
-        // Only the renderer/input UI exists during login. Module ticks and
-        // public config work start after successful signed authentication.
-        while (!auth::client::access_allowed())
-        {
-            if (gui::should_unload || emergency_exit_pressed()) return;
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        }
-        if (gui::should_unload) return;
         services.configs_started = true;
         configs::initialize();
 
         module_loop loop;
-        while (!emergency_exit_pressed() && !gui::should_unload && auth::client::access_allowed())
+        while (!emergency_exit_pressed() && !gui::should_unload)
         {
             loop.tick(game);
             std::this_thread::sleep_for(worker_interval);

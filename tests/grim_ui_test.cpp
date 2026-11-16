@@ -80,7 +80,6 @@ namespace modules {
     void target_hud::set_placement(float, float, float) {}
 }
 namespace friends { std::string local_player_name() { return "Player"; } }
-namespace auth::client { view_state snapshot() { return {phase::authorized, "", "lifetime", true}; } }
 namespace gui {
     ImColor get_dynamic_color(int) { return ImColor(155, 69, 255); }
     ImTextureID get_icon_texture(icon_asset asset) { return asset == icon_asset::helmet && !capture_helmet.rgba.empty()

@@ -1,7 +1,5 @@
 #include "inventory_bridge.hpp"
 #include "client_bridge.hpp"
-#include "../../auth/client.hpp"
-#include "../../auth/auth.hpp"
 #include "../../gui/gui.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../input/input_service.hpp"
@@ -22,7 +20,7 @@ namespace
     bool permitted()
     {
         const HWND window = gui::get_window();
-        return auth::permitted(auth::scope::bridge) && !gui::draw && !gui::loader_visible && !gui::should_unload &&
+        return !gui::draw && !gui::loader_visible && !gui::should_unload &&
             window && GetForegroundWindow() == window;
     }
     template<class T> T checked(JNIEnv* env, T value)
@@ -77,7 +75,7 @@ namespace
 services::game::hybrid::result services::game::inventory_bridge::capture_container(feature operation, container_snapshot& out)
 {
     out = {};
-    if (!auth::permitted(auth::scope::bridge)) return hybrid::result::unavailable;
+
     if constexpr (mc::target.build_id != 12111) return hybrid::result::native_fallback;
     const auto f = static_cast<unsigned>(operation);
     if (f != 4 || !permitted() || !platform::jni_context::bind_current_thread()) return hybrid::result::unavailable;
@@ -182,7 +180,7 @@ void services::game::inventory_bridge::tick_mouse(bool active, bool right_tweak,
 services::game::hybrid::result services::game::inventory_bridge::capture(feature operation, bool allow_closed, snapshot& out)
 {
     out = {};
-    if (!auth::permitted(auth::scope::bridge)) return hybrid::result::unavailable;
+
     if constexpr (mc::target.build_id != 12111) return hybrid::result::native_fallback;
     const auto f = static_cast<unsigned>(operation);
     if (f < 1 || f > 3 || !permitted() || !platform::jni_context::bind_current_thread()) return hybrid::result::unavailable;

@@ -8,7 +8,7 @@
 
 namespace gui::config_page::model
 {
-    enum class collection { community, mine, favourites };
+    enum class collection { local, favourites };
     enum class order { newest, popular, name };
 
     inline std::string trim(std::string_view value)
@@ -35,8 +35,6 @@ namespace gui::config_page::model
         const auto needle = fold(trim(query));
         for (const auto& entry : library.entries)
         {
-            if (tab == collection::community && entry.mine) continue;
-            if (tab == collection::mine && !entry.mine) continue;
             if (tab == collection::favourites && !favourites.contains(entry.id)) continue;
             if (!needle.empty() && fold(entry.name + " " + entry.author_name + " " + entry.description).find(needle) == std::string::npos) continue;
             result.push_back(&entry);

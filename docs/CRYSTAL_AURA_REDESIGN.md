@@ -15,11 +15,6 @@ OneStep'in Java köprüsüne uygun bir denetleyici bağımsız olarak yazıldı.
 | [BleachHack CrystalAura](https://github.com/BleachDev/BleachHack/blob/2a30d34be73aa62484bb1ede97a7f657044fe333/src/main/java/org/bleachhack/module/mods/CrystalAura.java) | Hasar oranı, yerleştirme kara listesi, modern/1.12 yerleştirme farkı. | Reddedilen alanlara kısa geri çekilme; modern sürümlerde ikinci hava bloğu şartı yok. |
 | [Argon AutoCrystal](https://github.com/LvStrnggg/Argon/blob/738e75f0623581ffbbc116656835352f8df9eb22/src/main/java/dev/lvstrng/argon/module/modules/combat/AutoCrystal.java) | Bakılan blok/kristale bağlı yardımcı, ayrı sayaçlar. | Hit Crystal için uygun; tam otomatik alan/hasar seçimine tek başına uygun değil. |
 
-Meteor, LiquidBounce, ThunderHack, Wurst, BleachHack ve BlackOut depoları GPL
-ailesi lisanslar kullanıyor. Argon'un lisans durumu ARGON_REFERENCE.md içindedir.
-Karşılaştırma, mimari ve davranış referansıdır; üçüncü taraf dosya ya da derleme
-OneStep'e eklenmedi.
-
 ## Önceki döngünün sorunu
 
 Eski canlı modül kılıç → havalanma → obsidyen → kristal → kırma zincirini

@@ -119,7 +119,7 @@ int main()
     assert(macro.export_config_settings() == macro_saved);
     assert(!macro.apply_config_settings(R"({"execution_mode":2})"));
     assert(macro.export_config_settings() == macro_saved);
-    check_contract<module_settings::crystal_aura>({"target_mode","mob_ground_test","action_delay_ms","switch_delay_ms","launch_timeout_ms","confirm_timeout_ms"});
+    check_contract<module_settings::crystal_aura>({"target_mode","place_enabled","break_enabled","auto_switch","restore_slot","support","target_range","place_range","break_range","place_delay_ms","break_delay_ms","damage_check","min_damage","max_self_damage","switch_delay_ms","confirm_timeout_ms","mob_ground_test","launch_timeout_ms","action_delay_ms"});
     settings_fixture<module_settings::crystal_aura> aura;
     assert(aura.apply_config_settings(R"({"action_delay_ms":0,"switch_delay_ms":9999,"launch_timeout_ms":1,"confirm_timeout_ms":9999})"));
     const auto aura_settings = aura.settings.read();
