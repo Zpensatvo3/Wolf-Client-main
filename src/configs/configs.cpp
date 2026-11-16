@@ -118,9 +118,16 @@ void configs::initialize(const std::filesystem::path& location)
     {
         if (directory.empty())
         {
+#ifdef _WIN32
+            wchar_t appdata[32768]{};
+            const auto size = GetEnvironmentVariableW(L"APPDATA", appdata, 32768);
+            if (!size || size >= 32768) throw std::runtime_error("APPDATA is unavailable; local profiles cannot be opened.");
+            directory = std::filesystem::path(appdata) / L"OneStep" / L"configs";
+#else
             const char* appdata = std::getenv("APPDATA");
             if (!appdata || !*appdata) throw std::runtime_error("APPDATA is unavailable; local profiles cannot be opened.");
             directory = std::filesystem::path(appdata) / "OneStep" / "configs";
+#endif
         }
         std::filesystem::create_directories(directory);
         refresh_entries();
