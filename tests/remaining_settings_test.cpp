@@ -29,6 +29,7 @@
 #include "../src/modules/visual/view_model_presets.hpp"
 #include "../src/modules/visual/cape_design.hpp"
 #include "../src/modules/visual/settings/cape_settings.hpp"
+#include "../src/modules/visual/settings/china_hat_settings.hpp"
 #include "../src/modules/visual/settings/wings_settings.hpp"
 #include "../src/modules/render/settings/watermark_settings.hpp"
 #include "../src/modules/render/settings/arraylist_settings.hpp"
@@ -137,6 +138,11 @@ int main()
     check_contract<block_highlight>({"opacity","fill","fill_opacity","theme_color","color","glow"});
     check_contract<view_model>({"x","y","z","scale","pitch","yaw","roll","both_hands"});
     check_contract<cape>({"style","tint_art","length","width","animate","motion","physics","opacity","theme_color","color","glow"});
+    check_contract<china_hat>({"style","radius","height","offset","opacity","theme_color","color","glow","animate","animation_speed"});
+    settings_fixture<china_hat> hat;
+    assert(hat.apply_config_settings(R"({"style":2,"opacity":0.45})"));
+    assert(hat.settings.read().animate && hat.settings.read().animation_speed == 1);
+    assert(hat.settings.read().opacity == .45f);
     check_contract<wings>({"style","detailed_art","tint_art","size","opacity","animate","speed","physics","theme_color","color","glow"});
     {
         view_model custom;

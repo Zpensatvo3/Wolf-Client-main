@@ -12,6 +12,7 @@ asset provenance, not a request to regenerate or modify any image.
 
 - `wing-dragon.png`, `wing-angel.png`, `wing-butterfly.png`: 640 x 640 RGBA, genuinely transparent silhouettes. Used by Wings styles 0/1/2 when Detailed Art is on (default).
 - `cape-phoenix.png`, `cape-astral.png`: 512 x 768, opaque textile artwork. Used by Cape styles 8/9. Existing styles 0-7 remain available.
+- New Cape profiles select Phoenix by default; saved style IDs remain unchanged.
 - Original generated images remain in Codex's generated_images library; project assets are mechanically downsampled PNG copies, not repainted versions. `scripts/Build-CosmeticAssets.ps1` accepts the five original PNG paths to regenerate production-sized assets. Transparent wing alpha is retained.
 - Resource IDs 320-324 embed these images. They use the existing WIC/OpenGL mipmapped texture cache; GUI shutdown deletes them in the owning GL context. No runtime network request or loose-file dependency.
 - Tint Artwork is off by default so original artwork colors survive. Old theme/custom-color fields still import; they control procedural styles, or artwork when tint is explicitly enabled.
@@ -21,6 +22,14 @@ asset provenance, not a request to regenerate or modify any image.
 Cape uses 9 x 13 Verlet particles, pinned shoulders, structural/shear constraints, drag and torso/leg collision. Movement and turns drive inertia; Physics scales the response. Wings use damped shoulder and delayed tip joints reacting to movement/turns plus Flapping/Flap Speed. Both use a 120 Hz bounded step (maximum six steps per rendered frame). Pause, teleport, player/world change, menus and disable reset stored motion; Reduce Motion/Animation off gives a static pose. This changes only cosmetic geometry, never player motion, reach, inputs or packets. Environment blocks occlude rendering; they are not a full world-collision cloth simulation.
 
 Textured triangle UVs are interpolated through body/block shadow and near/frustum clipping, then projected/tessellated into the existing ImGui overlay. Wings mirror the same single-wing texture on the two sides. Cape textures follow the simulated cloth rather than a camera-facing quad. Glow uses the same clipped textured geometry, not a rectangular background.
+
+## Attachment and surface cleanup
+
+Cape shoulders are pinned at local `y=1.46, z=-0.155`, just behind the torso/jacket. The old `z=-0.255` attachment and `-0.245` collision plane left the fabric visibly separated from the back. The collision boundary now matches the attachment; only the free hem trails away during motion. Wings use the same back clearance. Both follow the existing interpolated body yaw and crouch transform.
+
+Procedural cosmetic triangles render without ImGui's per-polygon antialias fringe, which otherwise exposes an internal triangle grid. Render flags are restored after the mesh. Hat radial wires, procedural wing outlines and the cape wire frame were removed. Feather ribs and embroidered motifs use filled strips. Existing clipping/occlusion remains active; this is still a local overlay, not Minecraft's depth-buffer renderer.
+
+China Hat has a denser rounded brim, higher default opacity and a moving surface shimmer controlled by Shimmer Animation/Animation Speed. Reduce Motion freezes it. Glow controls the brim highlight; textured wings/capes retain their clipped artwork halo. The cape receives a restrained idle breeze alongside movement-driven cloth physics. Existing profiles keep their saved opacity, style and animation settings.
 
 Offline checks: `Test-Offline.py --compiler clang++ --test cosmetic_physics --test remaining_settings --jobs 2`, plus `Test-Infrastructure.py` and MSVC syntax checks. In-game rendering/FPS and final DLL build require separate validation; no live game was modified.
 

@@ -4,6 +4,14 @@
 #include <cmath>
 
 namespace cosmetic_physics {
+    // Player torso depth is 4/16 blocks. Allow the jacket layer and a small
+    // clearance, rather than attaching the cloth 0.255 blocks behind its axis.
+    inline constexpr double cape_back = -.155, cape_shoulder = 1.46;
+    inline double hat_phase(double time, bool animate, bool reduce_motion, double speed)
+    {
+        if (!animate || reduce_motion || !std::isfinite(time) || !std::isfinite(speed)) return 0;
+        return std::remainder(time * std::clamp(speed,.25,2.) * .9, 6.283185307179586);
+    }
     struct vector { double x=0,y=0,z=0; };
     inline vector operator+(vector a,vector b) { return {a.x+b.x,a.y+b.y,a.z+b.z}; }
     inline vector operator-(vector a,vector b) { return {a.x-b.x,a.y-b.y,a.z-b.z}; }
@@ -80,7 +88,7 @@ namespace cosmetic_physics {
         double width=0,length=0;
         bool initialized=false;
         int index(int x,int y) const { return y*columns+x; }
-        vector anchor(int x) const { return {(double(x)/(columns-1)-.5)*width,1.46,-.255}; }
+        vector anchor(int x) const { return {(double(x)/(columns-1)-.5)*width,cape_shoulder,cape_back}; }
         void reset(double w,double l) {
             width=std::clamp(w,.45,.95); length=std::clamp(l,.65,1.30); initialized=true;
             for (int y=0;y<rows;++y) for (int x=0;x<columns;++x) {
@@ -106,9 +114,9 @@ namespace cosmetic_physics {
                     const int i=index(x,y); const double v=double(y)/(rows-1),u=double(x)/(columns-1);
                     const auto p=position[i]; const auto inertia=(p-previous[i])*.985;
                     const vector force{
-                        (-input.sideways*.8-side_acceleration*.23-input.turn*1.1)*strength,
+                        (-input.sideways*.8-side_acceleration*.23-input.turn*1.1+std::sin(input.phase+v*4)*.16*v)*strength,
                         -9.8-input.acceleration.y*.10*strength,
-                        (-input.forward*2.5-forward_acceleration*.20+std::sin(input.phase+v*5+u*3)*.35)*strength};
+                        (-input.forward*2.5-forward_acceleration*.20+std::sin(input.phase+v*5+u*3)*.65)*strength};
                     position[i]=p+inertia+force*(signal::step*signal::step); previous[i]=p;
                 }
                 const double dx=width/(columns-1),dy=length/(rows-1),diagonal=std::hypot(dx,dy);
@@ -125,7 +133,7 @@ namespace cosmetic_physics {
                     // Render-only torso/leg collision; no world/player writes.
                     for (int y=1;y<rows;++y) for (int x=0;x<columns;++x) {
                         auto& p=position[index(x,y)];
-                        if (std::abs(p.x)<.34) p.z=std::min(p.z,p.y>.70 ? -.245 : -.20);
+                        if (std::abs(p.x)<.34) p.z=std::min(p.z,p.y>.70 ? cape_back : -.14);
                         p.y=std::clamp(p.y,-.05,1.46);
                     }
                 }

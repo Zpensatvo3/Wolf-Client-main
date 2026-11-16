@@ -5,7 +5,7 @@ namespace module_settings
 {
     struct cape
     {
-        int style = 1;
+        int style = 8; // Phoenix artwork for new profiles; saved style IDs remain unchanged.
         float length = 1.05f, width = .66f, motion = 1.f, opacity = .94f, physics = 1.f;
         bool animate = true, theme_color = true, glow = true;
         bool tint_art = false;

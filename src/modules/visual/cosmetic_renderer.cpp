@@ -419,6 +419,10 @@ namespace
             }
         std::sort(faces.begin(),faces.end(),[](const auto& a,const auto& b) { return a.depth>b.depth; });
         auto* draw=ImGui::GetBackgroundDrawList();
+        // Adjacent mesh triangles must share a solid edge. ImGui's per-polygon
+        // AA fringe creates a visible transparent grid between those triangles.
+        const auto fill_flags=draw->Flags;
+        draw->Flags &= ~ImDrawListFlags_AntiAliasedFill;
         draw->PushClipRect(s.origin,ImVec2(s.origin.x+s.size.x,s.origin.y+s.size.y),true);
         const auto image_face=[&](const face& f,ImVec2 offset,ImU32 color) {
             draw->PushTextureID(f.texture);
@@ -444,6 +448,7 @@ namespace
         }
         for (const auto& line:lines) draw->AddLine(line.a,line.b,ImGui::ColorConvertFloat4ToU32(line.color),1.25f);
         draw->PopClipRect();
+        draw->Flags=fill_flags;
     }
 
     template<class Generate>
@@ -509,9 +514,6 @@ namespace
         }
         faces.push_back({{transform(remaining[0]),transform(remaining[1]),transform(remaining[2])},color});
         m.faces.insert(m.faces.end(),faces.begin(),faces.end());
-        color.w=std::min(1.f,color.w*1.8f);
-        for (std::size_t i=0;i<outline.size();++i)
-            m.edges.push_back({transform(outline[i]),transform(outline[(i+1)%outline.size()]),color});
     }
 
     void curve_to(polygon& path,point control,point end,int steps=6)
@@ -616,7 +618,9 @@ void cosmetics::draw_hat(const module_settings::china_hat& config)
         if (!std::isfinite(config.radius) || !std::isfinite(config.height) || !std::isfinite(config.offset)) return;
         const double radius=std::clamp(config.radius,.35f,1.f), height=std::clamp(config.height,.15f,.65f);
         const point root=s.head_center+s.head.up*(.28+std::clamp(config.offset,0.f,.25f));
-        constexpr int segments=64;
+        const double phase=cosmetic_physics::hat_phase(ImGui::GetTime(),config.animate,
+            gui::ui_state::get_preferences().reduce_motion,config.animation_speed);
+        constexpr int segments=96;
         // A revolved profile gives each hat its own silhouette while keeping the
         // same head attachment, width/height controls and occlusion handling.
         const auto roof=[&](std::initializer_list<point> profile,int color_offset)
@@ -632,26 +636,32 @@ void cosmetics::draw_hat(const module_settings::china_hat& config)
                 const point p=vertex(rings[band-1],a),q=vertex(rings[band-1],b);
                 const point r=vertex(rings[band],a),t=vertex(rings[band],b);
                 ImVec4 c=tint(config.theme_color,config.color,config.opacity,color_offset+i*3);
-                const float shade=.78f+.22f*static_cast<float>(.5+.5*std::cos(a));
+                const float shimmer=static_cast<float>(std::pow(.5+.5*std::cos(a-phase),12));
+                const float shade=.76f+.16f*static_cast<float>(.5+.5*std::cos(a))+.08f*shimmer;
                 c.x*=shade; c.y*=shade; c.z*=shade;
+                // An inlaid highlight on the brim is part of the surface, not
+                // a radial wire overlay or a separate floating ring.
+                if (band+1==rings.size()) {
+                    const float accent=.10f+(config.glow ? .32f : .12f)*shimmer;
+                    c.x=c.x*(1-accent)+accent;
+                    c.y=c.y*(1-accent)+accent;
+                    c.z=c.z*(1-accent)+accent;
+                }
                 if (rings[band-1].x>0) m.faces.push_back({{p,r,q},c});
                 m.faces.push_back({{q,r,t},c});
-                c.w=std::min(1.f,c.w*1.8f);
-                if (band+1==rings.size()) m.edges.push_back({r,t,c});
-                if (i%8==0) { c.w*=.35f; m.edges.push_back({p,r,c}); }
             }
         };
         switch (config.style)
         {
         case 1: // Low crown, curved brim and a lifted outer edge.
-            roof({{0,1,0},{.28,.84,0},{.78,.08,0},{1,.16,0}},0);
+            roof({{0,1,0},{.28,.84,0},{.78,.08,0},{.97,.15,0},{1,.16,0}},0);
             break;
-        case 2: // Two overlapping roofs with separately outlined eaves.
-            roof({{0,.70,0},{.56,.23,0},{1,0,0}},28);
-            roof({{0,1,0},{.25,.79,0},{.67,.55,0}},0);
+        case 2: // Two overlapping roofs with inlaid eaves.
+            roof({{0,.70,0},{.56,.23,0},{.97,.01,0},{1,0,0}},28);
+            roof({{0,1,0},{.25,.79,0},{.64,.55,0},{.67,.55,0}},0);
             break;
         default:
-            roof({{0,1,0},{1,0,0}},0);
+            roof({{0,1,0},{.97,.03,0},{1,0,0}},0);
             break;
         }
     },config.glow);
@@ -704,12 +714,17 @@ void cosmetics::draw_wings(const module_settings::wings& config,cape_motion& mot
             {
                 const double span=std::clamp(p.x/1.45,0.,1.),fold=angle+flex*span*span;
                 return s.body_point({side*(.11+p.x*size*std::cos(fold)),
-                    1.25+p.y*size,-.19-p.x*size*std::sin(fold)+p.z*size});
+                    1.25+p.y*size,cosmetic_physics::cape_back-p.x*size*std::sin(fold)+p.z*size});
             };
             const auto color=[&](int offset=0) { return tint(config.theme_color,config.color,config.opacity,offset); };
             const auto rib=[&](point a,point b,int offset=0,float alpha=1.1f) {
                 auto c=color(offset); c.w=std::min(1.f,c.w*alpha);
-                m.edges.push_back({transform(a),transform(b),c});
+                const auto d=b-a;
+                const double length=std::hypot(d.x,d.y);
+                if (length<1e-6) return;
+                const point n{-d.y/length*.008,d.x/length*.008,0};
+                m.faces.push_back({{transform(a+n),transform(a-n),transform(b+n)},c});
+                m.faces.push_back({{transform(b+n),transform(a-n),transform(b-n)},c});
             };
             if (image) {
                 constexpr int columns=12,rows=12;
@@ -849,32 +864,26 @@ void cosmetics::draw_cape(const module_settings::cape& config,cape_motion& motio
         auto edge_color=tint(config.theme_color,config.color,config.opacity);
         if (image && !config.tint_art) edge_color=config.style==8 ? ImVec4(.96f,.63f,.21f,config.opacity) : ImVec4(.64f,.79f,1.f,config.opacity);
         edge_color.w=std::min(1.f,edge_color.w*1.15f);
-        for (int y=0;y<rows;++y)
-        {
-            m.edges.push_back({cloth[y][0],cloth[y+1][0],edge_color});
-            m.edges.push_back({cloth[y][columns],cloth[y+1][columns],edge_color});
-        }
-        for (int x=0;x<columns;++x)
-        {
-            m.edges.push_back({cloth[0][x],cloth[0][x+1],edge_color});
-            m.edges.push_back({cloth[rows][x],cloth[rows][x+1],edge_color});
-        }
         const auto design=cape_design::strokes(config.style);
         if (!design.empty() || config.style==4)
         {
-            // The emblem is traced on the same deformed cloth, so it bends with
-            // the fabric instead of floating as a flat, camera-facing overlay.
+            // Embroidery is a filled strip on the cloth, never a wire outline.
             auto emblem=edge_color;
             emblem.x=emblem.x*.25f+.72f; emblem.y=emblem.y*.25f+.72f; emblem.z=emblem.z*.25f+.72f;
             const auto stroke=[&](cape_design::uv a,cape_design::uv b)
             {
                 constexpr int steps=10;
-                point previous=surface(a.x,a.y);
+                const double dx=b.x-a.x,dy=b.y-a.y,length=std::hypot(dx,dy);
+                if (length<1e-6) return;
+                const double nx=-dy/length*.003,ny=dx/length*.003;
+                const auto sample=[&](double t,double side) {
+                    return surface(std::clamp(a.x+dx*t+nx*side,0.,1.),std::clamp(a.y+dy*t+ny*side,0.,1.));
+                };
                 for (int i=1;i<=steps;++i)
                 {
-                    const double t=static_cast<double>(i)/steps;
-                    const point next=surface(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t);
-                    m.edges.push_back({previous,next,emblem}); previous=next;
+                    const double t0=double(i-1)/steps,t1=double(i)/steps;
+                    const auto p=sample(t0,1),q=sample(t0,-1),r=sample(t1,1),t=sample(t1,-1);
+                    m.faces.push_back({{p,q,r},emblem}); m.faces.push_back({{r,q,t},emblem});
                 }
             };
             for (const auto& line:design) stroke(line.a,line.b);

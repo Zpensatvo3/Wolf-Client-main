@@ -6,8 +6,9 @@ namespace module_settings
     struct china_hat
     {
         int style = 0;
-        float radius = .62f, height = .30f, offset = .025f, opacity = .45f;
-        bool theme_color = true, glow = true;
+        float radius = .62f, height = .30f, offset = .025f, opacity = .88f;
+        float animation_speed = 1.f;
+        bool theme_color = true, glow = true, animate = true;
         float color[4]{.65f, .40f, 1.f, 1.f};
         bool operator==(const china_hat&) const = default;
         static std::span<const modules::settings::descriptor<china_hat>> schema()
@@ -24,7 +25,9 @@ namespace module_settings
                 d::number("opacity", {"Opacity"}, &china_hat::opacity, .1f, 1.f, "%.2f"),
                 d::toggle("theme_color", {"Theme Color"}, &china_hat::theme_color),
                 d::color("color", {"Color"}, &china_hat::color).when([](const china_hat& c) { return !c.theme_color; }),
-                d::toggle("glow", {"Glow"}, &china_hat::glow)
+                d::toggle("glow", {"Glow"}, &china_hat::glow),
+                d::toggle("animate", {"Shimmer Animation"}, &china_hat::animate),
+                d::number("animation_speed", {"Animation Speed"}, &china_hat::animation_speed, .25f, 2.f, "%.2fx", &china_hat::animate)
             };
             return fields;
         }
