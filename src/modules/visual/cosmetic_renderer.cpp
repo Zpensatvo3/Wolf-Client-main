@@ -366,6 +366,15 @@ namespace
         c.x=component(c.x); c.y=component(c.y); c.z=component(c.z); c.w=component(c.w);
         return c;
     }
+    ImVec4 effect_tint(ImVec4& color, bool theme, const float* custom, int offset=0)
+    {
+        const auto current=tint(theme,custom,1.f,offset);
+        const float blend=gui::ui_state::get_preferences().reduce_motion ? 1.f
+            : visual_effects_logic::response(ImGui::GetIO().DeltaTime,10.);
+        color={color.x+(current.x-color.x)*blend, color.y+(current.y-color.y)*blend,
+            color.z+(current.z-color.z)*blend, color.w+(current.w-color.w)*blend};
+        return color;
+    }
     void render(const scene& s, const mesh& m, bool glow)
     {
         struct face {
@@ -572,6 +581,7 @@ namespace
     {
         point origin,velocity;
         ImVec4 color;
+        int color_offset=0;
         double born=0,radius=.025,next_visibility=0;
         bool visible=false;
         point position(double age) const { return origin+velocity*age+point{0,-.045*age*age,0}; }
@@ -580,6 +590,7 @@ namespace
     {
         point position;
         ImVec4 color;
+        int color_offset=0;
         double born=0,yaw=0,next_visibility=0;
         bool visible=false;
     };
@@ -956,7 +967,8 @@ void cosmetics::draw_trails(const module_settings::trails& config,trail_state& s
                 particle.origin=at+point{(state.noise()-.5)*.24,.12+state.noise()*.24,(state.noise()-.5)*.24};
                 particle.velocity=reduced ? point{} : point{(state.noise()-.5)*.12,.12+state.noise()*.18,(state.noise()-.5)*.12};
                 particle.radius=.025*(.7+state.noise()*.6);
-                particle.color=tint(config.theme_color,config.color,1.f,static_cast<int>(now*65));
+                particle.color_offset=static_cast<int>(now*65);
+                particle.color=tint(config.theme_color,config.color,1.f,particle.color_offset);
                 particle.born=now; state.particles.push_back(particle);
                 if (state.particles.size()>96) state.particles.pop_front();
             });
@@ -970,7 +982,8 @@ void cosmetics::draw_trails(const module_settings::trails& config,trail_state& s
                 footprint foot;
                 foot.position=ground.position+point{0,.015,0};
                 foot.yaw=std::atan2(s.body.right.z,s.body.right.x)+sign*.09;
-                foot.color=tint(config.theme_color,config.color,1.f,static_cast<int>(now*65));
+                foot.color_offset=static_cast<int>(now*65);
+                foot.color=tint(config.theme_color,config.color,1.f,foot.color_offset);
                 foot.born=now; state.feet.push_back(foot); state.left=!state.left;
                 if (state.feet.size()>48) state.feet.pop_front();
             });
@@ -1012,25 +1025,28 @@ void cosmetics::draw_trails(const module_settings::trails& config,trail_state& s
             for (const auto& e: {std::pair{a,b},std::pair{b,c},std::pair{c,d},std::pair{d,a}})
                 m.edges.push_back({e.first,e.second,color});
         };
-        for (const auto& foot:state.feet)
+        for (auto& foot:state.feet)
         {
             if (!foot.visible || dot(foot.position-s.camera,foot.position-s.camera)>1600) continue;
             const double age=std::clamp((now-foot.born)/lifetime,0.,1.);
-            auto c=foot.color; c.w*=config.opacity*static_cast<float>((1-age)*(1-age));
+            auto c=effect_tint(foot.color,config.theme_color,config.color,foot.color_offset);
+            c.w*=config.opacity*static_cast<float>(visual_effects_logic::envelope(age,.06));
             const basis axes=player_basis(foot.yaw*180./pi);
             const auto vertex=[&](double x,double z) { return foot.position+axes.apply({x*size,0,z*size}); };
             quad(vertex(-.060,-.035),vertex(.060,-.035),vertex(.048,.13),vertex(-.048,.13),c);
             quad(vertex(-.045,-.14),vertex(.045,-.14),vertex(.050,-.065),vertex(-.050,-.065),c);
         }
-        for (const auto& p:state.particles)
+        for (auto& p:state.particles)
         {
             if (!p.visible) continue;
             const double age=now-p.born;
             const point center=p.position(age);
             if (dot(center-s.camera,center-s.camera)>1600) continue;
             const double t=std::clamp(age/particle_lifetime,0.,1.);
-            auto c=p.color; c.w*=config.opacity*static_cast<float>((1-t)*(1-t));
-            const double radius=p.radius*size*(1.-t*.35);
+            auto c=effect_tint(p.color,config.theme_color,config.color,p.color_offset);
+            c.w*=config.opacity*static_cast<float>(visual_effects_logic::envelope(t));
+            const bool reduced=gui::ui_state::get_preferences().reduce_motion;
+            const double radius=p.radius*size*(reduced ? 1. : (.65+.35*visual_effects_logic::ease_out(t/.15))*(1.-t*.35));
             quad(center+s.view.up*radius,center+s.view.right*radius,
                 center-s.view.up*radius,center-s.view.right*radius,c);
         }
@@ -1049,7 +1065,7 @@ struct cosmetics::visual_effect_state::runtime
     visual_effects_logic::hit_detector hits;
     visual_effects_logic::jump_detector jumps;
     point previous{}, block{};
-    double time = -1, next_shape = 0, target_seen = -1;
+    double time = -1, next_shape = 0, target_seen = -1, block_started = 0;
     int age = -1;
     bool block_valid = false;
     std::uint32_t random = 0x91bd235fu;
@@ -1059,7 +1075,7 @@ struct cosmetics::visual_effect_state::runtime
     {
         particles.clear(); circles.clear(); boxes.clear(); target.clear_ref();
         hits.reset(); jumps.reset(); previous = {}; time = -1; age = -1;
-        next_shape = 0; target_seen = -1; block_valid = false; visibility_cursor = 0;
+        next_shape = block_started = 0; target_seen = -1; block_valid = false; visibility_cursor = 0;
     }
     bool observe(const scene& s, double now)
     {
@@ -1137,7 +1153,8 @@ void cosmetics::draw_hit_particles(const module_settings::hit_particles& config,
                     trail_particle p;
                     p.origin=center+point{(state.noise()-.5)*.35,(state.noise()-.5)*.4,(state.noise()-.5)*.35};
                     p.velocity={(state.noise()-.5)*1.7,.2+state.noise()*.8,(state.noise()-.5)*1.7};
-                    p.color=tint(config.theme_color,config.color,1.f,i*12); p.born=now;
+                    p.color_offset=i*12;
+                    p.color=tint(config.theme_color,config.color,1.f,p.color_offset); p.born=now;
                     p.radius=.045+state.noise()*.025; p.visible=true; state.particles.push_back(p);
                 }
             }
@@ -1152,20 +1169,26 @@ void cosmetics::draw_hit_particles(const module_settings::hit_particles& config,
             --budget; p.visible=effect_visible(s,p.position(now-p.born)); p.next_visibility=now+.18;
         }
         mesh m;
-        for (const auto& p:state.particles) {
+        for (auto& p:state.particles) {
             if (!p.visible) continue;
             const double age=now-p.born,t=std::clamp(age/lifetime,0.,1.);
             const point center=p.position(age);
             if (dot(center-s.camera,center-s.camera)>576.) continue;
-            auto color=p.color; color.w*=config.opacity*static_cast<float>((1-t)*(1-t));
-            const double r=p.radius*std::clamp(config.size,.5f,2.f)*(1-t*.3);
-            if (config.style==2) effect_ring(m,center,s.view.right,s.view.up,r,color,12);
-            else if (config.style==1) m.edges.push_back({center,center-p.velocity*.06,color});
+            auto color=effect_tint(p.color,config.theme_color,config.color,p.color_offset);
+            color.w*=config.opacity*static_cast<float>(visual_effects_logic::envelope(t,.06));
+            const bool reduced=gui::ui_state::get_preferences().reduce_motion;
+            const double growth=reduced ? 1. : .55+.45*visual_effects_logic::ease_out(t/.16);
+            const double r=p.radius*std::clamp(config.size,.5f,2.f)*growth*(1-t*.3);
+            if (config.style==2) effect_ring(m,center,s.view.right,s.view.up,r*(reduced ? 1. : 1.+t*.5),color,24);
+            else if (config.style==1) m.edges.push_back({center,center-p.velocity*(.035+.045*(1.-t)),color});
             else {
-                m.edges.push_back({center-s.view.right*r,center+s.view.right*r,color});
-                m.edges.push_back({center-s.view.up*r,center+s.view.up*r,color});
-                m.edges.push_back({center-(s.view.right+s.view.up)*r*.45,center+(s.view.right+s.view.up)*r*.45,color});
-                m.edges.push_back({center-(s.view.right-s.view.up)*r*.45,center+(s.view.right-s.view.up)*r*.45,color});
+                const double angle=reduced ? 0. : age*1.6;
+                const point right=s.view.right*std::cos(angle)+s.view.up*std::sin(angle);
+                const point up=s.view.up*std::cos(angle)-s.view.right*std::sin(angle);
+                m.edges.push_back({center-right*r,center+right*r,color});
+                m.edges.push_back({center-up*r,center+up*r,color});
+                m.edges.push_back({center-(right+up)*r*.45,center+(right+up)*r*.45,color});
+                m.edges.push_back({center-(right-up)*r*.45,center+(right-up)*r*.45,color});
             }
         }
         render(s,m,config.glow); state.advance(s,now);
@@ -1207,11 +1230,17 @@ void cosmetics::draw_jump_circles(const module_settings::jump_circles& config, v
             }
             if (!ring.visible || dot(ring.position-s.camera,ring.position-s.camera)>1024.) continue;
             const double t=std::clamp((now-ring.born)/lifetime,0.,1.);
-            const double expand=gui::ui_state::get_preferences().reduce_motion ? .75 : .15+.85*(1-std::pow(1-t,3));
+            const bool reduced=gui::ui_state::get_preferences().reduce_motion;
+            const double expand=reduced ? .75 : .15+.85*visual_effects_logic::ease_out(t);
             const double radius=std::clamp(config.radius,.3f,1.5f)*expand;
-            auto color=ring.color; color.w*=config.opacity*static_cast<float>((1-t)*(1-t));
-            effect_ring(m,ring.position,{1,0,0},{0,0,1},radius,color,48);
-            if (config.style==1) { color.w*=.5f; effect_ring(m,ring.position,{1,0,0},{0,0,1},radius*.77,color,48); }
+            auto color=effect_tint(ring.color,config.theme_color,config.color);
+            color.w*=config.opacity*static_cast<float>(visual_effects_logic::envelope(t));
+            effect_ring(m,ring.position,{1,0,0},{0,0,1},radius,color,64);
+            if (config.style==1) {
+                color.w*=.6f;
+                const double inner=reduced ? .77 : .48+.29*visual_effects_logic::ease_out(t);
+                effect_ring(m,ring.position,{1,0,0},{0,0,1},radius*inner,color,64);
+            }
         }
         render(s,m,config.glow); state.advance(s,now);
     } catch (...) { storage.clear(); }
@@ -1233,6 +1262,7 @@ void cosmetics::draw_block_highlight(const module_settings::block_highlight& con
         if (platform::jni_context::clear_exception() || !pos) { storage.clear(); return; }
         const point block{double(pos.getX.call()),double(pos.getY.call()),double(pos.getZ.call())};
         if (platform::jni_context::clear_exception() || !finite(block)) { storage.clear(); return; }
+        if (!state.block_valid || dot(block-state.block,block-state.block)>0) state.block_started=now;
         if (!state.block_valid || dot(block-state.block,block-state.block)>0 || now>=state.next_shape) {
             state.boxes.clear(); state.block=block; state.block_valid=true; state.next_shape=now+.05;
             auto raw=s.context.world.getBlockState.call(pos);
@@ -1252,7 +1282,9 @@ void cosmetics::draw_block_highlight(const module_settings::block_highlight& con
             }
         }
         mesh m;
-        const auto outline=tint(config.theme_color,config.color,config.opacity);
+        const float appearance=gui::ui_state::get_preferences().reduce_motion ? 1.f
+            : static_cast<float>(visual_effects_logic::smoothstep((now-state.block_started)/.12));
+        const auto outline=tint(config.theme_color,config.color,config.opacity*appearance);
         auto fill=outline; fill.w=config.fill ? config.fill_opacity*outline.w : 0.f;
         constexpr int edges[][2]{{0,1},{1,2},{2,3},{3,0},{4,5},{5,6},{6,7},{7,4},{0,4},{1,5},{2,6},{3,7}};
         constexpr int faces[][4]{{0,3,2,1},{4,5,6,7},{0,1,5,4},{1,2,6,5},{3,7,6,2},{0,4,7,3}};

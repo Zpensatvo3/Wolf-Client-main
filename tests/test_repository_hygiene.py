@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from repository_hygiene import validate_repository, validate_markdown
 validate_project_entries = runpy.run_path(str(ROOT / "scripts/Test-Infrastructure.py"))["validate_project_entries"]
 
-# Captured before source/class renaming. Intentionally independent of the catalog
+# Retained IDs after the four clicker removals. Independent of the catalog
 # and settings manifest: removing an entry from both must still fail this test.
 BASELINE_IDS = """
 friends_manager click_gui panic notifications nameprotect anti_bot
@@ -22,8 +22,8 @@ chams china_hat wings cape sky trails hit_particles jump_circles block_highlight
 view_model player_esp item_esp storage_esp block_esp radar spotify_hud target_hud
 full_bright nametag jump_reset shield_breaker auto_totem pearl_macro chest_stealer
 elytra_swapper auto_tool auto_armor sprint no_jump_delay fast_stop inv_walk trajectories
-bridge_assist right_clicker left_clicker fast_place fast_exp
-pot_refill mouse_tweaks vape_aim_assist vape_left_clicker vape_right_clicker
+bridge_assist fast_place fast_exp
+pot_refill mouse_tweaks vape_aim_assist
 """.split()
 
 
@@ -84,10 +84,10 @@ class RepositoryHygieneTest(unittest.TestCase):
         self.write("README.md", "[bad](docs/guide.md#missing) [gone](gone.md)")
         self.assertEqual(len(validate_markdown(path)), 2)
 
-    def test_all_59_module_ids_and_order_are_preserved(self):
+    def test_all_55_module_ids_and_order_are_preserved(self):
         catalog = (ROOT / "src/modules/module_catalog.cpp").read_text(encoding="utf-8")
         ids = re.findall(r'\{\s*"([a-z0-9_]+)"\s*,\s*&', catalog)
-        self.assertEqual(len(BASELINE_IDS), 59)
+        self.assertEqual(len(BASELINE_IDS), 55)
         self.assertEqual(ids, BASELINE_IDS)
         manifest = json.loads((ROOT / "src/modules/settings_manifest.json").read_text(encoding="utf-8"))
         self.assertEqual({entry["id"] for entry in manifest["modules"]}, set(BASELINE_IDS))

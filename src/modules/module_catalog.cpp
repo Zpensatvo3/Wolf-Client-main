@@ -71,15 +71,11 @@ namespace
         { "inv_walk", &create_module<modules::inv_walk> },
         { "trajectories", &create_module<modules::trajectories> },
         { "bridge_assist", &create_module<modules::bridge_assist> },
-        { "right_clicker", &create_module<modules::right_clicker> },
-        { "left_clicker", &create_module<modules::left_clicker> },
         { "fast_place", &create_module<modules::fast_place> },
         { "fast_exp", &create_module<modules::fast_exp> },
         { "pot_refill", &create_module<modules::pot_refill> },
         { "mouse_tweaks", &create_module<modules::mouse_tweaks> },
         { "vape_aim_assist", &modules::create_vape_aim },
-        { "vape_left_clicker", &modules::create_vape_left },
-        { "vape_right_clicker", &modules::create_vape_right },
     };
 }
 

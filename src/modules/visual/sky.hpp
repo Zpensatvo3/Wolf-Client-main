@@ -19,7 +19,7 @@ namespace modules
         void on_enable(::cache&) override { reset_generation_.fetch_add(1, std::memory_order_release); }
         void on_disable(::cache&) override { reset_generation_.fetch_add(1, std::memory_order_release); }
         void render_options() override;
-        float get_options_height() override { return 350.f; }
+        float get_options_height() override { return 540.f; }
         void visit_config(config_visitor& visitor) override { settings_.visit(visitor,module_settings::sky::schema()); }
     private:
         struct runtime;

@@ -8,8 +8,6 @@
 #include "../src/modules/combat/settings/hit_crystal_settings.hpp"
 #include "../src/modules/combat/settings/crystal_aura_settings.hpp"
 #include "../src/modules/combat/settings/auto_totem_settings.hpp"
-#include "../src/modules/misc/settings/left_clicker_settings.hpp"
-#include "../src/modules/misc/settings/right_clicker_settings.hpp"
 #include "../src/modules/misc/settings/fast_exp_settings.hpp"
 #include "../src/modules/misc/settings/trajectories_settings.hpp"
 #include "../src/modules/visual/settings/glow_esp_settings.hpp"
@@ -26,6 +24,7 @@
 #include "../src/modules/visual/settings/block_highlight_settings.hpp"
 #include "../src/modules/visual/settings/view_model_settings.hpp"
 #include "../src/modules/visual/visual_effects_logic.hpp"
+#include "../src/modules/visual/settings/sky_settings.hpp"
 #include "../src/modules/visual/view_model_presets.hpp"
 #include "../src/modules/visual/cape_design.hpp"
 #include "../src/modules/visual/settings/cape_settings.hpp"
@@ -133,6 +132,8 @@ int main()
     assert(!aura.apply_config_settings(R"({"target_mode":3,"mob_ground_test":true})"));
     assert(aura.export_config_settings() == aura_saved);
     using namespace module_settings;
+    check_contract<sky>({"style","mode","panorama","exposure","rotation","drift","strength","match_fog","color",
+        "atmosphere","animate","atmosphere_density","haze_height","animation_speed"});
     check_contract<hit_particles>({"style","count","lifetime","size","opacity","theme_color","color","glow"});
     check_contract<jump_circles>({"style","trigger","radius","lifetime","opacity","theme_color","color","glow"});
     check_contract<block_highlight>({"opacity","fill","fill_opacity","theme_color","color","glow"});
@@ -238,8 +239,6 @@ int main()
     check_contract<auto_totem>({"mode","delay","hotbar","totem_slot","auto_switch","force_totem","auto_open","stay_open_for"});
     assert(auto_totem{}.delay == 0 && auto_totem{}.hotbar && auto_totem{}.totem_slot == 1 &&
         !auto_totem{}.auto_switch && !auto_totem{}.force_totem && !auto_totem{}.auto_open);
-    check_contract<left_clicker>({"min_cps","max_cps","jitter_percent","jitter_camera","jitter_amount","fatigue_enabled","fatigue_factor","glfw_input"});
-    check_contract<right_clicker>({"min_cps","max_cps","jitter_percent","jitter_camera","jitter_amount","fatigue_enabled","fatigue_factor","glfw_input","only_blocks"});
     check_contract<fast_exp>({"min_cps","max_cps","cps"});
     check_contract<trajectories>({"show_bows","show_throwables","show_potions","show_landing_marker","show_flight_time","line_thickness","max_ticks"});
     check_contract<glow_esp>({"box_thickness","show_names","show_health","show_distance","fov","use_game_fov"});

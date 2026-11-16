@@ -41,7 +41,6 @@ namespace
     enum class page
     {
         combat,
-        vape,
         misc,
         visuals,
         client,
@@ -113,7 +112,6 @@ namespace
         { page::misc,     "Misc",     "\xEF\x84\xAE" },
         { page::visuals,  "Visuals",  "\xEF\x81\xAE" },
         { page::client,   "Client",   "\xEF\x87\x9E" },
-        { page::vape,     "Vape",     "\xEF\x83\xA7" },
     };
 
     constexpr navigation_entry other_navigation[] = {
@@ -176,7 +174,6 @@ namespace
         switch (value)
         {
         case page::combat: return "Combat";
-        case page::vape: return "Vape";
         case page::misc: return "Misc";
         case page::visuals: return "Visuals";
         case page::client: return "Client";
@@ -194,7 +191,6 @@ namespace
         switch (value)
         {
         case page::combat: return "Combat assistance and timing";
-        case page::vape: return "Independent combat engines";
         case page::misc: return "Movement, player and inventory tools";
         case page::visuals: return "World visualization modules";
         case page::client: return "Client interface and safety";
@@ -212,7 +208,6 @@ namespace
         if (!module) return false;
         const auto category = gui::module_categories::display(module->get_category());
         if (target == page::combat) return category == "Combat";
-        if (target == page::vape) return category == "Vape";
         if (target == page::misc) return category == "Misc";
         if (target == page::visuals) return category == "Visuals";
         if (target == page::client) return category == "Client";
@@ -307,7 +302,6 @@ namespace
         if (!module) return;
         const char* category = module->get_category();
         if (std::strcmp(category, "Combat") == 0) state.current = page::combat;
-        else if (std::strcmp(category, "Vape") == 0) state.current = page::vape;
         else if (std::strcmp(category, "Movement") == 0 || std::strcmp(category, "Player") == 0 ||
             std::strcmp(category, "World") == 0 || std::strcmp(category, "Misc") == 0) state.current = page::misc;
         else if (std::strcmp(category, "Visual") == 0) state.current = page::visuals;

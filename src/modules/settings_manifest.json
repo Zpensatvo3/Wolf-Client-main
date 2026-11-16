@@ -345,20 +345,6 @@
       "panel": "src/modules/misc/bridge_assist.cpp"
     },
     {
-      "id": "right_clicker",
-      "owner": "src/modules/misc/right_clicker.hpp",
-      "model": "src/modules/misc/settings/right_clicker_settings.hpp",
-      "ownership": "snapshot_store",
-      "panel": "src/modules/misc/right_clicker.cpp"
-    },
-    {
-      "id": "left_clicker",
-      "owner": "src/modules/misc/left_clicker.hpp",
-      "model": "src/modules/misc/settings/left_clicker_settings.hpp",
-      "ownership": "snapshot_store",
-      "panel": "src/modules/misc/left_clicker.cpp"
-    },
-    {
       "id": "fast_place",
       "owner": "src/modules/misc/fast_place.hpp",
       "model": "src/modules/misc/settings/fast_place_settings.hpp",
@@ -395,20 +381,6 @@
     },
     {
       "id": "vape_aim_assist",
-      "owner": "src/modules/vape/vape_module.hpp",
-      "model": "src/modules/vape/vape_config.hpp",
-      "ownership": "existing_lock",
-      "panel": "src/modules/vape/vape_options.cpp"
-    },
-    {
-      "id": "vape_left_clicker",
-      "owner": "src/modules/vape/vape_module.hpp",
-      "model": "src/modules/vape/vape_config.hpp",
-      "ownership": "existing_lock",
-      "panel": "src/modules/vape/vape_options.cpp"
-    },
-    {
-      "id": "vape_right_clicker",
       "owner": "src/modules/vape/vape_module.hpp",
       "model": "src/modules/vape/vape_config.hpp",
       "ownership": "existing_lock",

@@ -3,20 +3,15 @@
 
 float modules::vape_module::get_options_height()
 {
-    switch (kind) {
-    case vape_kind::aim: return 470.f;
-    case vape_kind::left: return 220.f;
-    case vape_kind::right: return 250.f;
-    }
-    return 45.f;
+    return 470.f;
 }
 
 void modules::vape_module::render_options()
 {
     std::lock_guard lock(settings_mutex);
     auto candidate = settings;
-    gui::settings::render(candidate, vape_settings::schema(kind));
-    if (!(candidate == settings) && vape_settings::normalize(kind, candidate)) {
+    gui::settings::render(candidate, vape_settings::schema());
+    if (!(candidate == settings) && vape_settings::normalize(candidate)) {
         settings = candidate;
         reset_requested.store(true);
     }
@@ -27,5 +22,5 @@ void modules::vape_module::render_options()
 void modules::vape_module::visit_config(config_visitor& visitor)
 {
     std::lock_guard lock(settings_mutex);
-    if (vape_settings::visit(visitor, kind, settings)) reset_requested.store(true);
+    if (vape_settings::visit(visitor, settings)) reset_requested.store(true);
 }

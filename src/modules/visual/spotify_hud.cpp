@@ -23,6 +23,7 @@
 #endif
 
 #include "spotify_hud.hpp"
+#include "visual_effects_logic.hpp"
 #include "../../ui/settings_renderer.hpp"
 #include "spotify_source.hpp"
 #include "../ui_redirect.hpp"
@@ -274,7 +275,8 @@ namespace
 		if (last_frame != ImGui::GetFrameCount())
 		{
 			last_frame = ImGui::GetFrameCount();
-			const float dt = std::clamp(ImGui::GetIO().DeltaTime, 0.f, .05f);
+			const float raw_dt = ImGui::GetIO().DeltaTime;
+			const float dt = std::isfinite(raw_dt) ? std::max(raw_dt,0.f) : 0.f;
 			if (info.playing && !reduce_motion)
 				phase = std::fmod(phase + dt * 4.8f, 6.2831853f);
 			for (int index = 0; index < static_cast<int>(heights.size()); ++index)
@@ -283,7 +285,7 @@ namespace
 				const float movement = reduce_motion ? .65f : .5f + .5f * std::sin(phase + index * 1.35f);
 				const float target = info.playing ? 1.f + 4.5f * envelope * movement : .8f;
 				heights[index] = reduce_motion ? target
-					: heights[index] + (target - heights[index]) * (1.f - std::exp(-14.f * dt));
+					: heights[index] + (target - heights[index]) * visual_effects_logic::response(dt,14.);
 			}
 		}
 		for (int index = 0; index < static_cast<int>(heights.size()); ++index)
@@ -511,23 +513,30 @@ namespace
 			: 0.0;
 
 		static float visual_progress = 0.0f;
-		static std::string active_track_title;
-		if (active_track_title != info.title)
+		static std::string active_track_key;
+		static double active_duration = -1.;
+		static int progress_frame = -1;
+		const std::string track_key = info.title + "\n" + info.artist;
+		const bool reduce_motion = gui::ui_state::get_preferences().reduce_motion;
+		if (active_track_key != track_key || active_duration != duration)
 		{
-			active_track_title = info.title;
+			active_track_key = track_key;
+			active_duration = duration;
 			visual_progress = static_cast<float>(raw_progress);
+			progress_frame = ImGui::GetFrameCount();
 		}
-		else
+		else if (progress_frame != ImGui::GetFrameCount())
 		{
+			progress_frame = ImGui::GetFrameCount();
 			const float target = static_cast<float>(raw_progress);
 			const float dt = ImGui::GetIO().DeltaTime;
-			if (std::abs(target - visual_progress) > 0.15f)
+			if (reduce_motion || std::abs(target - visual_progress) > 0.15f)
 			{
 				visual_progress = target;
 			}
 			else
 			{
-				visual_progress += (target - visual_progress) * (std::min)(1.0f, dt * 14.0f);
+				visual_progress += (target - visual_progress) * visual_effects_logic::response(dt,14.);
 			}
 		}
 		visual_progress = std::clamp(visual_progress, 0.0f, 1.0f);

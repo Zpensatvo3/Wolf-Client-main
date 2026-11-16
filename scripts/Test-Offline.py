@@ -43,6 +43,7 @@ TESTS = {
                               "include/imgui/imgui.cpp", "include/imgui/imgui_draw.cpp", "include/imgui/imgui_widgets.cpp", "include/imgui/imgui_tables.cpp"],
     "item_esp_geometry": ["tests/item_esp_geometry_test.cpp"],
     "cosmetic_physics": ["tests/cosmetic_physics_test.cpp"],
+    "visual_animation": ["tests/visual_animation_test.cpp"],
     "config_fields": ["tests/config_fields_test.cpp", "src/modules/core/config_fields.cpp"],
     "aimassist_config": ["tests/aimassist_config_test.cpp", "src/modules/core/config_fields.cpp"],
     "jump_reset_config": ["tests/jump_reset_config_test.cpp", "src/modules/core/config_fields.cpp"],

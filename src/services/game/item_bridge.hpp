@@ -21,9 +21,5 @@ namespace services::game::items
     bool select_tool(const tool_snapshot& observed, int slot, bool require_click);
     hybrid::result capture_exp(exp_snapshot& out);
     bool use_exp(const exp_snapshot& observed);
-    struct click_snapshot { jobjectArray packet = nullptr; bool right = false; };
-    hybrid::result capture_click(bool right, bool only_blocks, click_snapshot& out);
-    bool click(const click_snapshot& observed, bool game_input);
-    bool jitter(const click_snapshot& observed, float yaw_delta, float pitch_delta);
     void shutdown(); // After render callbacks have joined.
 }

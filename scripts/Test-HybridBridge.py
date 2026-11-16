@@ -36,7 +36,6 @@ def main():
                         str(ROOT / "tests/hybrid/HybridBridgeTest.java"),
                         str(ROOT / "tests/hybrid/UtilityBridgeTest.java"),
                         str(ROOT / "tests/hybrid/ItemBridgeTest.java"),
-                        str(ROOT / "tests/hybrid/ClickerBridgeTest.java"),
                         str(ROOT / "tests/hybrid/InventoryBridgeTest.java"),
                         str(ROOT / "tests/hybrid/ContainerBridgeTest.java"),
                         str(ROOT / "tests/hybrid/WorldBridgeTest.java"),
@@ -46,7 +45,7 @@ def main():
                         str(ROOT / "scripts/Check-GameBridgeContracts.py"), "--classes", str(classes)], check=True)
         if not args.source_only: modes.append(("embedded", os.pathsep.join(map(str, (embedded, classes)))))
         for mode, cp in modes:
-            for test in ("HybridBridgeTest", "UtilityBridgeTest", "ItemBridgeTest", "ClickerBridgeTest", "InventoryBridgeTest", "ContainerBridgeTest", "WorldBridgeTest", "ClientBridgeTest"):
+            for test in ("HybridBridgeTest", "UtilityBridgeTest", "ItemBridgeTest", "InventoryBridgeTest", "ContainerBridgeTest", "WorldBridgeTest", "ClientBridgeTest"):
                 subprocess.run([java, "-Xcheck:jni", "-cp", cp, "net.minecraft." + test, mode], cwd=ROOT, check=True)
         # Independent fixtures share intermediary names with the earlier suites.
         for folder, test in (("hit_crystal", "HitCrystalBridgeTest"), ("jump_reset", "JumpResetBridgeTest"), ("anchor_macro", "AnchorMacroBridgeTest"), ("anchor_legit", "AnchorLegitBridgeTest"), ("crystal_aura", "CrystalAuraBridgeTest")):

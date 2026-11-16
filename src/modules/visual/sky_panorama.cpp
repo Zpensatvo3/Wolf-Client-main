@@ -1,5 +1,6 @@
 #include "sky_panorama.hpp"
 #include "sky_bindings.hpp"
+#include "sky_animation.hpp"
 #include "../../gui/gui.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../../services/game/client_context.hpp"
@@ -80,7 +81,7 @@ namespace
     struct gl_restore
     {
         gl_api& gl;
-        GLint program=0,vao=0,active=0,texture=0,sampler=0,depth_func=0,polygon[2]{};
+        GLint program=0,vao=0,active=0,texture=0,sampler=0,next_texture=0,next_sampler=0,depth_func=0,polygon[2]{};
         GLint src_rgb=0,dst_rgb=0,src_a=0,dst_a=0,eq_rgb=0,eq_a=0;
         GLboolean depth_write{},colors[4]{};
         GLdouble range[2]{};
@@ -92,6 +93,10 @@ namespace
             glGetIntegerv(active_texture,&active); gl.ActiveTexture(texture0);
             glGetIntegerv(GL_TEXTURE_BINDING_2D,&texture);
             if (gl.BindSampler) glGetIntegerv(0x8919,&sampler);
+            gl.ActiveTexture(texture0+1);
+            glGetIntegerv(GL_TEXTURE_BINDING_2D,&next_texture);
+            if (gl.BindSampler) glGetIntegerv(0x8919,&next_sampler);
+            gl.ActiveTexture(texture0);
             glGetIntegerv(GL_DEPTH_FUNC,&depth_func); glGetBooleanv(GL_DEPTH_WRITEMASK,&depth_write);
             glGetBooleanv(GL_COLOR_WRITEMASK,colors); glGetDoublev(GL_DEPTH_RANGE,range);
             glGetIntegerv(GL_POLYGON_MODE,polygon);
@@ -102,7 +107,10 @@ namespace
         }
         ~gl_restore()
         {
-            gl.UseProgram(program); gl.BindVertexArray(vao); glBindTexture(GL_TEXTURE_2D,texture);
+            gl.UseProgram(program); gl.BindVertexArray(vao);
+            gl.ActiveTexture(texture0+1); glBindTexture(GL_TEXTURE_2D,next_texture);
+            if (gl.BindSampler) gl.BindSampler(1,next_sampler);
+            gl.ActiveTexture(texture0); glBindTexture(GL_TEXTURE_2D,texture);
             if (gl.BindSampler) gl.BindSampler(0,sampler);
             gl.ActiveTexture(active); glDepthFunc(depth_func); glDepthMask(depth_write);
             glColorMask(colors[0],colors[1],colors[2],colors[3]); glDepthRange(range[0],range[1]);
@@ -180,40 +188,74 @@ void main() {
     gl_Position=vec4(screen,1.0,1.0);
 })";
     constexpr const char* fragment_source=R"(#version 150
-uniform sampler2D Panorama;
+uniform sampler2D Panorama, PanoramaNext;
 uniform mat4 InverseViewProjection;
 uniform float Rotation, Exposure, Opacity, SkyCrop, Stylized, FogVisibility, HazeHeight;
 uniform vec3 FogColor;
+uniform float Atmosphere, AtmosphereDensity, MistHeight, MotionTime;
+uniform float PanoramaBlend, NextCrop, NextStylized;
 in vec2 screen;
 out vec4 color;
-void main() {
-    vec3 direction=normalize((InverseViewProjection*vec4(screen,1.0,1.0)).xyz);
+vec3 sampleSky(sampler2D sky, vec3 direction, float crop, float stylized) {
     // atan has an undefined value at the pole and a periodic jump at the wrap.
     float poleGuard=abs(direction.x)+abs(direction.z)<0.000001 ? 0.000001 : 0.0;
     float u=fract(atan(direction.z,direction.x+poleGuard)*0.159154943+0.5+Rotation);
-    float v=acos(clamp(direction.y,0.0,1.0))*0.318309886*SkyCrop;
+    float v=acos(clamp(direction.y,0.0,1.0))*0.318309886*crop;
     vec2 uv=vec2(u,v);
     // Explicit, wrapped gradients prevent the 0/1 jump selecting an extremely
     // blurry mip level. Compute them before any non-uniform seam branches.
     vec2 dx=dFdx(uv),dy=dFdy(uv);
     dx.x-=floor(dx.x+0.5); dy.x-=floor(dy.x+0.5);
-    vec3 image=textureGrad(Panorama,uv,dx,dy).rgb;
-    if (Stylized>0.5) {
+    vec3 image=textureGrad(sky,uv,dx,dy).rgb;
+    if (stylized>0.5) {
         // Cross-fade the wrap seam and converge at the zenith; generated artwork
         // is not guaranteed to have perfectly periodic edges or a uniform pole.
         float edge=min(u,1.0-u);
         if (edge<0.025) {
-            vec3 opposite=textureGrad(Panorama,vec2(1.0-u,v),vec2(-dx.x,dx.y),vec2(-dy.x,dy.y)).rgb;
+            vec3 opposite=textureGrad(sky,vec2(1.0-u,v),vec2(-dx.x,dx.y),vec2(-dy.x,dy.y)).rgb;
             image=mix(opposite,image,0.5+0.5*smoothstep(0.0,0.025,edge));
         }
-        vec3 pole=textureLod(Panorama,vec2(0.5,0.008),5.0).rgb;
+        vec3 pole=textureLod(sky,vec2(0.5,0.008),5.0).rgb;
         image=mix(image,pole,smoothstep(0.985,0.9995,direction.y));
     }
+    return image;
+}
+void main() {
+    vec3 direction=normalize((InverseViewProjection*vec4(screen,1.0,1.0)).xyz);
+    vec3 image=sampleSky(Panorama,direction,SkyCrop,Stylized);
+    // Uniform branch: no additional texture samples outside a transition.
+    if (PanoramaBlend>0.0)
+        image=mix(image,sampleSky(PanoramaNext,direction,NextCrop,NextStylized),PanoramaBlend);
     // Below the horizon use fog instead of stretching a repeated texture row.
     // Exposure affects the artwork, not the game's fog color at the terrain edge.
     vec3 exposed=clamp(image*exp2(Exposure),0.0,1.0);
-    float detail=smoothstep(0.0,HazeHeight,direction.y)*FogVisibility;
-    color=vec4(mix(FogColor,exposed,detail),Opacity);
+    // Direction-space waves stay continuous at the panorama seam and poles.
+    // Zero at the horizon: the terrain edge always meets Minecraft's fog color.
+    if (Atmosphere>0.5 && AtmosphereDensity>0.001) {
+        vec3 p=direction;
+        float wave=0.5+0.5*sin(p.x*9.0+p.z*7.0+sin(p.z*5.0-MotionTime*0.11)+MotionTime*0.17);
+        float fine=0.5+0.5*sin(p.x*19.0-p.z*13.0+MotionTime*0.09);
+        float mist=(1.0-smoothstep(0.0,MistHeight,p.y))*smoothstep(0.0,0.05,p.y);
+        vec3 mistColor=mix(FogColor,vec3(0.65,0.72,0.86),0.12);
+        exposed=mix(exposed,mistColor,mist*AtmosphereDensity*(0.4+0.35*wave+0.25*fine));
+        float skyMask=smoothstep(0.03,0.18,p.y)*(1.0-smoothstep(0.82,0.98,p.y));
+        if (Atmosphere>2.5 && Atmosphere<3.5) {
+            float offset=(p.y-(0.30+0.09*sin(p.x*5.0+p.z*3.0+MotionTime*0.13)))*18.0;
+            float ribbon=exp(-offset*offset);
+            float curtain=0.55+0.45*sin(p.x*36.0+p.z*27.0+MotionTime*0.25);
+            vec3 aurora=mix(vec3(0.12,0.85,0.61),vec3(0.55,0.30,0.95),wave);
+            exposed+=aurora*ribbon*curtain*skyMask*AtmosphereDensity*0.42;
+        } else if (Atmosphere>3.5) {
+            float cloud=wave*fine*skyMask;
+            vec3 nebula=mix(vec3(0.35,0.18,0.65),vec3(0.72,0.30,0.52),wave);
+            exposed=mix(exposed,nebula,cloud*AtmosphereDensity*0.32);
+        }
+    }
+    // Short mist layers must not disappear underneath the base horizon blend.
+    float haze=mix(HazeHeight,min(HazeHeight,MistHeight*0.6),
+        Atmosphere>0.5 ? clamp(AtmosphereDensity,0.0,1.0) : 0.0);
+    float detail=smoothstep(0.0,max(haze,0.001),direction.y)*FogVisibility;
+    color=vec4(clamp(mix(FogColor,exposed,detail),0.0,1.0),Opacity);
 })";
 }
 
@@ -234,7 +276,11 @@ struct sky_panorama::renderer::runtime
     module_settings::sky config;
     bool enabled=false,reduced=false,failed=false;
     std::string failure;
-    double phase=0,last_time=0;
+    sky_animation::motion motion;
+    sky_animation::panorama_transition transition;
+    float visual_rotation=0,visual_exposure=0,visual_strength=0,visual_density=0,visual_height=.28f;
+    int visual_atmosphere=0;
+    bool visual_initialized=false;
 
     static jboolean JNICALL read_uniform(JNIEnv* env,jclass,jint buffer,jlong offset,jlong available,jfloatArray values)
     {
@@ -421,14 +467,35 @@ struct sky_panorama::renderer::runtime
         for (int i=0;i<16;++i) if (!std::isfinite(glm::value_ptr(inverse)[i])) return;
         gl_restore restore(gl);
         if (!program && !initialize()) { failed=true; failure="Could not initialize the panorama shader."; return; }
-        const int selected=std::clamp(config.panorama,0,5);
+        const int requested=std::clamp(config.panorama,0,5);
+        const double now=static_cast<double>(GetTickCount64())/1000.;
+        const double dt=motion.advance(now,config.animate,config.drift,reduced,config.animation_speed);
+        if (!visual_initialized) {
+            visual_rotation=config.rotation; visual_exposure=config.exposure;
+            visual_strength=0; visual_density=0; visual_height=config.haze_height;
+            transition.reset(requested);
+            visual_atmosphere=sky_animation::atmosphere(config.atmosphere,requested);
+            visual_initialized=true;
+        }
+        const float blend=reduced ? 1.f : visual_effects_logic::response(dt,7.);
+        visual_rotation=visual_effects_logic::smooth_angle(visual_rotation,config.rotation,dt,reduced);
+        visual_exposure+=(config.exposure-visual_exposure)*blend;
+        transition.advance(requested,dt,reduced);
+        visual_strength+=(config.strength-visual_strength)*blend;
+        const int selected=transition.progress>=1. ? transition.to : transition.from;
+        const int next=transition.to;
+        const int atmosphere=sky_animation::atmosphere(config.atmosphere,selected);
+        visual_height+=(config.haze_height-visual_height)*blend;
+        // Fade out the old atmosphere before introducing a different one.
+        const float density=atmosphere==visual_atmosphere && atmosphere!=0 ? config.atmosphere_density : 0.f;
+        visual_density+=(density-visual_density)*blend;
+        if (visual_density<.002f || reduced) visual_atmosphere=atmosphere;
+        if (reduced) visual_density=atmosphere==0 ? 0.f : config.atmosphere_density;
         constexpr int resources[]{IDR_SKY_NIGHT,IDR_SKY_MILKY_WAY,IDR_SKY_SUNRISE,
             IDR_SKY_CANDY_DUSK,IDR_SKY_NEBULA,IDR_SKY_AURORA};
         if (!textures[selected]) textures[selected]=load_texture(gl,resources[selected]);
-        if (!textures[selected]) { failed=true; failure="Could not load the panorama image."; return; }
-        const double now=static_cast<double>(GetTickCount64())/1000.;
-        const double dt=last_time>0 ? std::clamp(now-last_time,0.,.1) : 0.; last_time=now;
-        if (config.drift && !reduced) phase=std::fmod(phase+dt*.00055,1.);
+        if (!textures[next]) textures[next]=load_texture(gl,resources[next]);
+        if (!textures[selected] || !textures[next]) { failed=true; failure="Could not load the panorama image."; return; }
         glEnable(GL_DEPTH_TEST); glDepthFunc(GL_LEQUAL); glDepthMask(GL_FALSE); glDepthRange(0,1);
         glEnable(GL_BLEND); gl.BlendEquationSeparate(func_add,func_add);
         gl.BlendFuncSeparate(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA,GL_ONE,GL_ONE_MINUS_SRC_ALPHA);
@@ -436,16 +503,27 @@ struct sky_panorama::renderer::runtime
         glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE); glPolygonMode(GL_FRONT_AND_BACK,GL_FILL);
         gl.UseProgram(program); gl.BindVertexArray(vao); glBindTexture(GL_TEXTURE_2D,textures[selected]);
         if (gl.BindSampler) gl.BindSampler(0,0);
+        gl.ActiveTexture(texture0+1); glBindTexture(GL_TEXTURE_2D,textures[next]);
+        if (gl.BindSampler) gl.BindSampler(1,0);
+        gl.ActiveTexture(texture0);
         gl.Uniform1i(gl.GetUniformLocation(program,"Panorama"),0);
+        gl.Uniform1i(gl.GetUniformLocation(program,"PanoramaNext"),1);
+        gl.Uniform1f(gl.GetUniformLocation(program,"PanoramaBlend"),selected==next ? 0.f : transition.blend());
         gl.UniformMatrix4fv(gl.GetUniformLocation(program,"InverseViewProjection"),1,GL_FALSE,glm::value_ptr(inverse));
-        gl.Uniform1f(gl.GetUniformLocation(program,"Rotation"),config.rotation/360.f+static_cast<float>(phase));
-        gl.Uniform1f(gl.GetUniformLocation(program,"Exposure"),config.exposure);
-        gl.Uniform1f(gl.GetUniformLocation(program,"Opacity"),config.strength);
+        gl.Uniform1f(gl.GetUniformLocation(program,"Rotation"),visual_rotation/360.f+static_cast<float>(motion.rotation));
+        gl.Uniform1f(gl.GetUniformLocation(program,"Exposure"),visual_exposure);
+        gl.Uniform1f(gl.GetUniformLocation(program,"Opacity"),visual_strength);
+        gl.Uniform1f(gl.GetUniformLocation(program,"Atmosphere"),static_cast<float>(visual_atmosphere));
+        gl.Uniform1f(gl.GetUniformLocation(program,"AtmosphereDensity"),visual_density);
+        gl.Uniform1f(gl.GetUniformLocation(program,"MistHeight"),visual_height);
+        gl.Uniform1f(gl.GetUniformLocation(program,"MotionTime"),static_cast<float>(motion.time));
         // The generated skies place their horizon below the equator. Extend the
         // sample range a little rather than stretching clouds into the zenith.
         constexpr float crops[]{.98f,.68f,.98f,1.12f,1.16f,1.24f};
         gl.Uniform1f(gl.GetUniformLocation(program,"SkyCrop"),crops[selected]);
         gl.Uniform1f(gl.GetUniformLocation(program,"Stylized"),selected>=3 ? 1.f : 0.f);
+        gl.Uniform1f(gl.GetUniformLocation(program,"NextCrop"),crops[next]);
+        gl.Uniform1f(gl.GetUniformLocation(program,"NextStylized"),next>=3 ? 1.f : 0.f);
         const float fog_end=std::clamp(fog[4],0.f,65536.f);
         const float visibility=std::clamp((fog_end-16.f)/48.f,0.f,1.f);
         gl.Uniform1f(gl.GetUniformLocation(program,"FogVisibility"),visibility*visibility*(3.f-2.f*visibility));
@@ -514,7 +592,7 @@ bool sky_panorama::renderer::connect()
 void sky_panorama::renderer::configure(const module_settings::sky& config,bool enabled,bool reduced)
 {
     state_->config=config; state_->enabled=enabled && !state_->failed; state_->reduced=reduced;
-    if (!enabled) state_->last_time=0;
+    if (!enabled) { state_->motion.pause(); state_->visual_initialized=false; }
 }
 void sky_panorama::renderer::configure_colors(int sky,int fog,float strength,bool match_fog,bool enabled)
 {

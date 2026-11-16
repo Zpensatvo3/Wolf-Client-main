@@ -8,16 +8,12 @@ import java.util.List;
 
 /** Original OneStep item I/O. Decisions/timers stay native; packets are frame-local and single-use. */
 public final class ItemBridge {
-    public static final int AUTO_TOOL = 1, FAST_EXP = 2, LEFT_CLICKER = 3, RIGHT_CLICKER = 4;
+    public static final int AUTO_TOOL = 1, FAST_EXP = 2;
     private final ClassLoader loader;
     private final Class<?> clientType, playerType;
     private final Field instance, player, world, screen;
     private final Method onThread, alive;
-    private final boolean[] prepared = new boolean[5];
-    private final long[] clickSequence = new long[5], completedClick = new long[5];
-    private Method usingItem, attack, count;
-    private Field yaw, pitch;
-    private Class<?> blockItemType;
+    private final boolean[] prepared = new boolean[3];
     private Field manager, crosshair, blockType, selected, main, expItem, useCooldown;
     private Method inventory, hitType, blockPosition, blockState, air, speed, suitable, empty;
     private Method syncSlot, mainHand, offHand, getItem, useItem;
@@ -67,7 +63,7 @@ public final class ItemBridge {
         return object != null && (boolean) method.invoke(object);
     }
     public void prepare(int feature) throws ReflectiveOperationException {
-        if (stopped || feature < 1 || feature > 4) throw new IllegalArgumentException("Invalid item feature/lifecycle");
+        if (stopped || feature < 1 || feature > 2) throw new IllegalArgumentException("Invalid item feature/lifecycle");
         if (prepared[feature]) return;
         Class<?> stack = load("class_1799");
         empty = method(stack, "method_7960", boolean.class);
@@ -95,19 +91,6 @@ public final class ItemBridge {
             expItem = field(load("class_1802"), "field_8287", load("class_1792"), true);
             useCooldown = field(clientType, "field_1752", int.class, false);
             useItem = method(clientType, "method_1583", void.class);
-        } else if (feature == LEFT_CLICKER || feature == RIGHT_CLICKER) {
-            usingItem = method(playerType, "method_6115", boolean.class);
-            yaw = field(playerType, "field_6031", float.class, false);
-            pitch = field(playerType, "field_5965", float.class, false);
-            if (feature == LEFT_CLICKER) attack = method(clientType, "method_1536", boolean.class);
-            else {
-                mainHand = method(playerType, "method_6047", stack);
-                getItem = method(stack, "method_7909", load("class_1792"));
-                count = method(stack, "method_7947", int.class);
-                blockItemType = load("class_1747");
-                useCooldown = field(clientType, "field_1752", int.class, false);
-                useItem = method(clientType, "method_1583", void.class);
-            }
         }
         prepared[feature] = true;
     }
@@ -216,68 +199,7 @@ public final class ItemBridge {
         useItem.invoke(client); // Exactly one request; no second SendInput click.
         return true;
     }
-    /** {owner, player, world, mainStack (right only), double[4]: schema/feature/nonce/onlyBlocks}. */
-    public Object[] captureClick(int feature, boolean onlyBlocks) throws ReflectiveOperationException {
-        if (feature != LEFT_CLICKER && feature != RIGHT_CLICKER) return null;
-        Object client = clientOnThread();
-        if (client == null) return null;
-        clickSequence[feature] = completedClick[feature] = 0;
-        prepare(feature);
-        Object p = player.get(client), w = world.get(client);
-        if (!valid(client, p, w) || yes(usingItem, p)) return null;
-        Object held = feature == RIGHT_CLICKER ? mainHand.invoke(p) : null;
-        if (feature == RIGHT_CLICKER && (held == null || (onlyBlocks && !holdingBlock(held)))) return null;
-        double[] values = {1, feature, clickSequence[feature] = nextSequence(), onlyBlocks ? 1 : 0};
-        return stopped ? null : new Object[]{this, p, w, held, values};
-    }
-    private boolean holdingBlock(Object held) throws ReflectiveOperationException {
-        return !yes(empty, held) && (int) count.invoke(held) > 0 && blockItemType.isInstance(getItem.invoke(held));
-    }
-    private boolean validClick(Object[] packet, double[] values) throws ReflectiveOperationException {
-        Object client = clientOnThread();
-        if (client == null || player.get(client) != packet[1] || world.get(client) != packet[2] ||
-            !valid(client, packet[1], packet[2]) || yes(usingItem, packet[1])) return false;
-        if ((int) values[1] == RIGHT_CLICKER) {
-            Object held = mainHand.invoke(packet[1]);
-            if (held == null || held != packet[3] || (values[3] == 1 && !holdingBlock(held))) return false;
-        }
-        return true;
-    }
-    public boolean click(Object[] packet, boolean gameInput, boolean physicalHeld) throws ReflectiveOperationException {
-        if (clientOnThread() == null || packet == null || packet.length != 5 || packet[0] != this ||
-            !(packet[4] instanceof double[] values) || values.length != 4 || values[0] != 1) return false;
-        int feature = (int) values[1];
-        if ((feature != LEFT_CLICKER && feature != RIGHT_CLICKER) || values[2] <= 0 ||
-            values[2] != clickSequence[feature]) return false;
-        clickSequence[feature] = 0;
-        if (!physicalHeld || !validClick(packet, values)) return false;
-        Object client = clientOnThread();
-        if (feature == RIGHT_CLICKER) useCooldown.setInt(client, 0);
-        // Game Input remains the shared native Mouse callback service. This call
-        // only validates/consumes its decision; it never adds a second click.
-        if (!gameInput) {
-            if (feature == LEFT_CLICKER) attack.invoke(client); else useItem.invoke(client);
-        }
-        completedClick[feature] = (long) values[2];
-        return true;
-    }
-    public boolean jitter(Object[] packet, float yawDelta, float pitchDelta) throws ReflectiveOperationException {
-        if (clientOnThread() == null || packet == null || packet.length != 5 || packet[0] != this ||
-            !(packet[4] instanceof double[] values) || values.length != 4 || values[0] != 1 ||
-            !Float.isFinite(yawDelta) || !Float.isFinite(pitchDelta)) return false;
-        int feature = (int) values[1];
-        if ((feature != LEFT_CLICKER && feature != RIGHT_CLICKER) || values[2] <= 0 ||
-            values[2] != completedClick[feature]) return false;
-        completedClick[feature] = 0;
-        if (!validClick(packet, values)) return false;
-        float y = yaw.getFloat(packet[1]), p = pitch.getFloat(packet[1]);
-        if (!Float.isFinite(y) || !Float.isFinite(p) || !Float.isFinite(y + yawDelta)) return false;
-        yaw.setFloat(packet[1], y + yawDelta);
-        pitch.setFloat(packet[1], Math.max(-90, Math.min(90, p + pitchDelta)));
-        return true;
-    }
     public void stop() {
         stopped = true; toolSequence = expSequence = 0;
-        Arrays.fill(clickSequence, 0); Arrays.fill(completedClick, 0);
     }
 }

@@ -10,13 +10,17 @@
 #include "../../services/game/overlay_context.hpp"
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <mutex>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 #include <imgui/imgui.h>
 
 #include "radar.hpp"
+#include "visual_effects_logic.hpp"
+#include "../../gui/ui_state.hpp"
 #include "../../ui/settings_renderer.hpp"
 #include "../../platform/adapter/game_adapter.hpp"
 #include "../ui_redirect.hpp"
@@ -32,6 +36,7 @@ namespace
 		float distance = 0.0f;
 		std::string name;
 		bool friend_player = false;
+		int id = -1;
 	};
 
 	std::mutex radar_mutex;
@@ -102,9 +107,11 @@ void modules::radar::run(::cache& cache)
 			std::string name = java_name && !platform::jni_context::clear_exception()
 				? java_name.to_string() : std::string{};
 			platform::jni_context::clear_exception();
+			const int id = entity.getId.call();
+			if (platform::jni_context::clear_exception() || id < 0) return;
 			updated.push_back({
 				static_cast<float>(delta_x), static_cast<float>(delta_z),
-				static_cast<float>(distance), name, friends::is_friend(name)
+				static_cast<float>(distance), name, friends::is_friend(name), id
 			});
 		};
 
@@ -169,12 +176,39 @@ void modules::radar::render_overlay()
 
 	std::vector<radar_player> players;
 	float yaw = 0.0f;
+	std::uint64_t generation;
 	{
 		std::lock_guard lock(radar_mutex);
         if (session.observe({context.world, context.player})) { radar_players.clear(); radar_yaw = 0.f; return; }
 		players = radar_players;
 		yaw = radar_yaw;
+		generation = session.ticket();
 	}
+	// Render-owned state; workers only publish snapshots and session tickets.
+	struct marker { float x=0.f, z=0.f, alpha=0.f; int frame=-1; };
+	static std::unordered_map<int,marker> markers;
+	static std::uint64_t visual_generation=0;
+	static double last_time=-1.;
+	static float visual_yaw=0.f;
+	const double now=ImGui::GetTime();
+	const bool reset=generation!=visual_generation || last_time<0. || now<last_time || now-last_time>.5;
+	if (reset) { markers.clear(); visual_yaw=yaw; visual_generation=generation; }
+	last_time=now;
+	const bool reduced=gui::ui_state::get_preferences().reduce_motion;
+	const float dt=ImGui::GetIO().DeltaTime;
+	visual_yaw=visual_effects_logic::smooth_angle(visual_yaw,yaw,dt,reduced);
+	yaw=visual_yaw;
+	const int frame=ImGui::GetFrameCount();
+	const float blend=reduced ? 1.f : visual_effects_logic::response(dt,22.);
+	for (const auto& player:players) {
+		auto [entry,inserted]=markers.try_emplace(player.id);
+		auto& m=entry->second;
+		const float dx=player.relative_x-m.x, dz=player.relative_z-m.z;
+		if (inserted || dx*dx+dz*dz>64.f) { m.x=player.relative_x; m.z=player.relative_z; }
+		else { m.x+=dx*blend; m.z+=dz*blend; }
+		m.alpha+=(1.f-m.alpha)*blend; m.frame=frame;
+	}
+	std::erase_if(markers,[&](const auto& entry) { return entry.second.frame!=frame; });
 
 	const float diameter = std::clamp(settings_snapshot.radar_size, 120.0f, 260.0f);
 	const float radius = diameter * 0.5f;
@@ -225,7 +259,12 @@ void modules::radar::render_overlay()
 	std::size_t visible_count = 0;
 	for (const radar_player& player : players)
 	{
-		const ImVec2 local = rotate_point(player.relative_x, player.relative_z, yaw, settings_snapshot.rotate_with_player);
+		const auto& marker=markers.at(player.id);
+		const auto faded=[&](ImU32 color) {
+			const int alpha=static_cast<int>(((color & IM_COL32_A_MASK) >> IM_COL32_A_SHIFT)*marker.alpha);
+			return (color & ~IM_COL32_A_MASK) | (static_cast<ImU32>(alpha) << IM_COL32_A_SHIFT);
+		};
+		const ImVec2 local = rotate_point(marker.x, marker.z, yaw, settings_snapshot.rotate_with_player);
 		const float length = std::sqrt(local.x * local.x + local.y * local.y);
 		const bool outside = length > range;
 		const float scale = usable_radius / std::max(range, 0.001f);
@@ -234,7 +273,7 @@ void modules::radar::render_overlay()
 		const float direction_y = length > 0.001f ? local.y / length : 0.0f;
 		const ImVec2 point(center.x + direction_x * clamped_distance * scale,
 			center.y + direction_y * clamped_distance * scale);
-		const ImU32 color = player.friend_player ? IM_COL32(75, 226, 155, 245) : accent_color;
+		const ImU32 color = faded(player.friend_player ? IM_COL32(75, 226, 155, 245) : accent_color);
 
 		if (outside)
 		{
@@ -250,14 +289,14 @@ void modules::radar::render_overlay()
 
 		++visible_count;
 		draw->AddCircleFilled(point, 5.0f, player.friend_player
-			? IM_COL32(75, 226, 155, 28) : accent_soft, 0);
+			? faded(IM_COL32(75, 226, 155, 28)) : faded(accent_soft), 0);
 		draw->AddCircleFilled(point, 2.4f, color, 0);
 		if (settings_snapshot.show_names && !player.name.empty())
 		{
 			const auto display_name=services::privacy::display_name(player.name);
 			const ImVec2 text_size = ImGui::CalcTextSize(display_name.c_str());
 			draw->AddText(ImVec2(point.x - text_size.x * 0.5f, point.y + 5.0f),
-				IM_COL32(226, 229, 238, 220), display_name.c_str());
+				faded(IM_COL32(226, 229, 238, 220)), display_name.c_str());
 		}
 	}
 
@@ -270,7 +309,7 @@ void modules::radar::render_overlay()
 	if (settings_snapshot.show_player_count)
 	{
 		char count[24]{};
-		sprintf_s(count, "%zu", visible_count);
+		std::snprintf(count, sizeof(count), "%zu", visible_count);
 		const ImVec2 text_size = ImGui::CalcTextSize(count);
 		const ImVec2 badge(center.x, center.y + radius - 10.0f);
 		draw->AddCircleFilled(badge, 9.0f, IM_COL32(19, 21, 29, 225), 0);

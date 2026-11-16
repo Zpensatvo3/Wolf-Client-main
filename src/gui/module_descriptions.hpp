@@ -36,8 +36,6 @@ namespace gui
             { "fast stop", "Stop sliding when you stop moving" },
             { "inv walk", "Move while your inventory is open" },
             { "bridge assist", "Sneak at block edges" },
-            { "right clicker", "Right-click automatically" },
-            { "left clicker", "Left-click automatically" },
             { "fast place", "Place blocks and use potions faster" },
             { "fast exp", "Throw experience bottles faster" },
             { "pot refill", "Move healing potions to empty hotbar slots" },
@@ -66,8 +64,6 @@ namespace gui
             { "spotify hud", "Show your Spotify song and lyrics" },
             { "target hud", "Show your target's health and equipment" },
             { "vape aim assist", "Help you aim at a target" },
-            { "vape left clicker", "Left-click automatically" },
-            { "vape right clicker", "Right-click automatically" },
         };
         for (const auto& description : descriptions)
             if (std::strcmp(description.name, name) == 0)

@@ -10,9 +10,6 @@ namespace services::input
     enum class mouse_button { left, right };
 
     bool mouse_button_state(mouse_button button, bool pressed);
-    // Client-thread vanilla Mouse callback. Requires a real held button and
-    // does not alter Windows input state or manufacture hardware transitions.
-    bool game_mouse_click(mouse_button button);
     bool mouse_click(mouse_button button,
         HWND message_window = nullptr,
         bool preserve_physical_press = false);

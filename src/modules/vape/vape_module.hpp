@@ -10,7 +10,7 @@ namespace modules
     class vape_module : public module
     {
     public:
-        explicit vape_module(vape_kind kind);
+        vape_module();
         ~vape_module() override;
         void run(::cache&) override {}
         void on_enable(::cache&) override;
@@ -23,7 +23,6 @@ namespace modules
     private:
         using options = vape_settings::config;
         options settings;
-        const vape_kind kind;
         std::mutex settings_mutex;
         std::atomic_bool reset_requested{true};
         std::unique_ptr<vape_bridge::runtime> state;
@@ -32,6 +31,4 @@ namespace modules
     };
 
     module* create_vape_aim();
-    module* create_vape_left();
-    module* create_vape_right();
 }

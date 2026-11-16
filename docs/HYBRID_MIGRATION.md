@@ -7,8 +7,6 @@
 - No Jump Delay ve Fast Stop: `src/bridge/GameBridge.java`.
 - Fast Place, Sprint ve Full Bright: `src/bridge/UtilityBridge.java`.
 - Auto Tool ve Fast EXP: `src/bridge/ItemBridge.java`.
-- Left Clicker ve Right Clicker: ItemBridge'in bağımsız, lazy hazırlanan 3/4
-  özellikleri; önceki iki özellik değişmeden korunur. Inventory Clicker kaldırıldı.
 - Chest Stealer, Auto Armor ve Elytra Swapper: `src/bridge/InventoryBridge.java`.
 - Pot Refill ve Mouse Tweaks: InventoryBridge'in bağımsız 4/5 container özellikleri.
 - Bridge Assist ve Pearl Macro: `src/bridge/WorldBridge.java`.
@@ -45,7 +43,6 @@ Sürüm kapsamı yalnızca 1.21.11'dir; durum tablosu yeni bir oyun testi iddias
 | 1 | [No Jump Delay, Fast Stop](#ilk-grup-karar-snapshotı) | Kullanıcı doğruladı |
 | 2 | [Fast Place, Sprint, Full Bright](#ikinci-grup-utility-yaşam-döngüsü) | Kullanıcı doğruladı |
 | 3 | [Auto Tool, Fast EXP](#üçüncü-grup-eşya-snapshotı-ve-tek-kullanımlık-işlem) | Kullanıcı doğruladı |
-| 4 | [Left/Right Clicker](#dördüncü-grup-clickerlar) | Offline; oyun testi bekliyor |
 | 5 | [Chest Stealer, Auto Armor, Elytra Swapper](#beşinci-grup-envanter-işlemleri) | Offline; oyun testi bekliyor |
 | 6 | [Pot Refill, Mouse Tweaks](#altıncı-grup-iksir-doldurma-ve-sürükleme) | Offline; oyun testi bekliyor |
 | 7 | [Bridge Assist, Pearl Macro](#yedinci-grup-kenar-desteği-ve-pearl-makrosu) | Offline; oyun testi bekliyor |
@@ -131,25 +128,6 @@ izlenir ve zamanlama döngüsü sıfırlanır. EXP bittiğinde veya use çağrı
 olduğunda fiziksel tuş bırakılmadan tekrar denenmez; kısmen uygulanmış bir çağrı
 native fallback üzerinden tekrarlanmaz. Disable sadece atomik reset ister;
 session/timer state'i render thread'inde temizlenir. Java geleceğe iş bırakmaz.
-
-### Dördüncü grup: clicker'lar
-
-Left/Right Clicker'ın CPS, fatigue, jitter aralığı, ilk tıklama gecikmesi ve
-kamera delta hesabı değiştirilmedi; C++'ta kalır. Java güncel world/player,
-ölü/eşya kullanma/ekran durumunu ve Right Clicker'ın Only Blocks filtresini okur.
-Her karar tek kullanımlık nonce ile yeniden doğrulanır; eşya/oturum değişimi veya
-fiziksel tuş bırakma tıklamayı geçersizleştirir. Direct modda vanilla attack/use
-Java üzerinden bir kez çağrılır. Kamera deltasını C++ seçer; Java yalnızca başarılı
-tıklamaya bağlı tek kamera yazması yapar, pitch -90..90 ile sınırlıdır.
-
-**Game Input taşıması bilinçli olarak mevcut ortak native input servisinde
-korunur.** Java burada doğrulama ve Right Clicker cooldown hazırlığını yapar;
-ikinci bir tıklama üretmez. Native servis fiziksel basışı tekrar denetleyip mevcut
-Minecraft Mouse callback yolunu kullanır. Bu aşama input servisinin tamamının
-Java'ya taşındığı anlamına gelmez. Left Clicker'ın `trigger_owns_attack` ve
-`try_unowned_attack` koordinasyonu C++'ta aynen korunur; Triggerbot önceliği değişmez.
-
-Inventory Clicker modülü ve ona ait envanter tıklama köprüsü kaldırılmıştır.
 
 ### Beşinci grup: envanter işlemleri
 
@@ -557,7 +535,7 @@ Native auraService yalnızca ortak arkadaş/Anti Bot ve combat ownership
 servislerini sunar. Saldırı kilidi altında Java executeAuraAction çağrılır;
 burada oturum, hedef, seçili eşya, güncel vanilla ray ve mesafeler son kez
 kontrol edilir, vanilla attackEntity/interactBlock/swing çağrıları Java’dan
-yapılır. Triggerbot önceliği ve clicker koordinasyonu korunur.
+yapılır. Triggerbot önceliği ve ortak saldırı sahipliği koordinasyonu korunur.
 crystal_aura_engine.hpp yalnızca eski offline regresyon modeli olarak kalır;
 çalışan modül tarafından kullanılmaz. Desteklenen yedi SDK profilinin kesin
 isimleri aynı native binding tablosundan alınır.

@@ -3,7 +3,7 @@
 Bu belge README'deki tekrarlanan özellik kayıtlarını tek yerde toplar.
 Tam kayıt listesi ve stable ID'ler için kaynak otoritesi
 `src/modules/module_catalog.cpp` ile `src/modules/settings_manifest.json`'dır.
-Mevcut katalog 59 modül içerir; bu sayı oyun içi kabul testi sayısı değildir.
+Mevcut katalog 55 modül içerir; bu sayı oyun içi kabul testi sayısı değildir.
 Arayüz gruplaması [UI rehberinde](GRIM_UI_LAYOUT.md), Java I/O kapsamı
 [hibrit geçiş belgesinde](HYBRID_MIGRATION.md) açıklanır.
 
@@ -123,7 +123,8 @@ Tüm kararlar ve SWAP işlemleri oyun thread’inde Java’dan yapılır.
   Gerçek menzil, entity boşluğu, görünür dönüş, slot sahipliği ve sunucu teyidi
   Java'da kontrol edilir. İşlem neden bekliyorsa ayar panelinde görünür.
   [Kaynak karşılaştırması ve güncel tasarım](CRYSTAL_AURA_REDESIGN.md).
-- **Vape:** yalnızca Aim Assist (Simple/Adaptive), Left Clicker, Right Clicker.
+- **Vape Aim Assist:** Simple/Adaptive motorlarıyla Combat kategorisindedir;
+  mevcut `vape_aim_assist` config kimliği korunur.
 - **Hit Crystal:** fiziksel sağ tuş basılıyken bakılan obsidyen/bedrock üzerinde
   kristal yerleştirip kırar; mevcut kristal hedefinden de başlayabilir. Kararlar,
   slot sahipliği, gecikmeler ve etkileşimler tamamen WorldBridge Java denetleyicisindedir.
@@ -169,6 +170,13 @@ Görüş dışındaki kutular çizilmez; ek bir mesafe veya minimum piksel boyut
 Item ESP yüklenmiş düşen eşyaların kutu/isim/adet/mesafesini gösterir.
 Dünya/oyuncu kimliğine bağlı overlay snapshot'ları geçersiz oturumda temizlenir;
 önceki worker sonuçları yeni sunucunun üstüne yazılamaz.
+Radar işaretçileri ve kamera yönü kare hızından bağımsız yumuşatılır; açı
+geçişleri ±180° sınırında kısa yolu izler. Yeni işaretçiler yumuşak belirir;
+oturum değişiminde ve büyük konum sıçramalarında animasyon sıfırlanır.
+Player ESP can çubuğu kademeli güncellenir, kaybedilen can kısa süre sıcak
+renkli bir iz bırakır. Tema/özel renk değişiklikleri yumuşatılır. Oyuncu
+listesinden çıkan kayıtların animasyonları tutulmaz. Reduce Motion bu
+hareketleri ve can geçişlerini anlık yapar.
 
 Target HUD gerçek skin, can, mesafe, zırh ve eli 232×94 kartta gösterir.
 Native item projeksiyonu GUI dönüşümlerini, atlası ve renk katmanlarını korur;
@@ -178,6 +186,22 @@ süresi ayarlanır; ölüm/dünya/oyuncu kaybında temizlenir. HUD editörü ta�
 ölçek, hizalama, undo ve yerel kaydı yönetir.
 
 ### Kozmetikler ve efektler
+
+Sky panorama modunda Atmosphere seçimi Off/Auto/Mist/Aurora/Nebula sunar.
+Auto, Aurora panoramasına dalgalı ışık perdeleri, Nebula'ya renkli bulutsu
+katmanları, diğer panoramalara hafif ufuk sisi ekler. Atmosphere Density,
+Horizon Mist Height ve Animation Speed yoğunluğu, yüksekliği ve hızı ayarlar.
+Katmanlar gökyüzünde çizilir; arazi üzerindeki sisin mesafesi değiştirilmez.
+Match Fog arazi sisinin rengini gökyüzüne eşler. Ufuk çizgisinde efekt rengi
+oyunun sis rengine birleşir. Panorama seçimi iki görsel arasında karışarak
+geçer; hızlı seçimlerde mevcut geçiş tamamlanıp en son seçime geçilir. Parlaklık,
+dönüş, yoğunluk ve gökyüzü/sis renkleri yumuşatılır. Reduce Motion hareketi
+dondurur ve ayar geçişlerini anlık yapar. Animasyon fazı ortak dalga periyodunda
+sarılır; uzun oturumlarda kayan nokta hassasiyeti korunur. Animate Atmosphere kapalıyken
+katmanlar sabit kalır; Slow Rotation bağımsızdır. Mevcut hava/alt dünya,
+su/lav ve Iris shader kontrolleri geçerlidir.
+`scripts/Test-SkyShader.py`, moderngl ve EGL ile gerçek GLSL derleme ve
+çizimini sınar; Minecraft içi kabul testinin yerine geçmez.
 
 China Hat, Wings ve Cape yalnızca yerel üçüncü şahıs kozmetikleridir; diğer
 oyunculara gönderilmez. Gövde/blok maskesi tam uzuv veya kısmi/şeffaf blok
@@ -193,6 +217,15 @@ Hit Particles en fazla 96, Jump Circles en fazla 8 efekt tutar; Block Highlight
 gerçek blok şeklinin en fazla 24 kutusunu çizer. Hasar, yerel saldırıya yakın
 gözlenmelidir; kısa hedef kaybında takip en fazla 500 ms, gözlem sırasına tolerans
 75 ms'dir. Bunlar sunucu vuruş ACK'i değildir ve saldırı göndermez.
+Trails, Hit Particles ve Jump Circles kısa bir görünme geçişiyle başlar,
+ömürleri boyunca yumuşakça söner ve canlı tema rengini takip eder. Parçacık
+boyutları ve çift halkalar kademeli açılır; Reduce Motion ek dönüş/büyüme
+hareketlerini sabitler. Block Highlight yeni blokta 120 ms'de belirir.
+Target HUD can rengi düşük canda kırmızıya yumuşak geçer; hasar çubuğu kısa
+bir beklemeden sonra mevcut cana iner. Reduce Motion bu can geçişlerini anlık yapar.
+Spotify HUD ilerleme ve görselleştirici geçişleri kare hızından bağımsızdır;
+parça kimliği başlık, sanatçı ve süreyle ayrılır. Reduce Motion ilerleme
+çubuğunu doğrudan günceller.
 View Model yalnızca vanilla el push/pop aralığındaki eşya transformunu değiştirir;
 Vanilla/Compact/PvP/Low/Cinematic profilleri, elle değişince Custom görünümü vardır.
 Menzil, kamera, envanter ve saldırı mekaniği değişmez; sözleşme eşleşmezse durur.

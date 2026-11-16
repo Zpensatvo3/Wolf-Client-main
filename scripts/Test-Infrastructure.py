@@ -345,8 +345,8 @@ def validate():
     if not ids or len(ids) != len(set(ids)):
         errors.append("Module catalog IDs must be nonempty and unique")
     vape = {entry for entry in ids if entry.startswith("vape_")}
-    if vape != {"vape_aim_assist", "vape_left_clicker", "vape_right_clicker"}:
-        errors.append("Vape catalog must contain only the retained Aim Assist and two clickers")
+    if vape != {"vape_aim_assist"}:
+        errors.append("Vape catalog must contain only the retained Aim Assist")
     if len((ROOT / "src/modules/modules.hpp").read_text(encoding="utf-8").splitlines()) > 80:
         errors.append("modules.hpp must remain a small compatibility umbrella")
 

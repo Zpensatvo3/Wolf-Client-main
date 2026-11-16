@@ -8,9 +8,9 @@ int main()
 {
     using gui::module_categories::display;
     std::set<std::string_view> groups;
-    for (auto source : {"Combat", "Movement", "Player", "World", "Misc", "Friends", "Visual", "Render", "Vape", "Client"})
+    for (auto source : {"Combat", "Movement", "Player", "World", "Misc", "Friends", "Visual", "Render", "Client"})
         if (auto group = display(source); !group.empty()) groups.insert(group);
-    assert(groups == (std::set<std::string_view>{"Combat", "Misc", "Visuals", "Hud", "Vape", "Client"}));
+    assert(groups == (std::set<std::string_view>{"Combat", "Misc", "Visuals", "Hud", "Client"}));
     for (auto source : {"Movement", "Player", "World", "Misc"}) assert(display(source) == "Misc");
     assert(display("Friends").empty());
     assert(display("Custom group") == "Custom group"); // extension modules stay usable

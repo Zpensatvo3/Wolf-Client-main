@@ -53,7 +53,7 @@ Bu davranış, genel Crystal Aura yerine belirli bir vuruş kombosuna benziyordu
 - Menü, item use, odak/izin kaybı, kamera değişimi, oturum değişimi, disable ve
   manuel slot değişimi iptal eder. Slot yalnızca aynı oturumda hâlâ sahip
   olunan seçim için ve Restore Slot açıksa geri yüklenir.
-- Triggerbot önceliği ve clicker'ların ortak combat lock'u korunur. Oyun
+- Triggerbot önceliği ve ortak saldırı kilidi korunur. Oyun
   sorguları, hasar hesabı, dönüşler ve vanilla işlemler Java'dadır.
 
 ## Hasar tahmini ve maliyet sınırları

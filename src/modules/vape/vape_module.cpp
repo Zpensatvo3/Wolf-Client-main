@@ -4,7 +4,6 @@
 #include "../../platform/jni/jni_context.hpp"
 #include "../../platform/adapter/game_adapter.hpp"
 #include "../../services/game/client_context.hpp"
-#include "../../services/game/attack_coordinator.hpp"
 #include "../../services/input/input_service.hpp"
 #include "../core/module_registry.hpp"
 #include "../../friends/friends.hpp"
@@ -21,8 +20,6 @@
 #undef min
 #undef max
 #include "engines/aimassist/AimAssist.hpp"
-#include "engines/clicker/LeftClicker.hpp"
-#include "engines/clicker/RightClicker.hpp"
 #pragma pop_macro("max")
 #pragma pop_macro("min")
 
@@ -35,10 +32,7 @@ namespace vape_bridge
         maps::ClientWorld world{nullptr, true};
         maps::ClientPlayerEntity player{nullptr, true};
         Vape::Combat::AimAssist aim;
-        Vape::Combat::LeftClicker left;
-        Vape::Combat::RightClicker right;
-        int last_tick = -1, target_id = -1;
-        bool clicking = false;
+        int target_id = -1;
         clock::time_point aim_time{};
         clock::time_point target_time{};
     };
@@ -93,13 +87,6 @@ namespace vape_bridge
             return 9;
         }
         return 1;
-    }
-    bool usable(const maps::ItemStack& stack, bool blocks_only)
-    {
-        if (!stack || stack.isEmpty.call() == JNI_TRUE || platform::jni_context::clear_exception()) return false;
-        auto item = stack.item.get();
-        if (!item || platform::jni_context::clear_exception()) return false;
-        return !blocks_only || item.is_instance_of<maps::BlockItem>();
     }
     bool pressed(const maps::KeyBinding& key)
     {
@@ -175,31 +162,12 @@ namespace vape_bridge
         const auto* module = modules::find_module_by_id(id);
         return module && module->enabled;
     }
-    const char* name(modules::vape_kind kind)
-    {
-        switch (kind) {
-        case modules::vape_kind::aim: return "vape aim assist";
-        case modules::vape_kind::left: return "vape left clicker";
-        case modules::vape_kind::right: return "vape right clicker";
-        }
-        return "vape";
-    }
-    const char* id(modules::vape_kind kind)
-    {
-        switch (kind) {
-        case modules::vape_kind::aim: return "vape_aim_assist";
-        case modules::vape_kind::left: return "vape_left_clicker";
-        case modules::vape_kind::right: return "vape_right_clicker";
-        }
-        return "vape";
-    }
 }
 
 using namespace vape_bridge;
 
-modules::vape_module::vape_module(vape_kind selected)
-    : module(vape_bridge::name(selected), "Vape", vape_bridge::id(selected)),
-      settings(vape_settings::defaults(selected)), kind(selected)
+modules::vape_module::vape_module()
+    : module("vape aim assist", "Combat", "vape_aim_assist")
 {
 }
 modules::vape_module::~vape_module() = default;
@@ -209,17 +177,8 @@ void modules::vape_module::on_disable(::cache&) { reset_requested.store(true); }
 const char* modules::vape_module::conflict() const
 {
     using vape_bridge::active;
-    if (kind == vape_kind::aim) {
-        if (active("aim_assist") || active("click_aim_assist"))
-            return "Pause: Wolf Aim Assist is enabled";
-    }
-    if (kind == vape_kind::left) {
-        if (active("triggerbot") || active("left_clicker") || active("shield_breaker") ||
-            active("mace_swap") || active("hit_crystal") || active("anchor_macro"))
-            return "Pause: Wolf attack module is enabled";
-    }
-    if (kind == vape_kind::right && (active("right_clicker") || active("fast_exp")))
-        return "Pause: Wolf right click module is enabled";
+    if (active("aim_assist") || active("click_aim_assist"))
+        return "Pause: Wolf Aim Assist is enabled";
     return nullptr;
 }
 
@@ -246,20 +205,13 @@ void modules::vape_module::render_overlay()
         { std::lock_guard lock(settings_mutex); config = settings; }
         if (!state) {
             state = std::make_unique<runtime>(); state->world = context.world; state->player = context.player;
-            auto& click = kind == vape_kind::right ? state->right.getEngine() : state->left.getEngine();
-            click.setRandomizationMode(static_cast<Vape::Combat::ClickEngine::RandomizationMode>(config.randomization));
-            click.setCps(config.min_cps, config.max_cps); click.setJitter(config.jitter);
         }
         auto& r = *state;
-        const auto age = context.player.age.get();
-        const bool tick = r.last_tick != age;
-        r.last_tick = age;
         auto options = context.instance.options.get();
         auto main = context.player.getMainHandStack.call();
         const std::string key = item_key(main);
         const bool holding_weapon = weapon(key);
         const bool left = services::input::physical_button_down(services::input::mouse_button::left);
-        const bool right = services::input::physical_button_down(services::input::mouse_button::right);
         const bool using_item = context.player.isUsingItem.call() == JNI_TRUE;
         const bool looking_at_block = block_target(context.instance);
         if (!options || platform::jni_context::clear_exception()) { state.reset(); return; }
@@ -272,48 +224,11 @@ void modules::vape_module::render_overlay()
             runtime_issue="Vape: mouse sensitivity binding unavailable."; state.reset(); return;
         }
 
-        if (kind == vape_kind::left || kind == vape_kind::right) {
-            if (kind == vape_kind::left) {
-                r.left.breakBlocksProtection = config.protect_blocks; r.left.weaponsOnly = config.weapons_only;
-                if (!using_item && r.left.shouldClick(left, looking_at_block, holding_weapon, false)) {
-                    const bool sent = services::combat::try_unowned_attack([&] {
-                        return enabled && !reset_requested.load() &&
-                            services::input::game_mouse_click(services::input::mouse_button::left);
-                    });
-                    if (sent) { r.left.onClickProcessed(); r.clicking = true; }
-                }
-                if (!left || using_item || (config.protect_blocks && looking_at_block) ||
-                    (config.weapons_only && !holding_weapon)) r.clicking = false;
-                if (r.clicking) {
-                    if (tick) r.left.getEngine().updateJitter();
-                    r.left.getEngine().applyJitterRotation(yaw, pitch, mouse_sensitivity);
-                }
-            } else {
-                r.right.holdToClick = config.hold_to_click; r.right.blocksOnly = config.blocks_only; r.right.allowOffhand = config.offhand;
-                auto off = context.player.getOffHandStack.call();
-                const bool main_usable = usable(main, config.blocks_only), off_usable = usable(off, config.blocks_only);
-                if (platform::jni_context::clear_exception()) { state.reset(); return; }
-                if (!using_item && r.right.shouldClick(right, main_usable, off_usable, false)) {
-                    bool sent = false;
-                    if (right && enabled && !reset_requested.load())
-                        sent = services::input::game_mouse_click(services::input::mouse_button::right);
-                    else if (!config.hold_to_click && enabled && !reset_requested.load() && context.instance.doItemUse.is_valid()) {
-                        context.instance.doItemUse.call(); sent = !platform::jni_context::clear_exception();
-                    }
-                    if (sent) { r.right.onClickProcessed(); r.clicking = true; }
-                }
-                if ((config.hold_to_click && !right) || using_item ||
-                    !(main_usable || (config.offhand && off_usable))) r.clicking = false;
-                if (r.clicking) {
-                    if (tick) r.right.getEngine().updateJitter();
-                    r.right.getEngine().applyJitterRotation(yaw, pitch, mouse_sensitivity);
-                }
-            }
-        } else if (kind == vape_kind::aim) {
+        {
             if (!context.player.getEyeY.is_valid()) { state.reset(); return; }
             auto eye = position(context.player); eye.y = context.player.getEyeY.call();
             if (!finite(eye) || platform::jni_context::clear_exception()) { state.reset(); return; }
-            if (kind == vape_kind::aim) {
+            {
                 vape_bindings::Manager manager(context.interaction.object_instance, false);
                 if (config.protect_blocks && !manager.breaking.is_valid()) { state.reset(); return; }
                 const bool breaking_blocks = left && looking_at_block && manager.breaking.call() == JNI_TRUE;
@@ -359,7 +274,7 @@ void modules::vape_module::render_overlay()
         if (platform::jni_context::clear_exception() || !enabled || reset_requested.load() ||
             !std::isfinite(yaw) || !std::isfinite(pitch) || pitch < -90 || pitch > 90) { state.reset(); return; }
         if (yaw != original_yaw || pitch != original_pitch) {
-            if(kind==vape_kind::aim) {
+            {
                 const float delta=Vape::Math::RotationUtil::wrapDegrees(yaw-original_yaw);
                 // Java's mouse applier adjusts interpolation history too. Keep
                 // yaw continuous across +/-180 instead of rendering a 360 turn.
@@ -378,6 +293,4 @@ void modules::vape_module::render_overlay()
     } catch (...) { platform::jni_context::clear_exception(); state.reset(); }
 }
 
-modules::module* modules::create_vape_aim() { return new vape_module(vape_kind::aim); }
-modules::module* modules::create_vape_left() { return new vape_module(vape_kind::left); }
-modules::module* modules::create_vape_right() { return new vape_module(vape_kind::right); }
+modules::module* modules::create_vape_aim() { return new vape_module(); }

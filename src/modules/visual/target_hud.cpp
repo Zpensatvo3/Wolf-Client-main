@@ -2,6 +2,7 @@
 #define NOMINMAX
 #endif
 #include "target_hud.hpp"
+#include "visual_effects_logic.hpp"
 #include "../../services/game/name_protect.hpp"
 #include "../../gui/gui.hpp"
 #include "../../gui/ui_state.hpp"
@@ -187,6 +188,8 @@ struct modules::target_hud::runtime
     clock_type::time_point equipment_update{};
     unsigned generation = 0;
     float health_ratio = 0.f;
+    float damage_ratio = 0.f, health_tint = 0.f, previous_health = 0.f;
+    double damage_until = 0.;
     bool preview = false;
 };
 
@@ -205,6 +208,8 @@ void modules::target_hud::refresh(bool preview)
     {
         state.target = {};
         state.health_ratio = 0.f;
+        state.damage_ratio = state.health_tint = state.previous_health = 0.f;
+        state.damage_until = 0.;
         state.last_seen = {};
         state.generation = generation;
         state.preview = preview;
@@ -309,7 +314,11 @@ void modules::target_hud::refresh(bool preview)
         }
         if (platform::jni_context::clear_exception()) { state.target = {}; return; }
         if (!same_target)
+        {
             state.health_ratio = next.health / next.maximum_health;
+            state.damage_ratio = state.health_tint = state.previous_health = state.health_ratio;
+            state.damage_until = 0.;
+        }
         if (generation != reset_generation_.load(std::memory_order_acquire)) { state.target = {}; return; }
         next.valid = true;
         if (aimed) state.last_seen = now;
@@ -393,11 +402,24 @@ void modules::target_hud::draw_card(ImDrawList* draw, float x, float y, bool pre
     const float distance_width = font->CalcTextSizeA(10.f * scale, FLT_MAX, 0.f, value).x / scale;
     text(std::max(170.f, 222.f - distance_width), 30.f, 10.f, 52.f, muted, value);
     const float ratio = target.valid ? target.health / target.maximum_health : 0.f;
-    const float dt = std::clamp(ImGui::GetIO().DeltaTime, 0.f, .05f);
-    runtime_->health_ratio = gui::ui_state::get_preferences().reduce_motion ? ratio
-        : runtime_->health_ratio + (ratio - runtime_->health_ratio) * (1.f - std::exp(-14.f * dt));
+    const float dt = ImGui::GetIO().DeltaTime;
+    const double now = ImGui::GetTime();
+    const bool reduced = gui::ui_state::get_preferences().reduce_motion;
+    if (ratio < runtime_->previous_health - .002f) runtime_->damage_until = now + .18;
+    runtime_->previous_health = ratio;
+    runtime_->health_ratio += (ratio - runtime_->health_ratio) * (reduced ? 1.f : visual_effects_logic::response(dt, 14.));
+    runtime_->health_tint += (ratio - runtime_->health_tint) * (reduced ? 1.f : visual_effects_logic::response(dt, 9.));
+    if (reduced) runtime_->damage_ratio = ratio;
+    else if (now >= runtime_->damage_until)
+        runtime_->damage_ratio += (ratio - runtime_->damage_ratio) * visual_effects_logic::response(dt, 4.5);
+    runtime_->damage_ratio = std::max(runtime_->damage_ratio, runtime_->health_ratio);
     draw->AddRectFilled(point(65.f, 47.f), point(222.f, 51.f), IM_COL32(255, 255, 255, 18), 2.f * scale);
-    const ImVec4 health_color = ratio < .25f ? ImVec4(.98f, .31f, .37f, 1.f) : accent;
+    const float blend = static_cast<float>(visual_effects_logic::smoothstep((runtime_->health_tint - .15f) / .45f));
+    const ImVec4 health_color(.98f + (accent.x - .98f) * blend,
+        .31f + (accent.y - .31f) * blend, .37f + (accent.z - .37f) * blend, 1.f);
+    if (runtime_->damage_ratio > runtime_->health_ratio + .002f)
+        draw->AddRectFilled(point(65.f, 47.f), point(65.f + 157.f * std::clamp(runtime_->damage_ratio, 0.f, 1.f), 51.f),
+            color(ImVec4(1.f, .66f, .40f, .45f)), 2.f * scale);
     if (runtime_->health_ratio > .001f)
         draw->AddRectFilled(point(65.f, 47.f), point(65.f + 157.f * std::clamp(runtime_->health_ratio, 0.f, 1.f), 51.f),
             color(health_color), 2.f * scale);

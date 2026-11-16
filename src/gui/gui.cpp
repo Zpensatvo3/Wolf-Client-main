@@ -29,8 +29,6 @@
 #include "../modules/combat/crystal_aura.hpp"
 #include "../modules/combat/triggerbot.hpp"
 #include "../modules/misc/fast_exp.hpp"
-#include "../modules/misc/left_clicker.hpp"
-#include "../modules/misc/right_clicker.hpp"
 #include "../modules/misc/inv_walk.hpp"
 #include "../friends/friends.hpp"
 #include "../loader/loader_ui.hpp"
@@ -312,8 +310,6 @@ namespace
 		{
 			services::input::cancel_trigger_click();
 			services::input::reset_physical_buttons();
-			modules::left_clicker::notify_manual_click(false);
-			modules::right_clicker::notify_manual_click(false);
 			modules::fast_exp::notify_manual_right_click(false);
 			panel_was_open = open;
 		}
@@ -427,7 +423,6 @@ static LRESULT CALLBACK detour_WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 
 		if (left)
 		{
-			modules::left_clicker::notify_manual_click(pressed);
 			if (pressed)
 			{
 				// Shield Breaker has priority when the crosshair is on a blocking
@@ -439,7 +434,6 @@ static LRESULT CALLBACK detour_WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		}
 		else
 		{
-			modules::right_clicker::notify_manual_click(pressed);
 			modules::fast_exp::notify_manual_right_click(pressed);
 		}
 	};
@@ -466,8 +460,6 @@ static LRESULT CALLBACK detour_WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		if (auto* walk = dynamic_cast<modules::inv_walk*>(modules::find_module_by_id("inv_walk")))
 			walk->cancel_on_client_thread();
 		services::input::cancel_trigger_click();
-		modules::left_clicker::notify_manual_click(false);
-		modules::right_clicker::notify_manual_click(false);
 		if (gui::draw) release_panel_mouse(hWnd);
 	}
 	if (msg == WM_SETFOCUS)
@@ -766,7 +758,6 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 		icon_range_builder.AddChar(0xF234);
 		icon_range_builder.AddChar(0xF503);
 		icon_range_builder.AddChar(0xF554);
-		icon_range_builder.AddChar(0xF0E7); // bolt: Vape
 		icon_range_builder.AddChar(0xF53F); // palette: Themes
 		icon_range_builder.AddChar(0xF007);
 		icon_range_builder.AddChar(0xF013);

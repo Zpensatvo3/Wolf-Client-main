@@ -30,8 +30,6 @@
 #include "misc/fast_stop.hpp"
 #include "misc/inv_walk.hpp"
 #include "misc/trajectories.hpp"
-#include "misc/right_clicker.hpp"
-#include "misc/left_clicker.hpp"
 #include "misc/fast_place.hpp"
 #include "misc/fast_exp.hpp"
 #include "misc/mouse_tweaks.hpp"

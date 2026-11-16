@@ -1,6 +1,7 @@
 #include "sky.hpp"
 #include "sky_bindings.hpp"
 #include "sky_panorama.hpp"
+#include "visual_effects_logic.hpp"
 #include "../../gui/gui.hpp"
 #include "../../gui/ui_state.hpp"
 #include "../../platform/jni/jni_context.hpp"
@@ -69,6 +70,8 @@ struct modules::sky::runtime
 #endif
     unsigned generation=0;
     double next_update=0,next_capture=0;
+    double color_time=-1.;
+    ImVec4 sky_color{},fog_color{};
 
     bool reset()
     {
@@ -81,7 +84,7 @@ struct modules::sky::runtime
         }
         if (complete) effects.clear();
 #endif
-        if (complete) { session.reset(); next_update=next_capture=0; }
+        if (complete) { session.reset(); next_update=next_capture=0; color_time=-1.; }
         return complete;
     }
 #if ONESTEP_MINECRAFT_VERSION < 12111
@@ -246,6 +249,17 @@ void modules::sky::render_overlay()
         {
             fog.x=fog.x*.67f+.28f; fog.y=fog.y*.67f+.28f; fog.z=fog.z*.67f+.28f;
         }
+        const double color_now=ImGui::GetTime();
+        const float blend=reduced || state.color_time<0. ? 1.f
+            : visual_effects_logic::response(color_now-state.color_time,5.);
+        const auto transition=[&](ImVec4& current,ImVec4 target) {
+            current={current.x+(target.x-current.x)*blend,current.y+(target.y-current.y)*blend,
+                current.z+(target.z-current.z)*blend,1.f};
+            return current;
+        };
+        color=transition(state.sky_color,color);
+        fog=transition(state.fog_color,fog);
+        state.color_time=color_now;
         const float strength=std::clamp(config.strength,0.f,1.f);
 #if ONESTEP_MINECRAFT_VERSION >= 12111
         sky_rgb=blend_rgb(0,color,1.f);

@@ -14,9 +14,8 @@ namespace
     jobject bridge = nullptr;
     jmethodID prepare_method = nullptr, tools_method = nullptr, select_method = nullptr;
     jmethodID exp_method = nullptr, use_method = nullptr, stop_method = nullptr;
-    jmethodID capture_click_method = nullptr, click_method = nullptr, jitter_method = nullptr;
     bool connection_failed = false;
-    std::array<bool, 5> prepared{}, failed{};
+    std::array<bool, 3> prepared{}, failed{};
     bool permitted()
     {
         const HWND window = gui::get_window();
@@ -67,9 +66,6 @@ namespace
             exp_method = checked(env, env->GetMethodID(item, "captureExp", "()[Ljava/lang/Object;"));
             use_method = checked(env, env->GetMethodID(item, "useExp", "([Ljava/lang/Object;Z)Z"));
             stop_method = checked(env, env->GetMethodID(item, "stop", "()V"));
-            capture_click_method = checked(env, env->GetMethodID(item, "captureClick", "(IZ)[Ljava/lang/Object;"));
-            click_method = checked(env, env->GetMethodID(item, "click", "([Ljava/lang/Object;ZZ)Z"));
-            jitter_method = checked(env, env->GetMethodID(item, "jitter", "([Ljava/lang/Object;FF)Z"));
             auto instance = checked(env, env->NewObject(item, create, parent, static_cast<jint>(mc::target.build_id)));
             bridge = checked(env, env->NewGlobalRef(instance));
             OutputDebugStringW(L"[OneStep] Java item bridge connected (1.21.11).\n");
@@ -85,7 +81,7 @@ namespace
     services::game::hybrid::result prepare(unsigned feature)
     {
         using services::game::hybrid::result;
-        if (feature < 1 || feature > 4) return result::unavailable;
+        if (feature < 1 || feature > 2) return result::unavailable;
 
         if constexpr (mc::target.build_id != 12111) return result::native_fallback;
         if (!permitted() || !platform::jni_context::bind_current_thread()) return result::unavailable;
@@ -181,48 +177,6 @@ bool services::game::items::use_exp(const exp_snapshot& observed)
     return accepted;
 }
 
-services::game::hybrid::result services::game::items::capture_click(bool right, bool only_blocks, click_snapshot& out)
-{
-    out = {};
-    const unsigned feature = right ? 4 : 3;
-    const auto backend = prepare(feature);
-    if (backend != hybrid::result::ready) return backend;
-    auto env = jni::get_env();
-    try
-    {
-        auto packet = static_cast<jobjectArray>(env->CallObjectMethod(bridge, capture_click_method,
-            static_cast<jint>(feature), static_cast<jboolean>(only_blocks)));
-        if (env->ExceptionCheck()) throw std::runtime_error("Clicker capture");
-        if (!packet) return hybrid::result::unavailable;
-        std::array<double, 4> values{}; read_packet(env, packet, 5, 4, values);
-        if (values[1] != feature || values[2] <= 0 || values[3] != (only_blocks ? 1 : 0)) throw std::runtime_error("Clicker schema");
-        out.packet = packet; out.right = right;
-        return hybrid::result::ready;
-    }
-    catch (...) { fail(feature); return hybrid::result::unavailable; }
-}
-
-bool services::game::items::click(const click_snapshot& observed, bool game_input)
-{
-    const unsigned feature = observed.right ? 4 : 3;
-    const auto button = observed.right ? services::input::mouse_button::right : services::input::mouse_button::left;
-    if (!bridge || failed[feature] || !observed.packet || !permitted() || !services::input::physical_button_down(button)) return false;
-    const bool accepted = jni::get_env()->CallBooleanMethod(bridge, click_method, observed.packet,
-        static_cast<jboolean>(game_input), JNI_TRUE) == JNI_TRUE;
-    if (platform::jni_context::clear_exception()) { fail(feature); return false; }
-    return accepted && (!game_input || services::input::game_mouse_click(button));
-}
-
-bool services::game::items::jitter(const click_snapshot& observed, float yaw_delta, float pitch_delta)
-{
-    const unsigned feature = observed.right ? 4 : 3;
-    if (!bridge || failed[feature] || !observed.packet || !permitted()) return false;
-    const bool applied = jni::get_env()->CallBooleanMethod(bridge, jitter_method, observed.packet,
-        static_cast<jfloat>(yaw_delta), static_cast<jfloat>(pitch_delta)) == JNI_TRUE;
-    if (platform::jni_context::clear_exception()) { fail(feature); return false; }
-    return applied;
-}
-
 void services::game::items::shutdown()
 {
     if (bridge && platform::jni_context::bind_current_thread())
@@ -232,6 +186,5 @@ void services::game::items::shutdown()
     }
     bridge = nullptr;
     prepare_method = tools_method = select_method = exp_method = use_method = stop_method = nullptr;
-    capture_click_method = click_method = jitter_method = nullptr;
     connection_failed = false; prepared = {}; failed = {};
 }

@@ -1,10 +1,7 @@
 #include "../src/modules/vape/engines/aimassist/AimAssist.hpp"
-#include "../src/modules/vape/engines/clicker/LeftClicker.hpp"
-#include "../src/modules/vape/engines/clicker/RightClicker.hpp"
 #include <cassert>
 #include <cmath>
 #include <iostream>
-#include <thread>
 
 // Small, offline decision check. No game process, injection, server or inputs.
 int main()
@@ -37,26 +34,5 @@ int main()
     aim.reset();yaw=0;
     aim.applyRenderTick(yaw,pitch,.5f);assert(yaw==0);
 
-    Combat::LeftClicker left(9,13.5);
-    Combat::RightClicker right(12,18);
-    assert(!left.shouldClick(false,false,true,false));
-    assert(!left.shouldClick(true,true,true,false));
-    assert(!left.shouldClick(true,false,false,false));
-    assert(!left.shouldClick(true,false,true,true));
-    left.breakBlocksProtection=false;
-    left.weaponsOnly=false;
-    assert(left.shouldClick(true,true,false,false));
-    left.onClickProcessed();
-    assert(!left.shouldClick(true,true,false,false));
-    assert(!right.shouldClick(false,true,false,false));
-    assert(!right.shouldClick(true,false,false,false));
-    assert(!right.shouldClick(true,true,false,true));
-    assert(right.shouldClick(true,false,true,false));
-    right.allowOffhand=false;
-    assert(!right.shouldClick(true,false,true,false));
-    right.holdToClick=false;
-    assert(right.shouldClick(false,true,false,false));
-    right.onClickProcessed();
-    assert(!right.shouldClick(false,true,false,false));
-    std::cout << "Vape aim/clicker engine checks passed\n";
+    std::cout << "Vape aim engine checks passed\n";
 }

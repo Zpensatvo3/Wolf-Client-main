@@ -51,7 +51,7 @@ bool services::combat::try_crystal_aura_action(int target_id, std::uint64_t epoc
 bool services::combat::try_unowned_attack(const std::function<bool()>& attempt)
 {
     // Serialize the check and submission against ownership acquisition, including
-    // Left Clicker's direct doAttack path. Never acquire this lock from a helper
+    // direct attack submissions. Never acquire this lock from a helper
     // while holding it; Triggerbot releases it before weapon preparation.
     std::lock_guard lock(ownership_mutex);
     return current_owner == owner::none && target < 0 && session == 0 && attempt && attempt();

@@ -328,7 +328,7 @@ int main(int argc, char** argv)
         assert(std::abs(dragged.x - initial_position.x - 72.f) < 1.f);
         assert(std::abs(dragged.y - initial_position.y - 40.f) < 1.f);
         for (const auto target : {page::friends, page::combat, page::configs, page::misc,
-            page::themes, page::vape, page::hud, page::client, page::keybinds, page::combat}) {
+            page::themes, page::hud, page::client, page::keybinds, page::combat}) {
             state.current = target; frame(3);
             assert(shell_window->Pos.x == dragged.x && shell_window->Pos.y == dragged.y);
         }
@@ -461,7 +461,12 @@ int main(int argc, char** argv)
     state.current = page::friends; frame(3);
     // Navigate via the actual Other > Keybinds sidebar button.
     root = ImGui::FindWindowByName("##ThedoriusGrimUI");
-    click({root->Pos.x + 70.f,root->Pos.y + 488.f});
+    float keybind_y = 89.f + 40.f * std::size(feature_navigation) + 5.f + 17.f + 17.f;
+    for (const auto& entry : other_navigation) {
+        if (entry.target == page::keybinds) break;
+        keybind_y += 40.f;
+    }
+    click({root->Pos.x + 70.f,root->Pos.y + keybind_y});
     assert(state.current == page::keybinds); frame(3);
     capture(capture_dir,"keybinds-keyboard");
     select_keyboard_key(0x75); // F6

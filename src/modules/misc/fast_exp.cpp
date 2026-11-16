@@ -79,7 +79,7 @@ void modules::fast_exp::stop()
 	next_click = {};
 	platform::jni_context::clear_exception();
 	// No owned DOWN survives a pulse. Never release the user's right hold when
-	// EXP is absent: doing so also interrupts potions, Fast Place and Right Clicker.
+	// EXP is absent: doing so also interrupts potions and Fast Place.
 }
 
 void modules::fast_exp::run(::cache&)

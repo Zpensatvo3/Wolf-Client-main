@@ -246,7 +246,7 @@ namespace
             case 1: return services::combat::claim_crystal_aura(id, static_cast<std::uint64_t>(epoch));
             case 3:
                 // Serialize the Java validation and action against Triggerbot
-                // and clickers. Every Minecraft read/write remains in Java.
+                // and other input owners. Every Minecraft read/write remains in Java.
                 return services::combat::try_crystal_aura_action(id, static_cast<std::uint64_t>(epoch), [&] {
                     return env->CallBooleanMethod(self, aura_action_id) == JNI_TRUE && !env->ExceptionCheck();
                 });

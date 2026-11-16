@@ -16,7 +16,7 @@ sources = [
     "src/modules/combat/triggerbot.hpp", "src/modules/combat/triggerbot.cpp",
     "src/modules/combat/shield_breaker.hpp", "src/modules/combat/shield_breaker.cpp",
     "src/modules/combat/mace_swap.hpp", "src/modules/combat/mace_swap.cpp",
-    "src/modules/misc/left_clicker.cpp", "src/modules/core/module.hpp",
+    "src/modules/core/module.hpp",
     "src/modules/core/config_fields.hpp", "src/modules/core/config_fields.cpp",
     "src/modules/core/public_config.cpp", "src/services/game/attack_service.hpp",
     "src/services/game/attack_service.cpp", "src/services/game/attack_coordinator.hpp",

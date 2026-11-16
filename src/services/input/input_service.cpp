@@ -1,9 +1,6 @@
 #include "input_service.hpp"
 
 #include "../../modules/core/module.hpp"
-#include "../../services/game/client_context.hpp"
-#include "../../platform/jni/jni_context.hpp"
-#include "../../gui/gui.hpp"
 #include <atomic>
 #include <mutex>
 #include <array>
@@ -261,43 +258,6 @@ bool services::input::mouse_button_state(mouse_button button, bool pressed)
     input.mi.dwFlags = mouse_flag(button, pressed);
     input.mi.dwExtraInfo = static_cast<ULONG_PTR>(modules::synthetic_mouse_tag);
     return SendInput(1, &input, sizeof(input)) == 1;
-}
-
-bool services::input::game_mouse_click(mouse_button button)
-{
-
-    const HWND expected_window = gui::get_window();
-    if (!expected_window || GetForegroundWindow() != expected_window || gui::draw || gui::loader_visible ||
-        gui::should_unload || !physical_button_down(button) || !platform::jni_context::bind_current_thread()) return false;
-    jni::frame frame{48};
-    services::game::client_context context;
-    if (!services::game::capture_client_context(context, true, false) || context.screen) return false;
-    auto mouse = context.instance.mouse.get();
-    auto window = context.instance.getWindow.call();
-    auto options = context.instance.options.get();
-    if (platform::jni_context::clear_exception() || !mouse || !window || !options ||
-        !mouse.onMouseButton.is_valid() || !window.getHandle.is_valid()) return false;
-    auto binding = button == mouse_button::left ? options.attackKey.get() : options.useKey.get();
-    if (platform::jni_context::clear_exception() || !binding || !binding.setPressed.is_valid()) return false;
-    const auto handle = window.getHandle.call();
-    if (platform::jni_context::clear_exception() || !handle) return false;
-    const int index = button == mouse_button::left ? 0 : 1;
-    // Same route as GLFW's callback, without queued SendInput edges racing a
-    // physical release. UP/DOWN queues exactly one vanilla key press.
-    mouse.onMouseButton.call(handle, index, 0, 0);
-    bool failed = platform::jni_context::clear_exception();
-    if (!failed) {
-        mouse.onMouseButton.call(handle, index, 1, 0);
-        failed = platform::jni_context::clear_exception();
-    }
-    if (failed) {
-        const jboolean held = physical_button_down(button) ? JNI_TRUE : JNI_FALSE;
-        binding.setPressed.call(held);
-        if (button == mouse_button::left) mouse.leftButtonClicked.set(held);
-        else mouse.rightButtonClicked.set(held);
-        platform::jni_context::clear_exception();
-    }
-    return !failed;
 }
 
 bool services::input::mouse_click(mouse_button button,

@@ -5,6 +5,9 @@
 #include "../../gui/gui.hpp"
 #include "../../platform/adapter/game_adapter.hpp"
 #include "../../services/game/client_context.hpp"
+#include "../../services/game/overlay_context.hpp"
+#include "../../gui/ui_state.hpp"
+#include "visual_effects_logic.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include <imgui/imgui.h>
 #include <algorithm>
@@ -13,6 +16,7 @@
 #include <string>
 #include <mutex>
 #include <atomic>
+#include <unordered_map>
 
 extern JavaVM* jvm;
 
@@ -126,6 +130,7 @@ static bool read_render_players(const services::game::client_context& context, s
 // Shared state - protected by mutex
 static std::mutex              s_mutex;
 static std::vector<PlayerBox>  s_player_boxes;
+static services::game::overlay_session s_visual_session;
 
 // Camera data - atomic writes from game thread, reads from render thread
 static std::atomic<bool>  s_cam_valid{ false };
@@ -140,6 +145,7 @@ static void clear_player_snapshot()
 {
     s_cam_valid.store(false, std::memory_order_release);
     std::lock_guard lock(s_mutex);
+    if (jni::get_env()) s_visual_session.reset(); else s_visual_session.invalidate();
     s_player_boxes.clear();
 }
 
@@ -543,11 +549,45 @@ void modules::player_esp::render_overlay()
 		? gui::get_dynamic_color().Value
 		: ImVec4(settings_snapshot.esp_color[0], settings_snapshot.esp_color[1], settings_snapshot.esp_color[2], settings_snapshot.esp_color[3]);
 	active_color.w = std::clamp(active_color.w, 0.05f, 1.0f);
-	ImColor acc(active_color);
-    ImU32 col = ImGui::ColorConvertFloat4ToU32(active_color);
-
 	std::vector<PlayerBox> boxes;
 	if (!read_render_players(context, boxes)) { clear_player_snapshot(); return; }
+
+    struct health_visual { visual_effects_logic::health_animation animation; int frame=-1; };
+    struct visual_runtime {
+        std::unordered_map<int,health_visual> health;
+        ImVec4 color{};
+        std::uint64_t generation=0;
+        double time=-1.;
+    };
+    static visual_runtime visual; // Only the render thread owns animation state.
+    std::uint64_t generation;
+    {
+        std::lock_guard lock(s_mutex);
+        s_visual_session.observe({context.world,context.player});
+        generation=s_visual_session.ticket();
+    }
+    const double now=ImGui::GetTime();
+    if (visual.generation!=generation || visual.time<0. || now<visual.time || now-visual.time>.5) {
+        visual.health.clear(); visual.color=active_color; visual.generation=generation;
+    }
+    visual.time=now;
+    const bool reduced=gui::ui_state::get_preferences().reduce_motion;
+    const float dt=ImGui::GetIO().DeltaTime;
+    const float blend=reduced ? 1.f : visual_effects_logic::response(dt,10.);
+    visual.color={visual.color.x+(active_color.x-visual.color.x)*blend,
+        visual.color.y+(active_color.y-visual.color.y)*blend,
+        visual.color.z+(active_color.z-visual.color.z)*blend,
+        visual.color.w+(active_color.w-visual.color.w)*blend};
+    active_color=visual.color;
+    ImColor acc(active_color);
+    const ImU32 col=ImGui::ColorConvertFloat4ToU32(active_color);
+    const int frame=ImGui::GetFrameCount();
+    for (const auto& box:boxes) {
+        auto& entry=visual.health[box.entityId];
+        entry.animation.update(box.maxHealth>0.f ? box.health/box.maxHealth : 0.f,dt,reduced);
+        entry.frame=frame;
+    }
+    std::erase_if(visual.health,[&](const auto& entry) { return entry.second.frame!=frame; });
 
     for (const PlayerBox& b : boxes)
     {
@@ -743,8 +783,8 @@ void modules::player_esp::render_overlay()
             const float bar_w = 4.0f;
             const float bar_x = x0 - bar_w - 4.0f;
             const float bar_h = y1 - y0;
-            float hp_ratio = (b.maxHealth > 0.0f) ? (b.health / b.maxHealth) : 0.0f;
-            hp_ratio = std::clamp(hp_ratio, 0.0f, 1.0f);
+            const auto& health=visual.health.at(b.entityId).animation;
+            const float hp_ratio=health.shown;
 
             const float filled_h = bar_h * hp_ratio;
             const float empty_top = y0 + (bar_h - filled_h);
@@ -754,11 +794,16 @@ void modules::player_esp::render_overlay()
                 IM_COL32(10, 12, 16, 220), 2.0f);
 
             // Health color calculation
-            const int red = static_cast<int>((1.0f - hp_ratio) * 255.0f);
-            const int green = static_cast<int>(hp_ratio * 255.0f);
-            const ImU32 hp_color = IM_COL32(red, green, 40, 240);
+            const float healthy=static_cast<float>(visual_effects_logic::smoothstep(hp_ratio));
+            const int red = static_cast<int>(245.f-healthy*170.f);
+            const int green = static_cast<int>(80.f+healthy*146.f);
+            const ImU32 hp_color = IM_COL32(red, green, 112, 240);
 
-            dl->AddRectFilled(ImVec2(bar_x, empty_top), ImVec2(bar_x + bar_w, y1), hp_color, 1.5f);
+            if (health.trailing>hp_ratio+.002f)
+                dl->AddRectFilled(ImVec2(bar_x,y1-bar_h*health.trailing),ImVec2(bar_x+bar_w,y1),
+                    IM_COL32(255,169,102,120),1.5f);
+            if (hp_ratio>.001f)
+                dl->AddRectFilled(ImVec2(bar_x, empty_top), ImVec2(bar_x + bar_w, y1), hp_color, 1.5f);
         }
 
         // ---- Sleek Name tag (above box) ----
