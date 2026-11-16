@@ -16,7 +16,7 @@ validate_project_entries = runpy.run_path(str(ROOT / "scripts/Test-Infrastructur
 # and settings manifest: removing an entry from both must still fail this test.
 BASELINE_IDS = """
 friends_manager click_gui panic notifications nameprotect anti_bot
-legit_click_aim_assist blatant_click_aim_assist aim_assist triggerbot mace_swap
+click_aim_assist aim_assist triggerbot mace_swap
 anchor_macro safe_anchor hit_crystal crystal_aura watermark arraylist glow_esp
 chams china_hat wings cape sky trails hit_particles jump_circles block_highlight
 view_model player_esp item_esp storage_esp block_esp radar spotify_hud target_hud
@@ -84,10 +84,10 @@ class RepositoryHygieneTest(unittest.TestCase):
         self.write("README.md", "[bad](docs/guide.md#missing) [gone](gone.md)")
         self.assertEqual(len(validate_markdown(path)), 2)
 
-    def test_all_60_module_ids_and_order_are_preserved(self):
+    def test_all_59_module_ids_and_order_are_preserved(self):
         catalog = (ROOT / "src/modules/module_catalog.cpp").read_text(encoding="utf-8")
         ids = re.findall(r'\{\s*"([a-z0-9_]+)"\s*,\s*&', catalog)
-        self.assertEqual(len(BASELINE_IDS), 60)
+        self.assertEqual(len(BASELINE_IDS), 59)
         self.assertEqual(ids, BASELINE_IDS)
         manifest = json.loads((ROOT / "src/modules/settings_manifest.json").read_text(encoding="utf-8"))
         self.assertEqual({entry["id"] for entry in manifest["modules"]}, set(BASELINE_IDS))

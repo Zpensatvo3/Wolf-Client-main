@@ -44,18 +44,11 @@
       "panel": "src/modules/client/nameprotect.cpp"
     },
     {
-      "id": "legit_click_aim_assist",
-      "owner": "src/modules/combat/legit_click_aim_assist.hpp",
-      "model": "src/modules/combat/legit_aim_config.hpp",
-      "ownership": "client_thread_config",
-      "panel": "src/modules/combat/legit_aim_engine.cpp"
-    },
-    {
-      "id": "blatant_click_aim_assist",
-      "owner": "src/modules/combat/blatant_click_aim_assist.hpp",
-      "model": "src/modules/combat/blatant_aim_config.hpp",
-      "ownership": "existing_runtime",
-      "panel": "src/modules/combat/blatant_aim_engine.cpp"
+      "id": "click_aim_assist",
+      "owner": "src/modules/combat/click_aim_assist.hpp",
+      "model": "src/modules/combat/click_aim_config.hpp",
+      "ownership": "existing_lock",
+      "panel": "src/modules/combat/click_aim_assist.cpp"
     },
     {
       "id": "aim_assist",

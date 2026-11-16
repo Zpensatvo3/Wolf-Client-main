@@ -11,7 +11,7 @@ options = parser.parse_args()
 sources = [
     "src/modules/combat/legit_aim_math.hpp", "src/modules/combat/legit_aim_config.hpp",
     "src/modules/combat/legit_aim_engine.hpp", "src/modules/combat/legit_aim_engine.cpp",
-    "src/modules/combat/legit_click_aim_assist.hpp", "src/modules/combat/legit_click_aim_assist.cpp",
+    "src/modules/combat/click_aim_assist.hpp", "src/modules/combat/click_aim_assist.cpp",
     "src/modules/combat/aim_assist.hpp", "src/modules/combat/aim_assist.cpp",
     "tests/aimassist_math_test.cpp", "tests/aimassist_config_test.cpp",
 ]
@@ -44,7 +44,7 @@ assert re.search(r'jni::method<jfloat,\s*"method_5751">\s+getStandingEyeHeight',
 assert "context.player.getEyeY.is_valid()" in engine
 assert "state.reset_generation.load(std::memory_order_acquire) != generation" in engine
 assert "head = 0, upper_body = 1, adaptive = 4" in texts["src/modules/combat/legit_aim_config.hpp"]
-for module in ("legit_click_aim_assist", "aim_assist"):
+for module in ("aim_assist",):
     header = texts[f"src/modules/combat/{module}.hpp"]
     source = texts[f"src/modules/combat/{module}.cpp"]
     assert "render_when_disabled()" in header and "request_reset(state)" in header
@@ -53,7 +53,12 @@ for module in ("legit_click_aim_assist", "aim_assist"):
     assert f"void modules::{module}::render_overlay()" in source
     assert "legit_aim_engine::reset" not in source
 catalog = (ROOT / "src/modules/module_catalog.cpp").read_text(encoding="utf-8")
-assert '{ "legit_click_aim_assist",' in catalog and '{ "aim_assist",' in catalog
+assert '{ "click_aim_assist",' in catalog and '{ "aim_assist",' in catalog
+click = texts["src/modules/combat/click_aim_assist.cpp"]
+assert "enabled && settings.mode == 0, true" in click
+assert "enabled && settings.mode == 1" in click
+assert "worker_generation != revision" in click and "render_generation != revision" in click
+assert "std::lock_guard lock(mutex)" in click and "on_render_shutdown" in click
 if options.parser_dir:
     sys.path.insert(0, str(options.parser_dir.resolve()))
     from tree_sitter import Language, Parser

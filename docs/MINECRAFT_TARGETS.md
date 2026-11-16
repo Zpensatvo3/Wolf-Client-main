@@ -9,7 +9,7 @@ This is the canonical target/build guide. The
 [26.x audit](MINECRAFT_26_PORT.md) retains version-specific evidence and fixture
 pins; [hybrid migration](HYBRID_MIGRATION.md) describes the 1.21.11 Java I/O
 groups and the Hit Crystal / Triggerbot Java controllers across all seven exact targets.
-The catalog currently has 60 modules; historical audit counts are
+The catalog currently has 59 modules; historical audit counts are
 dated results, not the current test inventory.
 
 ## Architecture

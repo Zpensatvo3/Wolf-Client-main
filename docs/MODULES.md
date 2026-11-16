@@ -3,7 +3,7 @@
 Bu belge README'deki tekrarlanan özellik kayıtlarını tek yerde toplar.
 Tam kayıt listesi ve stable ID'ler için kaynak otoritesi
 `src/modules/module_catalog.cpp` ile `src/modules/settings_manifest.json`'dır.
-Mevcut katalog 60 modül içerir; bu sayı oyun içi kabul testi sayısı değildir.
+Mevcut katalog 59 modül içerir; bu sayı oyun içi kabul testi sayısı değildir.
 Arayüz gruplaması [UI rehberinde](GRIM_UI_LAYOUT.md), Java I/O kapsamı
 [hibrit geçiş belgesinde](HYBRID_MIGRATION.md) açıklanır.
 

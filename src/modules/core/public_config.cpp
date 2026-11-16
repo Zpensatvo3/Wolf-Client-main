@@ -3,6 +3,7 @@
 #include "config_json.hpp"
 #include "anchor_config_migration.hpp"
 #include "totem_config_migration.hpp"
+#include "click_aim_config_migration.hpp"
 #include "../../platform/input/key_codes.hpp"
 #include <set>
 #include <vector>
@@ -50,6 +51,7 @@ bool modules::apply_public_config(const std::string& payload, std::string& messa
     const config_json::value* old_blatant = nullptr;
     const config_json::value* old_totem = nullptr;
     const config_json::value* old_legit_totem = nullptr;
+    const config_json::value *click_modern = nullptr, *click_legit = nullptr, *click_blatant = nullptr;
     for (const auto& entry : list->items) {
         if (entry.type != kind::object) { message = "Config module entry must be an object."; return false; }
         const auto* id = entry.find("id");
@@ -68,8 +70,19 @@ bool modules::apply_public_config(const std::string& payload, std::string& messa
         }
         const bool anchor_alias = id->text == "anchor_macro" || id->text == "blatant_anchor_macro";
         const bool totem_alias = id->text == "auto_totem" || id->text == "legit_auto_totem";
-        module* current = find_module_by_id(anchor_alias ? "anchor_macro" : totem_alias ? "auto_totem" : id->text);
+        const bool click_alias = id->text == "click_aim_assist" || id->text == "legit_click_aim_assist" || id->text == "blatant_click_aim_assist";
+        module* current = find_module_by_id(click_alias ? "click_aim_assist" : anchor_alias ? "anchor_macro" : totem_alias ? "auto_totem" : id->text);
         if (!current) continue; // Removed/unavailable modules do not block compatible ones.
+        if (click_alias) {
+            const bool modern = id->text == "click_aim_assist";
+            const bool blatant = id->text == "blatant_click_aim_assist";
+            const auto converted = modern ? std::string(settings->raw) : config_migration::encode(config_migration::click_aim_fields(*settings, blatant));
+            if (!current->validate_config_settings(converted)) {
+                message = id->text + ": " + config_validation_error(*current, converted); return false;
+            }
+            (modern ? click_modern : blatant ? click_blatant : click_legit) = &entry;
+            continue;
+        }
         if (anchor_alias)
         {
             const bool blatant = id->text == "blatant_anchor_macro";
@@ -112,6 +125,14 @@ bool modules::apply_public_config(const std::string& payload, std::string& messa
         const auto merged = config_migration::merge_totem(old_totem, old_legit_totem);
         if (!target->validate_config_settings(merged.settings)) {
             message = "auto_totem: " + config_validation_error(*target, merged.settings); return false;
+        }
+        pending.push_back({target, merged.enabled, merged.keybind, merged.settings, target->export_config_settings()});
+    }
+    if (click_modern || click_legit || click_blatant) {
+        auto* target = find_module_by_id("click_aim_assist");
+        const auto merged = config_migration::merge_click_aim(click_modern, click_legit, click_blatant);
+        if (!target->validate_config_settings(merged.settings)) {
+            message = "click_aim_assist: " + config_validation_error(*target, merged.settings); return false;
         }
         pending.push_back({target, merged.enabled, merged.keybind, merged.settings, target->export_config_settings()});
     }
@@ -160,6 +181,7 @@ bool modules::apply_keybind_config(const std::string& payload, std::string& mess
     }
     std::set<std::string> seen;
     std::vector<std::pair<module*, int>> pending;
+    const config_json::value *click_modern = nullptr, *click_legit = nullptr, *click_blatant = nullptr;
     for (const auto& entry : list->items) {
         const auto* id = entry.type == kind::object ? entry.find("id") : nullptr;
         const auto* binding = entry.find("keybind");
@@ -168,9 +190,17 @@ bool modules::apply_keybind_config(const std::string& payload, std::string& mess
             !seen.insert(id->text).second || !value || !platform::keys::valid(*value)) {
             message = "Invalid or duplicate keybind entry; no changes applied."; return false;
         }
+        if (id->text == "click_aim_assist") { click_modern = &entry; continue; }
+        if (id->text == "legit_click_aim_assist") { click_legit = &entry; continue; }
+        if (id->text == "blatant_click_aim_assist") { click_blatant = &entry; continue; }
         if (auto* target = find_module_by_id(id->text); target && target->supports_keybind())
             pending.emplace_back(target, *value);
     }
+    // Modern binding wins; otherwise the nonzero Legit binding wins ties.
+    const auto* selected = click_modern ? click_modern : click_legit;
+    if (!selected || (!click_modern && *selected->find("keybind")->integer() == 0)) selected = click_blatant ? click_blatant : selected;
+    if (selected) if (auto* target = find_module_by_id("click_aim_assist"))
+        pending.emplace_back(target, *selected->find("keybind")->integer());
     for (const auto& [target, value] : pending) target->set_keybind(value);
     message = "Local keybinds loaded.";
     return true;

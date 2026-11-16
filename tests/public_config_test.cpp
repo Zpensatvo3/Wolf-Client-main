@@ -4,6 +4,7 @@
 #include "../src/modules/combat/settings/anti_bot_settings.hpp"
 #include "../src/modules/combat/settings/anchor_macro_settings.hpp"
 #include "../src/modules/core/settings_store.hpp"
+#include "../src/modules/combat/click_aim_config.hpp"
 #include <cassert>
 #include <iostream>
 #include <locale>
@@ -51,6 +52,15 @@ public:
     modules::settings::store<module_settings::anchor_macro> settings;
     void visit_config(modules::config_visitor& visitor) override
     { settings.visit(visitor,module_settings::anchor_macro::schema()); }
+};
+
+class click_fixture final : public modules::module
+{
+public:
+    click_fixture() : module("Click Aim Assist", "Combat", "click_aim_assist") {}
+    modules::settings::store<click_aim::config> settings;
+    void visit_config(modules::config_visitor& visitor) override
+    { settings.visit(visitor, click_aim::config::schema()); }
 };
 
 int main()
@@ -174,6 +184,49 @@ int main()
     assert(modules::export_public_config() == before_bad_anchor);
     assert(modules::apply_public_config("{\"modules\":["+old_blatant+"]}",message));
     assert(anchor.settings.read().mode == 1 && anchor.get_keybind() == 66);
+    click_fixture click;
+    registry = {&a, &click};
+    const std::string old_click_legit = R"({"id":"legit_click_aim_assist","enabled":true,"keybind":65,"settings":{"strength":65,"fov":80,"max_distance":4,"aim_point":0,"weapon_only":false}})";
+    const std::string old_click_blatant = R"({"id":"blatant_click_aim_assist","enabled":true,"keybind":66,"settings":{"strength":0.8,"fov":140,"max_distance":5.5,"aim_point":2,"last_target":true,"only_weapon":true}})";
+    for (const auto& entries : {old_click_legit + "," + old_click_blatant, old_click_blatant + "," + old_click_legit}) {
+        assert(modules::apply_public_config("{\"modules\":[" + entries + "]}", message));
+        const auto c = click.settings.read();
+        assert(click.enabled && click.get_keybind() == 65 && c.mode == 0);
+        assert(c.legit().strength == 65 && !c.legit().weapon_only && c.legit().point == legit_aim_engine::aim_point::head);
+        assert(c.blatant().strength == .8f && c.blatant().last_target && c.blatant().point == blatant_aim_engine::aim_point::adaptive);
+    }
+    assert(modules::apply_public_config("{\"modules\":[" + old_click_blatant + "]}", message));
+    assert(click.settings.read().mode == 1 && click.get_keybind() == 66);
+    auto disabled_legit = old_click_legit;
+    disabled_legit.replace(disabled_legit.find("true"), 4, "false");
+    assert(modules::apply_public_config("{\"modules\":[" + disabled_legit + "," + old_click_blatant + "]}", message));
+    assert(click.enabled && click.settings.read().mode == 1 && click.get_keybind() == 66);
+    assert(click.settings.read().legit_strength == 65);
+    const std::string modern_click = R"({"id":"click_aim_assist","enabled":false,"keybind":67,"settings":{"mode":1,"blatant_strength":0.6}})";
+    assert(modules::apply_public_config("{\"modules\":[" + modern_click + "," + old_click_legit + "," + old_click_blatant + "]}", message));
+    assert(!click.enabled && click.get_keybind() == 67 && click.settings.read().mode == 1 && click.settings.read().blatant_strength == .6f);
+    const auto click_export = modules::export_public_config();
+    assert(click_export.find("legit_click_aim_assist") == std::string::npos);
+    assert(click_export.find("blatant_click_aim_assist") == std::string::npos);
+    assert(modules::apply_public_config(click_export, message));
+    assert(modules::export_public_config() == click_export);
+    for (const auto invalid_settings : {R"({"mode":2})", R"({"legit_aim_point":3})", R"({"blatant_aim_point":99})", R"({"blatant_strength":"bad"})"}) {
+        assert(!modules::apply_public_config(std::string(R"({"modules":[{"id":"sample","enabled":true,"keybind":1,"settings":{"count":99}},{"id":"click_aim_assist","enabled":true,"keybind":65,"settings":)") + invalid_settings + "}]}", message));
+        assert(modules::export_public_config() == click_export);
+    }
+    assert(modules::apply_keybind_config(R"({"modules":[{"id":"blatant_click_aim_assist","keybind":66},{"id":"legit_click_aim_assist","keybind":65}]})", message));
+    assert(click.get_keybind() == 65);
+    assert(modules::apply_keybind_config(R"({"modules":[{"id":"click_aim_assist","keybind":0},{"id":"legit_click_aim_assist","keybind":65}]})", message));
+    assert(click.get_keybind() == 0);
+    for (int mode : {0, 1, 0}) {
+        auto c = click.settings.read(); c.mode = mode;
+        int visible = 0;
+        for (const auto& field : click_aim::config::schema()) if (!field.condition || field.condition(c)) {
+            ++visible;
+            assert(std::string(field.key) == "mode" || std::string(field.key).starts_with(mode ? "blatant_" : "legit_"));
+        }
+        assert(visible == (mode ? 7 : 6));
+    }
     std::locale::global(original_locale);
     std::cout << "Plain configs: legacy reads, strict JSON, Unicode, stable IDs, validation and failure rollback passed\n";
 }

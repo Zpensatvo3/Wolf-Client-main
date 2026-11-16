@@ -20,7 +20,7 @@
 
 ## 4. Geliştirilecekler
 
-- Legit ve Blatant Click Aim Assist artık birleştirilecek ve Click Aim Assist altında toplanacak.
+- [x] Legit ve Blatant Click Aim Assist, Mode: Legit/Blatant seçimiyle tek Click Aim Assist altında birleştirildi.
 - Cape ve Wings modülleri Java'ya taşınacak. **Resimsiz olan Cape ve Wings kaldırılacak.**
 - Hit Particles'ın oluşturduğu partiküller tamamen yeniden oluşturulacak.
 - Sky'ın görüntü kalitesi ve oluşturduğu sisler düzenlenecek.

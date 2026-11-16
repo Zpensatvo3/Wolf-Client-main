@@ -1,6 +1,6 @@
 # OneStep
 
-Minecraft Fabric için Windows x64 üzerinde çalışan C++20 istemci. OpenGL/ImGui arayüzü, 60 modül, HUD düzenleyicisi ve sürüme özel Java köprüleri içerir. DLL, JVM ve sürüm kontrollerinin ardından doğrudan başlar.
+Minecraft Fabric için Windows x64 üzerinde çalışan C++20 istemci. OpenGL/ImGui arayüzü, 59 modül, HUD düzenleyicisi ve sürüme özel Java köprüleri içerir. DLL, JVM ve sürüm kontrollerinin ardından doğrudan başlar.
 
 ## Derleme
 
@@ -50,6 +50,7 @@ Mevcut stable ID, config alanları ve gizli uyumluluk verilerini koruyun. Yeni m
 
 - [Modüller](docs/MODULES.md)
 - [Aim Assist V2 karşılaştırması ve doğrulama](docs/AIM_ASSIST_V2.md)
+- [Click Aim Assist modları ve eski profil aktarımı](docs/CLICK_AIM_ASSIST.md)
 - [Menü ve HUD](docs/GRIM_UI_LAYOUT.md)
 - [Minecraft hedefleri ve derleme](docs/MINECRAFT_TARGETS.md)
 - [Hibrit geçiş](docs/HYBRID_MIGRATION.md)

@@ -2,7 +2,7 @@
 
 Normal Aim Assist artık menüde **Aim Assist V2** olarak görünür. Stable ID
 `aim_assist`, eski config alanları, varsayılan %42 güç, menzil ve FOV korunur.
-Modül sayısı değişmez. Legit Click Aim Assist klasik davranışı kullanır.
+Modül sayısı değişmez. Click Aim Assist içindeki Legit modu klasik davranışı kullanır.
 
 ## Vape karşılaştırması
 
