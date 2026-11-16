@@ -28,6 +28,11 @@ assert "geometry::motion(state.motion," in engine
 assert engine.count("geometry::reset_motion(state.motion)") >= 8
 assert "geometry::observe_target(state.motion, observed_target, delta_time)" in engine
 assert "geometry::stop_motion(state.motion)" in engine
+assert "!v2 && geometry::ray_intersects" in engine
+assert "geometry::v2_camera_update" in engine and "context.player.prevYaw.set" in engine
+assert "context.player.prevPitch.set" in engine and "milliseconds(700)" in engine
+assert "behavior::smooth_v2" in texts["src/modules/combat/aim_assist.cpp"]
+assert 'module("Aim Assist V2", "Combat", "aim_assist")' in texts["src/modules/combat/aim_assist.hpp"]
 assert "damped_axis" in texts["src/modules/combat/legit_aim_math.hpp"]
 assert "strength = 42.f" in texts["src/modules/combat/legit_aim_config.hpp"]
 assert "check_visibility" not in engine

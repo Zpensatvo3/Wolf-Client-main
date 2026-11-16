@@ -8,7 +8,7 @@ namespace modules
 class aim_assist : public module
 	{
 	public:
-		aim_assist() : module("aim assist") { settings.weapon_only = false; }
+		aim_assist() : module("Aim Assist V2", "Combat", "aim_assist") { settings.weapon_only = false; }
 
 		void run(::cache& cache) override;
 		void render_overlay() override;

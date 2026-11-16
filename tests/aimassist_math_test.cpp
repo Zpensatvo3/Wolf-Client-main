@@ -9,6 +9,60 @@ int main()
 {
     const float nan = std::numeric_limits<float>::quiet_NaN();
     const float infinity = std::numeric_limits<float>::infinity();
+    // V2: applying a correction must shift the rendered camera by the same
+    // amount at every interpolation fraction, including yaw wrap/pitch limits.
+    for (const auto start : {angles{179, 20}, angles{-179, -20}, angles{720, 89}}) {
+        const angles previous{start.yaw - 2, start.pitch - 1};
+        camera_update update;
+        assert(v2_camera_update(start, previous, {4, 5}, update));
+        const float applied_pitch = std::clamp(start.pitch + 5, -90.f, 90.f) - start.pitch;
+        for (float alpha : {0.f, .25f, .5f, .75f, 1.f}) {
+            const float before = previous.yaw + alpha * (start.yaw - previous.yaw);
+            const float after = update.previous.yaw + alpha * (update.current.yaw - update.previous.yaw);
+            const float legacy = previous.yaw + alpha * (update.current.yaw - previous.yaw);
+            assert(std::abs((after - before) - 4.f) < .0001f);
+            assert(std::abs((legacy - before) - 4.f * alpha) < .0001f);
+            const float pitch_before = previous.pitch + alpha * (start.pitch - previous.pitch);
+            const float pitch_after = update.previous.pitch + alpha * (update.current.pitch - update.previous.pitch);
+            assert(std::abs((pitch_after - pitch_before) - applied_pitch) < .0001f);
+        }
+        assert(update.current.yaw == start.yaw + 4); // No +/-180 discontinuity.
+    }
+    camera_update invalid;
+    assert(!v2_camera_update({nan, 0}, {}, {}, invalid));
+    assert(!v2_camera_update({}, {infinity, 0}, {}, invalid));
+    assert(!v2_camera_update({}, {}, {nan, 0}, invalid));
+    assert(v2_error({.1f, 0}).yaw == 0);
+    assert(v2_error({5, 0}).yaw == 5);
+    assert(v2_error({359, 0}).yaw < 0);
+    float previous_soft = 0;
+    for (int i = 0; i <= 2000; ++i) {
+        const float error = i * .001f;
+        const float soft = v2_error({error, 0}).yaw;
+        assert(soft >= previous_soft && soft <= error);
+        assert(soft - previous_soft < .004f); // No jump at either band edge.
+        assert(std::abs(v2_error({-error, 0}).yaw + soft) < .00001f);
+        previous_soft = soft;
+    }
+    // Full V2 numerical path: stationary acquisition/settling across FPS.
+    // This includes the engagement ramp and soft band, not only the solver.
+    float settled_reference = 0;
+    for (int fps : {30, 60, 144, 240}) {
+        motion_state state;
+        float yaw = 0, blend = 0;
+        const float dt = 1.f / fps;
+        for (int frame = 0; frame < fps * 3; ++frame) {
+            blend = std::min(1.f, blend + dt / .09f);
+            const float step = motion(state, v2_error({10 - yaw, 0}), 42, dt, blend, 1).yaw;
+            assert(step >= 0 && step <= 10 - yaw + .00001f);
+            yaw += step;
+        }
+        assert(yaw > 9.5f && yaw <= 10.f);
+        if (settled_reference) assert(std::abs(yaw - settled_reference) < .05f);
+        settled_reference = yaw;
+        assert(motion(state, v2_error({10 - yaw, 0}), 0, dt, 1, 1).yaw == 0);
+        assert(state.velocity.yaw == 0);
+    }
     angles desired;
     assert(angles_to({}, {0, 0, -4}, desired) && std::abs(std::abs(desired.yaw) - 180.f) < .001f);
     assert(angles_to({}, {0, 4, 0}, desired) && std::abs(desired.pitch + 90.f) < .001f);

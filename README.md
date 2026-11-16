@@ -49,6 +49,7 @@ Mevcut stable ID, config alanları ve gizli uyumluluk verilerini koruyun. Yeni m
 ## Belgeler
 
 - [Modüller](docs/MODULES.md)
+- [Aim Assist V2 karşılaştırması ve doğrulama](docs/AIM_ASSIST_V2.md)
 - [Menü ve HUD](docs/GRIM_UI_LAYOUT.md)
 - [Minecraft hedefleri ve derleme](docs/MINECRAFT_TARGETS.md)
 - [Hibrit geçiş](docs/HYBRID_MIGRATION.md)

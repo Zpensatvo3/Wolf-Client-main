@@ -7,7 +7,7 @@ void modules::aim_assist::run(cache&)
 
 void modules::aim_assist::render_overlay()
 {
-	legit_aim_engine::run(settings, state, enabled, false);
+	legit_aim_engine::run(settings, state, enabled, false, legit_aim_engine::behavior::smooth_v2);
 }
 
 void modules::aim_assist::on_enable(cache&)

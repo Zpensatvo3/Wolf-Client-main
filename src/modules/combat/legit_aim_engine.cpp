@@ -128,6 +128,7 @@ namespace
     void assign_target(legit_aim_engine::runtime& state, const maps::Entity& target)
     {
         state.locked_target = target; state.filtered_point_valid = false;
+        state.target_acquired = steady_clock::now();
         geometry::reset_motion(state.motion);
         state.assist_blend = std::min(state.assist_blend, .35f); clear_challenger(state);
     }
@@ -144,13 +145,15 @@ void legit_aim_engine::reset(runtime& state)
     state.locked_target.clear_ref(); clear_challenger(state);
     state.world.clear_ref(); state.player.clear_ref(); state.config_valid = false;
     state.last_update = {}; state.last_click = {}; state.next_scan = {};
+    state.target_acquired = {};
     state.manual_override_until = {}; state.filtered_point_valid = false;
     state.expected_view_valid = false; state.assist_blend = 0; state.active = false;
     geometry::reset_motion(state.motion);
 }
 
-void legit_aim_engine::run(const config& requested, runtime& state, bool enabled, bool require_left_click)
+void legit_aim_engine::run(const config& requested, runtime& state, bool enabled, bool require_left_click, behavior mode)
 {
+    const bool v2 = mode == behavior::smooth_v2;
     if (!platform::jni_context::bind_current_thread()) { request_reset(state); return; }
     const auto generation = state.reset_generation.load(std::memory_order_acquire);
     if (state.seen_reset != generation || !enabled) {
@@ -160,7 +163,7 @@ void legit_aim_engine::run(const config& requested, runtime& state, bool enabled
     config settings = requested;
     const HWND window = gui::get_window();
     if (!normalize(settings) || settings.strength <= 0 || gui::draw || gui::loader_visible ||
-        !window || GetForegroundWindow() != window) { reset(state); return; }
+        gui::should_unload || !window || GetForegroundWindow() != window) { reset(state); return; }
 
     struct clear_on_exit { ~clear_on_exit() { platform::jni_context::clear_exception(); } } clear_exception;
     try {
@@ -209,6 +212,9 @@ void legit_aim_engine::run(const config& requested, runtime& state, bool enabled
         if (!context.player.getEyeY.is_valid() || !context.player.yaw.is_valid() || !context.player.pitch.is_valid()) {
             reset(state); return;
         }
+        if (v2 && (!context.player.prevYaw.is_valid() || !context.player.prevPitch.is_valid())) {
+            reset(state); return;
+        }
         const auto position = context.player.get_position();
         const double eye_y = context.player.getEyeY.call();
         const geometry::point eye{position.x, eye_y, position.z};
@@ -254,7 +260,10 @@ void legit_aim_engine::run(const config& requested, runtime& state, bool enabled
             } else {
                 const bool better = best.valid && !best.entity.is_same_object(current.entity) && best.score < current.score - 2.5;
                 if (platform::jni_context::clear_exception()) { reset(state); return; }
-                if (better) {
+                // Hold a valid V2 target for 700 ms, as the Vape adapter does
+                // in continuous mode. Invalid targets still release immediately.
+                const bool can_switch = !v2 || now - state.target_acquired >= std::chrono::milliseconds(700);
+                if (better && can_switch) {
                     const bool same_challenger = state.challenger && state.challenger.is_same_object(best.entity);
                     if (platform::jni_context::clear_exception()) { reset(state); return; }
                     if (!same_challenger) { state.challenger = best.entity; state.challenger_since = now; }
@@ -279,7 +288,7 @@ void legit_aim_engine::run(const config& requested, runtime& state, bool enabled
         // and manual mouse rotation must not masquerade as target velocity.
         geometry::observe_target(state.motion, observed_target, delta_time);
 
-        if (geometry::ray_intersects(eye, geometry::direction({view.yaw, view.pitch}), current.box, settings.max_distance)) {
+        if (!v2 && geometry::ray_intersects(eye, geometry::direction({view.yaw, view.pitch}), current.box, settings.max_distance)) {
             geometry::stop_motion(state.motion);
             state.active = true; state.expected_view = view; state.expected_view_valid = true; return;
         }
@@ -306,11 +315,25 @@ void legit_aim_engine::run(const config& requested, runtime& state, bool enabled
             }
         }
         state.assist_blend = std::min(1.f, state.assist_blend + delta_time / .09f);
-        const auto step = geometry::motion(state.motion, target_delta, settings.strength, delta_time, state.assist_blend, manual_scale);
-        const maths::angles output{view.yaw + step.yaw, std::clamp(view.pitch + step.pitch, -90.f, 90.f)};
+        const auto correction = v2 ? geometry::v2_error(target_delta) : target_delta;
+        const auto step = geometry::motion(state.motion, correction, settings.strength, delta_time, state.assist_blend, manual_scale);
+        maths::angles output{view.yaw + step.yaw, std::clamp(view.pitch + step.pitch, -90.f, 90.f)};
         if (!geometry::finite(geometry::angles{output.yaw, output.pitch}) ||
             state.reset_generation.load(std::memory_order_acquire) != generation) { reset(state); return; }
         if (std::abs(step.yaw) > .00001f || std::abs(step.pitch) > .00001f) {
+            if (v2) {
+                const geometry::angles previous{context.player.prevYaw.get(), context.player.prevPitch.get()};
+                geometry::camera_update camera;
+                if (platform::jni_context::clear_exception() ||
+                    !geometry::v2_camera_update({view.yaw, view.pitch}, previous, step, camera) ||
+                    state.reset_generation.load(std::memory_order_acquire) != generation || gui::should_unload) {
+                    reset(state); return;
+                }
+                context.player.prevYaw.set(camera.previous.yaw);
+                context.player.prevPitch.set(camera.previous.pitch);
+                if (platform::jni_context::clear_exception()) { reset(state); return; }
+                output = {camera.current.yaw, camera.current.pitch};
+            }
             context.player.yaw.set(output.yaw); context.player.pitch.set(output.pitch);
             if (platform::jni_context::clear_exception()) { reset(state); return; }
         }

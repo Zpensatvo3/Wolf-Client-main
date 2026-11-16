@@ -23,6 +23,7 @@ namespace legit_aim_engine
 		std::chrono::steady_clock::time_point last_click{};
 		std::chrono::steady_clock::time_point next_scan{};
 		std::chrono::steady_clock::time_point challenger_since{};
+		std::chrono::steady_clock::time_point target_acquired{};
 		std::chrono::steady_clock::time_point manual_override_until{};
 		legit_aim_math::point filtered_point{};
 		legit_aim_math::motion_state motion{};
@@ -33,7 +34,9 @@ namespace legit_aim_engine
 		bool active = false;
 	};
 
-	void run(const config& settings, runtime& state, bool enabled, bool require_left_click = true);
+	enum class behavior { classic, smooth_v2 };
+	void run(const config& settings, runtime& state, bool enabled, bool require_left_click = true,
+        behavior mode = behavior::classic);
 	void request_reset(runtime& state);
 	void reset(runtime& state);
 	void render_options(config& settings, const char* id_suffix);

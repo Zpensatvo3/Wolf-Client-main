@@ -17,6 +17,30 @@ namespace legit_aim_math
             b.min_x < b.max_x && b.min_y < b.max_y && b.min_z < b.max_z;
     }
     inline float wrap(float angle) { return std::isfinite(angle) ? std::remainder(angle, 360.f) : 0.f; }
+    // V2 has a small angular settling region instead of stopping abruptly at
+    // the entire entity's hitbox boundary. Smoothstep is C1 at both ends.
+    inline angles v2_error(angles error)
+    {
+        if (!finite(error)) return {};
+        error.yaw = wrap(error.yaw);
+        const float magnitude = std::hypot(error.yaw, error.pitch);
+        const float t = std::clamp((magnitude - .12f) / 1.38f, 0.f, 1.f);
+        const float scale = t * t * (3.f - 2.f * t);
+        return {error.yaw * scale, error.pitch * scale};
+    }
+    struct camera_update { angles current{}, previous{}; };
+    inline bool v2_camera_update(angles current, angles previous, angles step, camera_update& out)
+    {
+        if (!finite(current) || !finite(previous) || !finite(step)) return false;
+        const float yaw_delta = wrap(step.yaw);
+        const float next_pitch = std::clamp(current.pitch + step.pitch, -90.f, 90.f);
+        const float pitch_delta = next_pitch - current.pitch;
+        out = {{current.yaw + yaw_delta, next_pitch},
+            {previous.yaw + yaw_delta, previous.pitch + pitch_delta}};
+        // Shift history by the actual applied delta, preserving vanilla's
+        // interpolation interval and continuous yaw through +/-180 degrees.
+        return finite(out.current) && finite(out.previous);
+    }
     inline bool angles_to(point eye, point target, angles& result)
     {
         if (!finite(eye) || !finite(target)) return false;
