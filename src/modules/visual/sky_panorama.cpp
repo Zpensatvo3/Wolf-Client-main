@@ -645,7 +645,8 @@ void sky_panorama::renderer::shutdown()
         if (s.vao) s.gl.DeleteVertexArrays(1,&s.vao);
         glDeleteTextures(static_cast<GLsizei>(s.textures.size()),s.textures.data());
     }
-    s.owner=nullptr; s.program=s.vao=0; s.textures={}; s.last_time=s.phase=0;
+    s.owner=nullptr; s.program=s.vao=0; s.textures={};
+    s.motion={}; s.visual_initialized=false;
 }
 const char* sky_panorama::renderer::error() const
 {
