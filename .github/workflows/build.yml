@@ -41,6 +41,7 @@ jobs:
         run: |
           python scripts/Test-Offline.py --jobs 2
           python scripts/Test-SpotifyTexture.py
+          python scripts/Test-VisualRuntime.py
       - name: Check local profile persistence
         run: |
           g++ -std=c++20 -Wall -Wextra -pthread tests/local_config_service_test.cpp src/configs/configs.cpp -o "$RUNNER_TEMP/local-config-test"

@@ -2,7 +2,31 @@
 
 Tarih: 17 Kasım 2026
 
-Bu turda yalnız bu rapor hazırlandı; kaynak kodu, test kodu ve derleme ayarları değiştirilmedi. İnceleme, önceki iyileştirmeleri içeren yerel çalışma ağacında yapıldı. GitHub yüklemesi önceki turlarda hazırlanmış değişiklikleri de içerir.
+İlk inceleme turunda yalnız bu rapor hazırlandı; kaynak kodu, test kodu ve derleme ayarları değiştirilmedi. İnceleme, önceki iyileştirmeleri içeren çalışma ağacında yapıldı. Aşağıdaki ilk bulgular ve satır numaraları `265d450` durumunu anlatır. Ardından kullanıcının uygulama isteğiyle aşağıdaki değişiklikler yapıldı.
+
+## Uygulama durumu — 17 Kasım 2026
+
+| Alan | Uygulanan değişiklik | Korunan sınır / tercih |
+| --- | --- | --- |
+| Nametag taramaları | Scoreboard ve taşıyıcı keşfi 100 ms aralıkla; diğer turlarda oyuncu listesi. Ekipman verisi 100 ms cache; taşıyıcı eşleştirmede 2 blokluk konum hücreleri ve bir kez küçük harfe çevrilmiş metinler. | Konum/sağlık okumaları ve render kamera güncellemesi sık çalışmaya devam ediyor. Yakınlık şartları değiştirilmedi. Ortak worker aralığı aynı. |
+| Nametag geri yükleme | Ayrılan oyuncuların kayıtları başarılı geri yüklemeden sonra siliniyor. Her keşif turunda en fazla 64 kayıt inceleniyor; dönen imleç başarısız kayıtlarda diğerlerini bekletmiyor. | Eksik/başarısız taramada toplu geri yükleme yapılmıyor. Sunucunun yeni takım ataması korunuyor; başarısız geri yükleme tekrar denenebiliyor. |
+| Spotify kapanış | Normal kapatma isteği thread join beklemiyor. Tek worker yeniden kullanılıyor; nesil kontrolü eski sonuçları reddediyor. HTTP ve asenkron medya okumaları iptal/zaman aşımı kontrolüyle bekleniyor. DLL kapanışında worker join ediliyor. | Ağ fallback'leri tek 4 saniyelik bütçeyi paylaşıyor; bu sayı bütün DLL kapanışı için mutlak süre garantisi değildir. WinRT sağlayıcısının senkron çağrıları ve decode süreleri ayrıca ölçülmeli. |
+| Player ESP | Adaptörün oyuncu listesi tercih ediliyor; gerekirse eski varlık koleksiyonu fallback'i var. Çıktı vektörü yeniden kullanılıyor; 2.048 öğeyi aşan kapasite kare sonunda bırakılıyor. İsimler kapalıysa isim metni okunmuyor. | 2.048 bir çizilecek oyuncu sınırı değildir. Kamera, interpolasyon, sağlık ve AntiBot güncel okunmaya devam ediyor. |
+| Kozmetik çizimler | Kırpma parçaları, yüzey/UV, çizgi ve stroke verileri karelik PMR bellek havuzundan hazırlanıyor. Küçük parçalar aynı çağrı içinde yeniden kullanılabiliyor. | Render thread'i başına 256 KiB sabit tampon tutuluyor; taşan tahsisler çağrı sonunda bırakılıyor. Geometri, örtüşme ve mevcut parça sınırları değişmedi. |
+| Spotify tekrar eden sorgular | Manager ve seçili oturum metadata'sı tutuluyor. Konum/oynatma her poll'de; metadata en az 1 saniye aralıklı fallback veya oturum/süre/geri sarma değişiminde yenileniyor. Söz dönüşünde parça tekrar doğrulanıyor. | DLL yaşam döngüsünü basit tutmak için olay callback'leri yerine sınırlı polling seçildi. Aynı süredeki bir parça değişimi sonraki metadata poll'üne kadar, normal koşullarda yaklaşık 1,2 saniye gecikebilir. Ağ/sağlayıcı gecikmeleri buna eklenebilir. |
+| Sky yüklemesi | WIC decode tek arka plan worker'ına taşındı. Kuyruk en son seçimi tutuyor; eski sonuçlar eleniyor. Hazır görüntü render context'inde yükleniyor ve geçiş bundan sonra başlıyor. | Bir callback'te en fazla bir GPU upload; hazırlık sürerken mevcut panorama korunuyor. İlk panorama hazır değilken özel çizim bekliyor. GPU upload/mipmap maliyeti tamamen kaldırılmış değil. |
+
+Yeni davranış testleri [visual_runtime_test.cpp](../tests/visual_runtime_test.cpp) ve [Test-VisualRuntime.py](../scripts/Test-VisualRuntime.py) içinde. İkinci script gerçek üretim fonksiyonlarını çıkarıp platform fixture'larıyla çalıştırır; Minecraft'a veya gerçek medya/ağ servisine bağlanmaz. Mevcut Triggerbot kodu ve Java köprüleri bu uygulama turunda değiştirilmedi.
+
+Uygulama sonrası kontroller başarılı:
+
+- Yeni runtime testi: konum hücrelerinin kaba kuvvet yakınlık kontrolüyle eşdeğerliği, 10.000 geri yükleme kaydı, başarısız kayıtta adil yeniden deneme, 10.000 hızlı seçimde eski decode sonucunun elenmesi ve worker kapanışı.
+- Üretim fonksiyonlarını kullanan fixture'lar: geometri/UV/örtüşme, 1.000 karelik küçük geometri işinde ek heap tahsisi olmaması ve büyük tamponun bırakılması; sunucu takım değişikliğinin korunması; medya zaman aşımı/iptal, başarısız COM başlangıcından dönüş, 100 aç/kapat ve join ile kapanış.
+- Spotify snapshot/texture, görsel animasyon, kozmetik fizik, oturum ve ayar sözleşmesi testleri.
+- Triggerbot zamanlama ve yaşam döngüsü regresyonları; son hedef doğrulaması ve hedefe tekrar giriş davranışı korunuyor.
+- Sky shader EGL derleme/çizim testi; Nametag, ESP ve kozmetik kaynaklarının 1.21.11 hedefiyle yerel C++ sözdizimi kontrolü; altyapı ve 8 depo hijyeni testi.
+
+Windows DLL doğrulaması GitHub Actions üzerinden ayrıca yürütülür. Yerel platform fixture'ları gerçek Windows API/sürücü kabulü değildir. Bu uygulama, aşağıdaki ölçüm planının yerini tutmaz; gerçek oyun ortamında FPS/uzun oturum RAM/VRAM kazancı henüz ölçülmedi.
 
 ## Sonuç ve kapsam
 
@@ -134,7 +158,7 @@ GPU ölçümü yüksek maliyet gösterirse sis/aurora shader'ını ayrıca incel
 
 Başarı ölçütü yalnız ortalama FPS değildir: uzun oturumda bellek eğiliminin kararlı olması, kapatma gecikmesinin kontrol altında tutulması ve p95/p99 kare sürelerinin aynı görüntü kalitesiyle iyileşmesi birlikte değerlendirilmelidir.
 
-## Doğrulama durumu
+## İlk incelemenin doğrulama kaydı
 
 Önceki turdaki hedefli Spotify snapshot testi; 100.000 paylaşılan snapshot, söz zamanlaması eşdeğerliği ve 10.000 payload değişiminde geri kazanımı doğruladı. Sahte OpenGL kullanan texture testi 100.000 kare ve 10.000 kapak değişiminde nesne yeniden kullanımı, state geri yükleme ve temizleme/yeniden denemeyi doğruladı. Bunlar gerçek sürücü veya saatlerce oyun testi değildir.
 
@@ -146,4 +170,4 @@ python -m unittest discover -s tests -p 'test_repository_hygiene.py' -v
 git diff --check
 ```
 
-İnceleme başında kaydedilen 1.050 dosyanın SHA-256 değerleri karşılaştırıldı: mevcut dosyalarda değişiklik veya silme yok; tek yeni depo dosyası bu rapor. Yeni optimizasyon uygulaması ve yeni DLL bu raporun kapsamına dahil değildir.
+İlk, yalnız dokümantasyon turunda kaydedilen 1.050 dosyanın SHA-256 değerleri karşılaştırılmıştı: o turda mevcut dosyalarda değişiklik veya silme yoktu; tek yeni depo dosyası rapordu. Sonraki uygulama turunun değişiklikleri ve kontrolleri üstteki uygulama durumunda kayıtlıdır.

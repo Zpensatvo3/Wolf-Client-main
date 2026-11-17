@@ -386,7 +386,8 @@ namespace
         // Fixed retained memory per render thread. Any overflow belongs to this
         // call and is released after ImGui has copied the submitted vertices.
         alignas(std::max_align_t) static thread_local std::array<std::byte,256*1024> storage;
-        std::pmr::monotonic_buffer_resource arena(storage.data(),storage.size());
+        std::pmr::monotonic_buffer_resource backing(storage.data(),storage.size());
+        std::pmr::unsynchronized_pool_resource arena(std::pmr::pool_options{32,4096},&backing);
         struct face {
             std::pmr::vector<ImVec2> vertices; ImU32 color; double depth;
             ImTextureID texture=nullptr; std::pmr::vector<ImVec2> uv;

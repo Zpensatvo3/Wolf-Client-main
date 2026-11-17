@@ -105,7 +105,10 @@ namespace
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
-        if (cancelled()) throw winrt::hresult_canceled();
+        if (cancelled() || std::chrono::steady_clock::now()>=deadline) {
+            operation.Cancel();
+            throw winrt::hresult_canceled();
+        }
         return operation.GetResults();
     }
 
@@ -618,6 +621,7 @@ bool modules::spotify::source::cancelled(std::uint64_t epoch) const
 void modules::spotify::source::start(bool enable_lyrics)
 {
     std::lock_guard lifecycle(lifecycle_mutex);
+    std::lock_guard wake(wake_mutex);
     if (closing.load(std::memory_order_acquire)) return;
     lyrics_enabled.store(enable_lyrics,std::memory_order_relaxed);
     if (running.load(std::memory_order_acquire)) return;
@@ -637,9 +641,12 @@ void modules::spotify::source::start(bool enable_lyrics)
 void modules::spotify::source::stop()
 {
     std::lock_guard lifecycle(lifecycle_mutex);
-    running.store(false,std::memory_order_release);
-    ++generation;
-    wake_signal.notify_all();
+    {
+        std::lock_guard wake(wake_mutex);
+        running.store(false,std::memory_order_release);
+        ++generation;
+        wake_signal.notify_all();
+    }
     std::lock_guard lock(state_mutex);
     const auto revision=state.artwork_revision;
     state=now_playing{};
@@ -649,10 +656,13 @@ void modules::spotify::source::stop()
 void modules::spotify::source::shutdown()
 {
     std::lock_guard lifecycle(lifecycle_mutex);
-    closing.store(true,std::memory_order_release);
-    running.store(false,std::memory_order_release);
-    ++generation;
-    wake_signal.notify_all();
+    {
+        std::lock_guard wake(wake_mutex);
+        closing.store(true,std::memory_order_release);
+        running.store(false,std::memory_order_release);
+        ++generation;
+        wake_signal.notify_all();
+    }
     if (worker_thread.joinable()) worker_thread.join();
     std::lock_guard lock(state_mutex);
     state=now_playing{};
@@ -660,6 +670,7 @@ void modules::spotify::source::shutdown()
 
 void modules::spotify::source::set_lyrics_enabled(bool enable_lyrics)
 {
+	std::lock_guard wake(wake_mutex);
 	if (lyrics_enabled.exchange(enable_lyrics, std::memory_order_relaxed) == enable_lyrics) return;
 	refresh_requested.store(true, std::memory_order_release);
 	wake_signal.notify_all();
@@ -730,9 +741,17 @@ struct modules::spotify::source::poll_state
 
 void modules::spotify::source::worker()
 {
-    struct completion { std::atomic_bool& flag; ~completion() { flag.store(true,std::memory_order_release); } } done{worker_finished};
+    struct completion {
+        std::atomic_bool& flag;
+        std::atomic_bool& active;
+        bool failed=false;
+        ~completion() {
+            flag.store(true,std::memory_order_release);
+            if (failed) active.store(false,std::memory_order_release);
+        }
+    } done{worker_finished,running};
     try { winrt::init_apartment(winrt::apartment_type::multi_threaded); }
-    catch (...) { running.store(false,std::memory_order_release); return; }
+    catch (...) { done.failed=true; return; }
     {
         poll_state cache;
         now_playing local;

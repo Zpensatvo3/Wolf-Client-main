@@ -416,8 +416,8 @@ std::string text_to_string(const maps::Text& text)
 		}
 		if (current_team_name == hidden_team_name)
 			return;
-		if (!original_team_by_player.contains(player_name))
-			original_team_by_player[player_name] = current_team_name;
+        // A newer server assignment supersedes the previous undo target.
+		original_team_by_player[player_name] = current_team_name;
 		scoreboard.addScoreHolderToTeam(java_name, hidden_team);
 		platform::jni_context::clear_exception();
 	}
@@ -444,27 +444,12 @@ void modules::nametag::run(::cache& cache)
         const bool discover=now>=next_discovery;
         if (discover) next_discovery=now+std::chrono::milliseconds(100);
 		float tick_delta = platform::adapter::get().get_tick_delta(cache.instance);
-		auto cam_data = platform::adapter::get().get_camera_data(cache.instance, cache.player, tick_delta);
-		if (cam_data.valid)
-		{
-			camera_x.store(cam_data.pos.x, std::memory_order_relaxed);
-			camera_y.store(cam_data.pos.y, std::memory_order_relaxed);
-			camera_z.store(cam_data.pos.z, std::memory_order_relaxed);
-			camera_yaw.store(cam_data.yaw, std::memory_order_relaxed);
-			camera_pitch.store(cam_data.pitch, std::memory_order_relaxed);
-			camera_fov.store(cam_data.fov, std::memory_order_relaxed);
-			camera_valid.store(true, std::memory_order_release);
-		}
-		else
-		{
-			camera_valid.store(false, std::memory_order_release);
-		}
 
 		maps::Scoreboard scoreboard{};
 		maps::Team hidden_team{};
-		try
-		{
-			scoreboard = cache.world.getScoreboard();
+        if (discover) try
+        {
+            scoreboard = cache.world.getScoreboard();
 			if (scoreboard)
 			{
 				if (scoreboard_identity &&
@@ -473,17 +458,16 @@ void modules::nametag::run(::cache& cache)
 					release_suppressed_carriers(false);
 					env->DeleteGlobalRef(scoreboard_identity);
 					scoreboard_identity = nullptr;
-		original_team_by_player.clear(); retire_after.clear();
-        armor_cache.clear(); next_discovery={}; worker_generation=0;
-		hidden_team_name.clear();
+                    original_team_by_player.clear(); retire_after.clear();
+                    armor_cache.clear(); hidden_team_name.clear();
 				}
 				if (!scoreboard_identity)
 					scoreboard_identity = env->NewGlobalRef(scoreboard.object_instance);
 
 				hidden_team = get_or_create_hidden_team(scoreboard);
 				maps::TeamVisibilityRule never_rule = maps::TeamVisibilityRule{}.NEVER.get();
-					if (discover && hidden_team && never_rule)
-					hidden_team.setNameTagVisibilityRule(never_rule);
+                if (hidden_team && never_rule)
+                    hidden_team.setNameTagVisibilityRule(never_rule);
 				platform::jni_context::clear_exception();
 			}
 		}
@@ -508,15 +492,15 @@ void modules::nametag::run(::cache& cache)
 		while (iterator && iterator.hasNext.call() == JNI_TRUE)
 		{
 			maps::Object object = iterator.next.call();
-			if (!object)
-				continue;
+            if (!object) { scan_complete=false; continue; }
 			maps::Entity entity(object.object_instance);
 			if (!entity)
 			{
 				continue;
 			}
 
-			const bool is_player = entity.is_instance_of<maps::PlayerEntity>();
+            const bool is_player = entity.is_instance_of<maps::PlayerEntity>();
+            if (platform::jni_context::clear_exception()) { scan_complete=false; continue; }
 				if (!is_player)
 				{
                     if (!discover) continue;
@@ -537,6 +521,11 @@ void modules::nametag::run(::cache& cache)
 				continue;
 			}
 
+            maps::String java_name=entity.getEntityName();
+            if (!java_name || platform::jni_context::clear_exception()) { scan_complete=false; continue; }
+            const std::string player_name=java_name.to_string();
+            if (player_name.empty()) { scan_complete=false; continue; }
+            seen_players.insert(player_name);
 			if (entity.is_same_object(cache.player) || entity.isAlive.call() == JNI_FALSE)
 				continue;
 			if (services::anti_bot::is_bot(entity)) continue;
@@ -576,9 +565,7 @@ void modules::nametag::run(::cache& cache)
 
 			try
 			{
-				maps::String name = entity.getEntityName();
-				if (name)
-					entry.name = name.to_string();
+                entry.name=player_name;
 				entry.health = living.getHealth();
 				entry.max_health = living.getMaxHealth();
 				if (!std::isfinite(entry.health) || !std::isfinite(entry.max_health) || entry.max_health <= 0.0f)
@@ -616,7 +603,6 @@ void modules::nametag::run(::cache& cache)
 
 			if (!entry.name.empty())
 			{
-                seen_players.insert(entry.name);
                 if (discover) suppress_vanilla_tag(scoreboard, hidden_team, entry.name);
 				player_anchors.push_back({ current, entry.name });
 				next_entries.push_back(std::move(entry));
@@ -720,6 +706,7 @@ void modules::nametag::on_disable(::cache& cache)
 	}
 
 	original_team_by_player.clear(); retire_after.clear();
+    armor_cache.clear(); next_discovery={}; worker_generation=0;
 	hidden_team_name.clear();
 	if (env && scoreboard_identity)
 		env->DeleteGlobalRef(scoreboard_identity);
