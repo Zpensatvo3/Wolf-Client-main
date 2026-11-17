@@ -2,6 +2,18 @@
 
 Tarih: 17 Kasım 2026. Kapsam: mevcut yerel çalışma ağacı. Bu tur yalnız inceleme ve bu raporun hazırlanmasıdır; uygulama kodu, test dosyaları ve workflow'lar değiştirilmedi.
 
+## Doğrulanmış DLL teslimi
+
+- Sürüm: **Fabric 1.21.11, Windows x64 Release**.
+- Derlenen kaynak commit'i: `4d665ac7ab2669d30615e79d725e6496e83aef3d`; dal: `codex/client-consistency-20261117`.
+- [Başarılı GitHub çalıştırması](https://github.com/Zpensatvo3/Wolf-Client-main/actions/runs/44198194449): offline testler, EGL Sky shader testi, Windows Java köprü kontrolleri ve native derleme başarılı. Windows job süresi 14 dakika 33 saniye.
+- [DLL artifact'ı](https://github.com/Zpensatvo3/Wolf-Client-main/actions/runs/44198194449/artifacts/14380169548): `Onestep-1.21.11-Windows-x64`; 17.252.362 bayt ZIP. Saklama bitişi: 1 Aralık 2026, 23:34 UTC.
+- GitHub'ın artifact için bildirdiği ZIP özeti: `sha256:df91144fe346105197434f1a830ff3f171816ad55d92461a9e977e59dc7c173b`. Bu DLL dosyasının bağımsız hesaplanmış özeti değildir.
+- Ortamın artifact storage erişimi indirmeyi engelledi; yerel DLL/PE/SHA-256 doğrulaması yapılmış sayılmıyor. GitHub artifact'ı başarıyla yayımlandı.
+- Gerçek Minecraft/SMTC/GPU kabulü yapılmadı. C03 render durması, C09 gerçek Haste, C10 ayırt edilemeyen aynı-değer sunucu güncellemesi ve C12 uzun oturum ölçümü açık.
+
+Bu teslim kaydı kaynak derlemesinden sonraki belge güncellemesidir; yukarıdaki commit hangi kodun DLL'e girdiğini gösterir.
+
 ## Uygulama durumu — 17 Kasım 2026
 
 Bu bölüm yukarıdaki incelemeden sonraki uygulama turuna aittir. Aşağıdaki bulgu metinleri **düzeltme öncesi** kanıtlardır.
@@ -19,7 +31,7 @@ Bu bölüm yukarıdaki incelemeden sonraki uygulama turuna aittir. Aşağıdaki 
 | C09 | Fixture'daki etkisiz Haste alanı/üç kez aynı test kaldırıldı. Oyun API'si otoritesi korunuyor. Gerçek Haste oyun kabulü açık; üretime ikinci bir etki çarpanı eklenmedi. |
 | C10 | Native yola oyuncu başına undo kaydı, yerel oyuncuyu dışlama, dünya kimliği, kapalıyken tekrar deneme ve JNI kapanışı eklendi. Önceden açık glow korunuyor; gözlenebilir farklı sunucu değeri ezilmiyor. Aynı değere yazılmış sunucu güncellemesini polling ayırt edemez; paket düzeyinde sahiplik kabulü açık. 1.21.11 Java yolu bu tur değiştirilmedi. |
 | C11 | Önceki handoff'un durum tablosu ve başlangıç talimatı güncellendi; eski görev paragrafları tarihsel bağlam olarak işaretlendi. |
-| C12 | Yerel testler ve Windows derlemesi teslim kaydına işlenecek. Gerçek 60 dakikalık oyun/GPU ölçümü bu Linux ortamında yapılamıyor; açık. |
+| C12 | Yerel testler ve Windows derlemesi başarılı; teslim kaydı yukarıda. Gerçek 60 dakikalık oyun/GPU ölçümü bu Linux ortamında yapılamıyor; açık. |
 
 Yeni regresyon script'i `scripts/Test-ClientConsistency.py`, üretim worker ve cleanup fonksiyonlarını hata enjeksiyonlu doubles ile çalıştırır. Gerçek oyun kabulünün yerini tutmaz. `Test-Offline.py` tüm 1.21.11 hedefleri, HybridBridge, Nametag gerçek JVM, GrimUI ve EGL Sky testleri yerelde geçti. Son teslimin commit/run/artifact bilgileri ayrıca paylaşılır.
 

@@ -2,6 +2,10 @@
 
 Tarih: 17 Kasım 2026. Bu dosya inceleme ve iş tarifidir; bu turda uygulama kodu değiştirilmedi.
 
+## Son doğrulanan teslim
+
+Fabric 1.21.11 Windows x64 DLL, `4d665ac7ab2669d30615e79d725e6496e83aef3d` kaynak commit'inden başarıyla derlendi. [Run](https://github.com/Zpensatvo3/Wolf-Client-main/actions/runs/44198194449), [artifact](https://github.com/Zpensatvo3/Wolf-Client-main/actions/runs/44198194449/artifacts/14380169548). Önceki `3174c0d` kaydı tarihsel bilgidir. Yeni DLL Insert ve sonraki yerel düzeltmeleri içerir. Oyun kabulü açık maddeler için son denetimin üst tablosunu kullan.
+
 ## Güncel yönlendirme
 
 Aşağıdaki A–H tarifleri düzeltme öncesi bulgular ve uygulama tasarımının tarihsel kaydıdır. Güncel durum için bu üst bölüm ile [son denetimin uygulama tablosunu](CLIENT_CONSISTENCY_AUDIT_2026-11-17.md) kullan; alt paragraflardaki eski “mevcut durum” cümleleri tek başına açık iş listesi değildir.
@@ -16,14 +20,14 @@ Aşağıdaki A–H tarifleri düzeltme öncesi bulgular ve uygulama tasarımın�
 
 ### Sonraki uygulama turu — ilerleme
 
-- **A uygulandı:** hedefli 1.21.11 workflow'una Ubuntu test job'ı ve Windows derlemesi için `needs` bağımlılığı eklendi. Gerçek GitHub workflow çalıştırması henüz yapılmadı.
+- **A uygulandı:** hedefli 1.21.11 workflow'una Ubuntu test job'ı ve Windows derlemesi için `needs` bağımlılığı eklendi. Güncel workflow çalıştırması ve Windows derlemesi başarılı; üstteki teslim kaydını kullan.
 - **B uygulandı:** snapshot gecikme ilerlemesi 5 saniyede sabitleniyor; başlığa bağlı statik filtre kaldırıldı. Kontrollü zaman testi eklendi. Gerçek medya oturumunda seek ayrıca doğrulanmalı.
 - **C uygulandı:** COM/thread başlangıç hatalarında 250 ms–5 s arası artan tekrar deneme gecikmesi var; gerçek üretim yaşam döngüsü fixture testi geçti. Gerçek Windows hata senaryosu ayrıca doğrulanmalı.
 - **F uygulandı:** 18 Sky uniform konumu shader programı linklenince alınıyor; kapatmada sıfırlanıyor. EGL shader testi ve gerçek `initialize()` kodunu kullanan fake GL testi geçti: hatalı link, 1.000 karede yeniden arama olmaması ve yeni programda yeniden arama kontrol edildi. Gerçek GPU performansı ölçülmedi.
 - **D/E uygulandı, oyun kabulü açık:** Worker kapanış hook'u, Nametag'e ait JNI kaynaklarını dünya geçersizken de bırakmayı deniyor. Başarısız takım geri yüklemeleri modül kapalıyken aynı scoreboard üzerinde bütçeli tekrar deneniyor; dünya değişimi ve nihai unload ayrı ele alınıyor. Üretim cleanup fonksiyonu hem platform fixture'ında hem de `-Xcheck:jni` etkin gerçek JVM'de test edildi. JVM testinde scoreboard işlemleri fixture'dır; gerçek Minecraft scoreboard'u test edilmedi. JNI erişimi yoksa referansların bırakıldığı iddia edilmiyor.
 - **G kısmen doğrulandı:** üretim input servisi ve odak politikası birlikte test edilerek Insert / NumPad 0 ve odak sıfırlaması kontrol edildi. Gerçek oyun kabulü açık.
 - **H açık:** uzun oturum performans ölçümü yapılmadı.
-- **Triggerbot:** oyun tarafından bildirilen saldırı cooldown değeri kullanılıyor. Haste seviyeleriyle fixture testleri eklendi; bu test gerçek Minecraft'ın etki mekaniğini taklit etmez. Gerçek oyun doğrulaması yapılmadı.
+- **Triggerbot:** oyun tarafından bildirilen saldırı cooldown değeri kullanılıyor. Fixture API eşik değerini test eder; etkisiz Haste seviyesi alanı kaldırıldı. Gerçek oyun doğrulaması yapılmadı.
 
 ## 1. Bu belgeyi kullanacak modele talimat
 
