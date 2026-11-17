@@ -1,4 +1,7 @@
 #include "nametag.hpp"
+#include "runtime_budget.hpp"
+#include <chrono>
+#include <unordered_set>
 #include "../../services/game/name_protect.hpp"
 #include "../../services/game/anti_bot_service.hpp"
 #include "../../ui/settings_renderer.hpp"
@@ -63,6 +66,7 @@ namespace
 		carrier_kind kind = carrier_kind::armor_stand;
 		maths::vector3d position{};
 		std::string text;
+        std::string folded_text;
 	};
 
 	struct suppressed_carrier
@@ -93,10 +97,40 @@ namespace
         tag_entries.clear();
     }
 
-	std::unordered_map<std::string, std::string> original_team_by_player;
+	std::map<std::string, std::string> original_team_by_player;
+    std::string retire_after;
 	std::string hidden_team_name;
 	jobject scoreboard_identity = nullptr;
 	std::vector<suppressed_carrier> suppressed_carriers;
+    using tag_clock=std::chrono::steady_clock;
+    struct armor_metadata {
+        std::array<std::string,4> armor{"---","---","---","---"};
+        tag_clock::time_point sampled{};
+    };
+    // Worker-owned caches. Render only reads the published snapshot.
+    std::unordered_map<std::string,armor_metadata> armor_cache;
+    tag_clock::time_point next_discovery{};
+    std::uint64_t worker_generation=0;
+
+    bool restore_team(const maps::Scoreboard& board,const maps::Team& hidden,
+        const std::string& name,const std::string& original)
+    {
+        if (!board || !hidden) return false;
+        auto java_name=maps::String::create(name.c_str());
+        auto current=board.getScoreHolderTeam(java_name);
+        if (platform::jni_context::clear_exception()) return false;
+        // The server already assigned a different team: leave its newer state alone.
+        if (!current || !current.is_same_object(hidden)) return !platform::jni_context::clear_exception();
+        maps::Team previous{};
+        if (!original.empty()) {
+            previous=board.getTeam(maps::String::create(original.c_str()));
+            if (platform::jni_context::clear_exception()) return false;
+        }
+        if (previous) board.addScoreHolderToTeam(java_name,previous);
+        else board.removeScoreHolderFromTeam(java_name,hidden);
+        return !platform::jni_context::clear_exception();
+    }
+
 std::string text_to_string(const maps::Text& text)
 	{
 		if (!text)
@@ -403,6 +437,12 @@ void modules::nametag::run(::cache& cache)
             if (session.observe({cache.world, cache.player})) tag_entries.clear();
             generation = session.ticket();
         }
+        if (worker_generation!=generation) {
+            armor_cache.clear(); next_discovery={}; worker_generation=generation;
+        }
+        const auto now=tag_clock::now();
+        const bool discover=now>=next_discovery;
+        if (discover) next_discovery=now+std::chrono::milliseconds(100);
 		float tick_delta = platform::adapter::get().get_tick_delta(cache.instance);
 		auto cam_data = platform::adapter::get().get_camera_data(cache.instance, cache.player, tick_delta);
 		if (cam_data.valid)
@@ -433,15 +473,16 @@ void modules::nametag::run(::cache& cache)
 					release_suppressed_carriers(false);
 					env->DeleteGlobalRef(scoreboard_identity);
 					scoreboard_identity = nullptr;
-					original_team_by_player.clear();
-					hidden_team_name.clear();
+		original_team_by_player.clear(); retire_after.clear();
+        armor_cache.clear(); next_discovery={}; worker_generation=0;
+		hidden_team_name.clear();
 				}
 				if (!scoreboard_identity)
 					scoreboard_identity = env->NewGlobalRef(scoreboard.object_instance);
 
 				hidden_team = get_or_create_hidden_team(scoreboard);
 				maps::TeamVisibilityRule never_rule = maps::TeamVisibilityRule{}.NEVER.get();
-				if (hidden_team && never_rule)
+					if (discover && hidden_team && never_rule)
 					hidden_team.setNameTagVisibilityRule(never_rule);
 				platform::jni_context::clear_exception();
 			}
@@ -455,10 +496,15 @@ void modules::nametag::run(::cache& cache)
 		std::vector<nametag_entry> next_entries;
 		std::vector<player_anchor> player_anchors;
 		std::vector<carrier_snapshot> carrier_snapshots;
-		for (suppressed_carrier& carrier : suppressed_carriers)
-			carrier.active = false;
-		maps::Iterable entities = platform::adapter::get().get_entities(cache.world);
-		maps::Iterator iterator = entities ? entities.iterator.call() : maps::Iterator{};
+            std::unordered_set<std::string> seen_players;
+            if (discover) for (suppressed_carrier& carrier:suppressed_carriers) carrier.active=false;
+            auto& adapter=platform::adapter::get();
+            maps::List players=discover ? maps::List{} : adapter.get_players(cache.world);
+            const bool players_failed=platform::jni_context::clear_exception();
+            maps::Iterable entities=(!discover && players && !players_failed)
+                ? maps::Iterable(players.object_instance,false) : adapter.get_entities(cache.world);
+            maps::Iterator iterator=entities ? entities.iterator.call() : maps::Iterator{};
+            bool scan_complete=iterator && !platform::jni_context::clear_exception();
 		while (iterator && iterator.hasNext.call() == JNI_TRUE)
 		{
 			maps::Object object = iterator.next.call();
@@ -471,9 +517,10 @@ void modules::nametag::run(::cache& cache)
 			}
 
 			const bool is_player = entity.is_instance_of<maps::PlayerEntity>();
-			if (!is_player)
-			{
-				carrier_snapshot carrier{};
+				if (!is_player)
+				{
+                    if (!discover) continue;
+					carrier_snapshot carrier{};
 				if (entity.is_instance_of<maps::ArmorStandEntity>())
 					carrier.kind = carrier_kind::armor_stand;
 				else if (entity.is_instance_of<maps::TextDisplayEntity>())
@@ -483,7 +530,8 @@ void modules::nametag::run(::cache& cache)
 
 				carrier.entity = object.object_instance;
 				carrier.position = entity.get_position();
-				carrier.text = read_carrier_text(object.object_instance, carrier.kind);
+					carrier.text = read_carrier_text(object.object_instance, carrier.kind);
+                    carrier.folded_text=lower_ascii(carrier.text);
 				if (!carrier.text.empty())
 					carrier_snapshots.push_back(std::move(carrier));
 				continue;
@@ -493,7 +541,7 @@ void modules::nametag::run(::cache& cache)
 				continue;
 			if (services::anti_bot::is_bot(entity)) continue;
 
-			maps::PlayerEntity player(entity.object_instance);
+				maps::PlayerEntity player(entity.object_instance);
 			maps::LivingEntity living(entity.object_instance);
 			maps::Box bounds = entity.get_bounding_box();
 			if (!bounds)
@@ -540,6 +588,10 @@ void modules::nametag::run(::cache& cache)
 				}
 				entry.health = std::clamp(entry.health, 0.0f, entry.max_health);
 
+                auto& metadata=armor_cache[entry.name];
+                if (metadata.sampled.time_since_epoch().count()!=0 && now-metadata.sampled<std::chrono::milliseconds(100)) {
+                    entry.armor=metadata.armor;
+                } else {
 				maps::PlayerInventory inventory = player.getInventory();
 				static constexpr int armor_indices[4] = { 3, 2, 1, 0 };
 				for (int slot = 0; slot < 4 && inventory; ++slot)
@@ -552,6 +604,10 @@ void modules::nametag::run(::cache& cache)
 					if (key && !platform::jni_context::clear_exception())
 						entry.armor[slot] = armor_code(key.to_string());
 				}
+                    if (!platform::jni_context::clear_exception()) {
+                        metadata.armor=entry.armor; metadata.sampled=now;
+                    }
+                }
 			}
 			catch (...)
 			{
@@ -560,13 +616,17 @@ void modules::nametag::run(::cache& cache)
 
 			if (!entry.name.empty())
 			{
-				suppress_vanilla_tag(scoreboard, hidden_team, entry.name);
+                seen_players.insert(entry.name);
+                if (discover) suppress_vanilla_tag(scoreboard, hidden_team, entry.name);
 				player_anchors.push_back({ current, entry.name });
 				next_entries.push_back(std::move(entry));
 			}
 		}
 
-		// Server-side nametag plugins commonly attach one or more invisible
+            scan_complete=scan_complete && !platform::jni_context::clear_exception();
+            if (scan_complete) std::erase_if(armor_cache,[&](const auto& item) { return !seen_players.contains(item.first); });
+            if (discover && scan_complete) {
+            // Server-side nametag plugins commonly attach one or more invisible
 		// ArmorStand/TextDisplay entities around a player's head. Confirm a
 		// cluster by finding the player's name in at least one row, then hide all
 		// rows in that same tight head-space cluster (rank, health, guild, etc.).
@@ -578,33 +638,32 @@ void modules::nametag::run(::cache& cache)
 			return dx * dx + dz * dz <= 1.65 * 1.65 && dy >= -0.85 && dy <= 5.0;
 		};
 
-		std::vector<bool> has_server_tag_cluster(player_anchors.size(), false);
-		for (std::size_t player_index = 0; player_index < player_anchors.size(); ++player_index)
-		{
-			const std::string player_name = lower_ascii(player_anchors[player_index].name);
-			for (const carrier_snapshot& carrier : carrier_snapshots)
-			{
-				if (carrier_is_near_player(carrier, player_anchors[player_index]) &&
-					lower_ascii(carrier.text).find(player_name) != std::string::npos)
-				{
-					has_server_tag_cluster[player_index] = true;
-					break;
-				}
-			}
-		}
-
-		for (const carrier_snapshot& carrier : carrier_snapshots)
-		{
-			for (std::size_t player_index = 0; player_index < player_anchors.size(); ++player_index)
-			{
-				if (has_server_tag_cluster[player_index] &&
-					carrier_is_near_player(carrier, player_anchors[player_index]))
-				{
-					suppress_carrier(carrier.entity, carrier.kind, carrier.text);
-					break;
-				}
-			}
-		}
+            visual_runtime::nearby_grid grid;
+            std::vector<std::string> names;
+            names.reserve(player_anchors.size());
+            for (std::size_t i=0;i<player_anchors.size();++i) {
+                grid.add(player_anchors[i].position.x,player_anchors[i].position.z,i);
+                names.push_back(lower_ascii(player_anchors[i].name));
+            }
+            std::vector<bool> clustered(player_anchors.size(),false);
+            for (const auto& carrier:carrier_snapshots)
+                grid.visit(carrier.position.x,carrier.position.z,[&](std::size_t i) {
+                    if (!clustered[i] && carrier_is_near_player(carrier,player_anchors[i]) &&
+                        carrier.folded_text.find(names[i])!=std::string::npos) clustered[i]=true;
+                });
+            for (const auto& carrier:carrier_snapshots) {
+                bool matched=false;
+                grid.visit(carrier.position.x,carrier.position.z,[&](std::size_t i) {
+                    if (!matched && clustered[i] && carrier_is_near_player(carrier,player_anchors[i])) matched=true;
+                });
+                if (matched) suppress_carrier(carrier.entity,carrier.kind,carrier.text);
+            }
+            // Never evict an undo record until its restoration succeeded. Budget
+            // departures so a crowded lobby cannot monopolize the module loop.
+            visual_runtime::retire_records(original_team_by_player,seen_players,retire_after,
+                [&](const auto& name,const auto& original) {
+                    return restore_team(scoreboard,hidden_team,name,original);
+                });
 
 		for (auto iterator = suppressed_carriers.begin(); iterator != suppressed_carriers.end();)
 		{
@@ -619,7 +678,8 @@ void modules::nametag::run(::cache& cache)
 			}
 		}
 
-		std::lock_guard lock(tag_mutex);
+            } // Full discovery/restore pass only.
+			std::lock_guard lock(tag_mutex);
         if (!session.accepts(generation)) return;
 		tag_entries = std::move(next_entries);
 	}
@@ -647,27 +707,8 @@ void modules::nametag::on_disable(::cache& cache)
 			maps::Team hidden_team = scoreboard ? scoreboard.getTeam(hidden_name) : maps::Team{};
 			if (scoreboard && hidden_team && !platform::jni_context::clear_exception())
 			{
-				for (const auto& [player_name, original_team_name] : original_team_by_player)
-				{
-					maps::String java_player_name = maps::String::create(player_name.c_str());
-					maps::Team current_team = scoreboard.getScoreHolderTeam(java_player_name);
-					if (platform::jni_context::clear_exception())
-						continue;
-					if (current_team && current_team.is_same_object(hidden_team))
-					{
-						scoreboard.removeScoreHolderFromTeam(java_player_name, hidden_team);
-						if (platform::jni_context::clear_exception())
-							continue;
-					}
-					if (!original_team_name.empty())
-					{
-						maps::String original_name = maps::String::create(original_team_name.c_str());
-						maps::Team original_team = scoreboard.getTeam(original_name);
-						if (original_team && !platform::jni_context::clear_exception())
-							scoreboard.addScoreHolderToTeam(java_player_name, original_team);
-						platform::jni_context::clear_exception();
-					}
-				}
+                    for (const auto& [name,original]:original_team_by_player)
+                        restore_team(scoreboard,hidden_team,name,original);
 				scoreboard.removeTeam(hidden_team);
 				platform::jni_context::clear_exception();
 			}
@@ -678,7 +719,7 @@ void modules::nametag::on_disable(::cache& cache)
 		platform::jni_context::clear_exception();
 	}
 
-	original_team_by_player.clear();
+	original_team_by_player.clear(); retire_after.clear();
 	hidden_team_name.clear();
 	if (env && scoreboard_identity)
 		env->DeleteGlobalRef(scoreboard_identity);

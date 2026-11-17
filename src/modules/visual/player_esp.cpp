@@ -70,7 +70,7 @@ static bool read_render_camera(const services::game::client_context& context, do
 	return true;
 }
 
-static bool read_render_players(const services::game::client_context& context, std::vector<PlayerBox>& output)
+static bool read_render_players(const services::game::client_context& context, std::vector<PlayerBox>& output, bool names)
 {
 	jni::frame frame{ 1024 };
 	const auto& instance = context.instance;
@@ -79,7 +79,12 @@ static bool read_render_players(const services::game::client_context& context, s
 	maps::RenderTickCounter counter = instance.renderTickCounter.get();
 	const float tick_delta = counter ? std::clamp(counter.tickDelta.get(), 0.0f, 1.0f) : 1.0f;
 	const maths::vector3d local_position = local.get_position();
-	maps::Iterable entities = world.getEntities.call();
+	// Prefer the player collection; retain the entity fallback for adapters
+	// whose mappings cannot expose it. Camera/positions are still read fresh.
+	maps::List players = platform::adapter::get().get_players(world);
+	const bool players_failed = clear_render_exception();
+	maps::Iterable entities = players && !players_failed
+		? maps::Iterable(players.object_instance, false) : world.getEntities.call();
 	maps::Iterator iterator = entities ? entities.iterator.call() : maps::Iterator{};
 	if (!iterator || clear_render_exception()) return false;
 
@@ -115,8 +120,10 @@ static bool read_render_players(const services::game::client_context& context, s
 		{
 			box.health = 20.0f; box.maxHealth = 20.0f;
 		}
-		maps::String name = entity.getEntityName.call();
-		if (name && !clear_render_exception()) box.name = name.to_string();
+			if (names) {
+				maps::String name = entity.getEntityName.call();
+				if (name && !clear_render_exception()) box.name = name.to_string();
+			}
 		clear_render_exception();
 		const double dx = (box.minX + box.maxX) * 0.5 - local_position.x;
 		const double dy = (box.minY + box.maxY) * 0.5 - local_position.y;
@@ -299,8 +306,15 @@ void modules::player_esp::render_overlay()
 		? gui::get_dynamic_color().Value
 		: ImVec4(settings_snapshot.esp_color[0], settings_snapshot.esp_color[1], settings_snapshot.esp_color[2], settings_snapshot.esp_color[3]);
 	active_color.w = std::clamp(active_color.w, 0.05f, 1.0f);
-	std::vector<PlayerBox> boxes;
-	if (!read_render_players(context, boxes)) { clear_player_snapshot(); return; }
+	static thread_local std::vector<PlayerBox> boxes;
+    struct release_boxes {
+        std::vector<PlayerBox>& value;
+        ~release_boxes() {
+            value.clear();
+            if (value.capacity()>2048) std::vector<PlayerBox>{}.swap(value);
+        }
+    } release{boxes};
+	if (!read_render_players(context, boxes, settings_snapshot.show_names)) { clear_player_snapshot(); return; }
 
     struct health_visual { visual_effects_logic::health_animation animation; int frame=-1; };
     struct visual_runtime {

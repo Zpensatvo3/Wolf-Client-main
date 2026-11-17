@@ -74,6 +74,8 @@ namespace modules
 
 			void start(bool enable_lyrics);
 			void stop();
+			// Final DLL teardown only; normal stop never waits on I/O.
+			void shutdown();
 			void set_lyrics_enabled(bool enable_lyrics);
 
 			now_playing snapshot() const;
@@ -86,8 +88,10 @@ namespace modules
 			source& operator=(const source&) = delete;
 
 			void worker();
-			void poll(now_playing& local, std::string& active_key);
-			void publish(now_playing& local);
+			struct poll_state;
+			void poll(now_playing& local, std::string& active_key, poll_state& cache, std::uint64_t epoch);
+			void publish(now_playing& local, std::uint64_t epoch);
+			bool cancelled(std::uint64_t epoch) const;
 
 			// WIC helpers, worker thread only.
 			bool decode_artwork(const std::vector<unsigned char>& encoded,
@@ -95,12 +99,16 @@ namespace modules
 
 			// Lyrics helpers, worker thread only.
 			void refresh_lyrics(now_playing& local, const std::string& title,
-				const std::string& artist, const std::string& album, double duration);
+				const std::string& artist, const std::string& album, double duration, std::uint64_t epoch);
 
 			mutable std::mutex state_mutex;
 			now_playing state{};
 
 			std::thread worker_thread;
+			std::mutex lifecycle_mutex;
+			std::atomic_bool closing{ false };
+			std::atomic_bool worker_finished{ true };
+			std::atomic<std::uint64_t> generation{ 0 };
 			std::mutex wake_mutex;
 			std::condition_variable wake_signal;
 			std::atomic_bool running{ false };

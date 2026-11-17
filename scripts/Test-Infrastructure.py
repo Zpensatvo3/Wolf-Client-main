@@ -128,7 +128,7 @@ def validate_overlay_sessions():
     panel = player.split("void modules::player_esp::render_overlay()", 1)[1].split("void modules::", 1)[0]
     if "boxes = s_player_boxes" in panel or "capture_client_context(context, true, false)" not in panel:
         errors.append("Player ESP must never fall back to boxes from a disconnected world")
-    if "!read_render_camera(context," not in panel or "!read_render_players(context, boxes)" not in panel:
+    if "!read_render_camera(context," not in panel or "!read_render_players(context, boxes," not in panel:
         errors.append("Player ESP must require a live camera and player list from the same context")
     reader = player.split("static bool read_render_players(", 1)[1].split("// Shared state", 1)[0]
     if "services::anti_bot::is_bot(entity)" not in reader:

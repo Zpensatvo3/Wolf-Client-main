@@ -21,6 +21,7 @@
 #include <initializer_list>
 #include <span>
 #include <vector>
+#include <memory_resource>
 
 namespace
 {
@@ -51,7 +52,7 @@ namespace
         double offset;
         double distance(point p) const { return dot(normal,p)+offset; }
     };
-    using polygon = std::vector<point>;
+    using polygon = std::pmr::vector<point>;
     using shadow = std::vector<plane>;
     struct triangle {
         std::array<point,3> vertices; ImVec4 color;
@@ -87,7 +88,7 @@ namespace
 
     polygon clip(const polygon& input, plane boundary, bool inside = true)
     {
-        polygon output;
+        polygon output(input.get_allocator().resource());
         if (input.empty()) return output;
         output.reserve(input.size()+1);
         point a = input.back();
@@ -103,10 +104,10 @@ namespace
     }
 
     struct texture_vertex { point position; ImVec2 uv; };
-    using texture_polygon=std::vector<texture_vertex>;
+    using texture_polygon=std::pmr::vector<texture_vertex>;
     texture_polygon clip_texture(const texture_polygon& input,plane boundary,bool inside=true)
     {
-        texture_polygon output; if (input.empty()) return output;
+        texture_polygon output(input.get_allocator().resource()); if (input.empty()) return output;
         output.reserve(input.size()+1); auto a=input.back();
         double da=boundary.distance(a.position)*(inside ? 1. : -1.);
         for (const auto& b:input) {
@@ -121,11 +122,12 @@ namespace
         }
         return output;
     }
-    std::vector<texture_polygon> unoccluded_texture(texture_polygon input,const scene& s)
+    std::pmr::vector<texture_polygon> unoccluded_texture(texture_polygon input,const scene& s)
     {
-        std::vector<texture_polygon> pieces{std::move(input)};
+        auto* memory=input.get_allocator().resource();
+        std::pmr::vector<texture_polygon> pieces(memory); pieces.push_back(std::move(input));
         for (const auto& volume:s.occluders) {
-            std::vector<texture_polygon> next;
+            std::pmr::vector<texture_polygon> next(memory);
             for (auto& p:pieces) {
                 bool separate=false;
                 for (const auto& plane:volume)
@@ -139,7 +141,8 @@ namespace
             }
             pieces=std::move(next); if (pieces.empty() || pieces.size()>256) break;
         }
-        return pieces.size()>256 ? std::vector<texture_polygon>{} : pieces;
+        if (pieces.size()>256) pieces.clear();
+        return pieces;
     }
 
     // A convex box casts a convex shadow from the camera. Subtracting these
@@ -181,12 +184,13 @@ namespace
         s.occluders.push_back(std::move(volume));
     }
 
-    std::vector<polygon> unoccluded(polygon input, const scene& s)
+    std::pmr::vector<polygon> unoccluded(polygon input, const scene& s)
     {
-        std::vector<polygon> pieces{std::move(input)};
+        auto* memory=input.get_allocator().resource();
+        std::pmr::vector<polygon> pieces(memory); pieces.push_back(std::move(input));
         for (const auto& volume:s.occluders)
         {
-            std::vector<polygon> next;
+            std::pmr::vector<polygon> next(memory);
             for (auto& p:pieces)
             {
                 bool separate=false;
@@ -204,7 +208,8 @@ namespace
             pieces=std::move(next);
             if (pieces.empty() || pieces.size()>256) break;
         }
-        return pieces.size()>256 ? std::vector<polygon>{} : pieces;
+        if (pieces.size()>256) pieces.clear();
+        return pieces;
     }
 
     std::array<plane,5> frustum(const scene& s)
@@ -227,12 +232,12 @@ namespace
         return true;
     }
 
-    std::vector<std::pair<point,point>> unoccluded_edge(point a, point b, const scene& s)
+    std::pmr::vector<std::pair<point,point>> unoccluded_edge(point a, point b, const scene& s, std::pmr::memory_resource* memory)
     {
-        std::vector<std::pair<point,point>> pieces{{a,b}};
+        std::pmr::vector<std::pair<point,point>> pieces(memory); pieces.push_back({a,b});
         for (const auto& volume:s.occluders)
         {
-            std::vector<std::pair<point,point>> next;
+            std::pmr::vector<std::pair<point,point>> next(memory);
             for (const auto& [start,end]:pieces)
             {
                 double enter=0, leave=1;
@@ -258,7 +263,8 @@ namespace
             pieces=std::move(next);
             if (pieces.empty() || pieces.size()>128) break;
         }
-        return pieces.size()>128 ? std::vector<std::pair<point,point>>{} : pieces;
+        if (pieces.size()>128) pieces.clear();
+        return pieces;
     }
 
     bool capture(scene& s,bool only_third_person=true,bool cosmetic_pose=true)
@@ -377,36 +383,41 @@ namespace
     }
     void render(const scene& s, const mesh& m, bool glow)
     {
+        // Fixed retained memory per render thread. Any overflow belongs to this
+        // call and is released after ImGui has copied the submitted vertices.
+        alignas(std::max_align_t) static thread_local std::array<std::byte,256*1024> storage;
+        std::pmr::monotonic_buffer_resource arena(storage.data(),storage.size());
         struct face {
-            std::vector<ImVec2> vertices; ImU32 color; double depth;
-            ImTextureID texture=nullptr; std::vector<ImVec2> uv;
+            std::pmr::vector<ImVec2> vertices; ImU32 color; double depth;
+            ImTextureID texture=nullptr; std::pmr::vector<ImVec2> uv;
         };
         struct line { ImVec2 a,b; ImVec4 color; };
-        std::vector<face> faces;
-        std::vector<line> lines;
+        std::pmr::vector<face> faces(&arena);
+        std::pmr::vector<line> lines(&arena);
         faces.reserve(m.faces.size()*2); lines.reserve(m.edges.size()*2);
         const auto planes=frustum(s);
         for (const auto& triangle:m.faces) {
             if (triangle.texture) {
-                texture_polygon source; source.reserve(3);
+                texture_polygon source(&arena); source.reserve(3);
                 for (int i=0;i<3;++i) source.push_back({triangle.vertices[i],triangle.uv[i]});
-                for (auto polygon:unoccluded_texture(std::move(source),s)) {
+                for (auto&& polygon:unoccluded_texture(std::move(source),s)) {
                     for (auto& p:polygon) p.position=s.to_view(p.position);
                     for (const auto& plane:planes) polygon=clip_texture(polygon,plane);
                     if (polygon.size()<3) continue;
-                    face f{{},ImGui::ColorConvertFloat4ToU32(triangle.color),0,triangle.texture,{}};
+                    face f{std::pmr::vector<ImVec2>(&arena),ImGui::ColorConvertFloat4ToU32(triangle.color),0,triangle.texture,std::pmr::vector<ImVec2>(&arena)};
                     f.vertices.reserve(polygon.size()); f.uv.reserve(polygon.size());
                     for (const auto& p:polygon) { f.vertices.push_back(s.project(p.position)); f.uv.push_back(p.uv); f.depth+=p.position.z; }
                     f.depth/=polygon.size(); faces.push_back(std::move(f));
                 }
                 continue;
             }
-            for (auto polygon:unoccluded({triangle.vertices.begin(),triangle.vertices.end()},s))
+            polygon source(triangle.vertices.begin(),triangle.vertices.end(),&arena);
+            for (auto&& polygon:unoccluded(std::move(source),s))
             {
                 for (auto& p:polygon) p=s.to_view(p);
                 for (const auto& plane:planes) polygon=clip(polygon,plane);
                 if (polygon.size()<3) continue;
-                face f{{},ImGui::ColorConvertFloat4ToU32(triangle.color),0};
+                face f{std::pmr::vector<ImVec2>(&arena),ImGui::ColorConvertFloat4ToU32(triangle.color),0,nullptr,std::pmr::vector<ImVec2>(&arena)};
                 for (const auto& p:polygon) { f.vertices.push_back(s.project(p)); f.depth+=p.z; }
                 f.depth/=polygon.size();
                 double area=0;
@@ -421,14 +432,14 @@ namespace
             }
         }
         for (const auto& edge:m.edges)
-            for (auto [a,b]:unoccluded_edge(edge.a,edge.b,s))
+            for (auto [a,b]:unoccluded_edge(edge.a,edge.b,s,&arena))
             {
                 a=s.to_view(a); b=s.to_view(b);
                 if (clip_segment(a,b,planes)) lines.push_back({s.project(a),s.project(b),edge.color});
             }
         struct stroke { std::size_t first; int count; ImVec4 color; bool closed=false; };
-        std::vector<stroke> strokes;
-        std::vector<ImVec2> stroke_points;
+        std::pmr::vector<stroke> strokes(&arena);
+        std::pmr::vector<ImVec2> stroke_points(&arena);
         strokes.reserve(lines.size());
         stroke_points.reserve(lines.size()*2);
         const auto adjacent=[](ImVec2 a,ImVec2 b) {

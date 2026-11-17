@@ -6,7 +6,8 @@
 
 #include <Windows.h>
 #include <wincodec.h>
-#include <winhttp.h>
+#include <winrt/Windows.Web.Http.h>
+#include <winrt/Windows.Web.Http.Headers.h>
 
 #include <winrt/base.h>
 #include <winrt/Windows.Foundation.Collections.h>
@@ -15,6 +16,7 @@
 #include <winrt/Windows.Storage.Streams.h>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
@@ -22,7 +24,7 @@
 #include <string_view>
 
 #pragma comment(lib, "windowsapp.lib")
-#pragma comment(lib, "winhttp.lib")
+
 
 namespace
 {
@@ -90,116 +92,52 @@ namespace
 		return encoded;
 	}
 
-	std::wstring widen(std::string_view value)
-	{
-		if (value.empty()) return {};
-		const int size = MultiByteToWideChar(CP_UTF8, 0, value.data(),
-			static_cast<int>(value.size()), nullptr, 0);
-		std::wstring wide(static_cast<std::size_t>(size < 0 ? 0 : size), L'\0');
-		if (size > 0)
-		{
-			MultiByteToWideChar(CP_UTF8, 0, value.data(), static_cast<int>(value.size()),
-				wide.data(), size);
-		}
-		return wide;
-	}
+    // Cancelable WinRT HTTP and media operations; no completion callbacks outlive the DLL.
+    template<class Operation, class Cancelled>
+    auto await_result(const Operation& operation, Cancelled&& cancelled,
+        std::chrono::steady_clock::time_point deadline)
+    {
+        using winrt::Windows::Foundation::AsyncStatus;
+        while (operation.Status()==AsyncStatus::Started) {
+            if (cancelled() || std::chrono::steady_clock::now()>=deadline) {
+                operation.Cancel();
+                throw winrt::hresult_canceled();
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        if (cancelled()) throw winrt::hresult_canceled();
+        return operation.GetResults();
+    }
 
-	// ------------------------------------------------------------ HTTP (WinHTTP)
-
-	class internet_handle
-	{
-	public:
-		internet_handle() = default;
-		explicit internet_handle(HINTERNET value) noexcept : value_(value) {}
-		~internet_handle() { reset(); }
-
-		internet_handle(const internet_handle&) = delete;
-		internet_handle& operator=(const internet_handle&) = delete;
-
-		internet_handle(internet_handle&& other) noexcept
-			: value_(other.release()) {}
-
-		internet_handle& operator=(internet_handle&& other) noexcept
-		{
-			if (this != &other)
-			{
-				reset();
-				value_ = other.release();
-			}
-			return *this;
-		}
-
-		HINTERNET get() const { return value_; }
-		explicit operator bool() const { return value_ != nullptr; }
-
-		HINTERNET release() noexcept
-		{
-			HINTERNET value = value_;
-			value_ = nullptr;
-			return value;
-		}
-
-		void reset(HINTERNET value = nullptr)
-		{
-			if (value_) WinHttpCloseHandle(value_);
-			value_ = value;
-		}
-
-	private:
-		HINTERNET value_ = nullptr;
-	};
-
-	bool http_get(const std::string& host, const std::string& path, std::string& out)
-	{
-		internet_handle session(WinHttpOpen(L"Thedorius-Lite/1.0",
-			WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
-			WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
-		if (!session) return false;
-
-		const DWORD timeout = 8000;
-		WinHttpSetTimeouts(session.get(), static_cast<int>(timeout),
-			static_cast<int>(timeout), static_cast<int>(timeout), static_cast<int>(timeout));
-
-		const std::wstring wide_host = widen(host);
-		const std::wstring wide_path = widen(path);
-
-		internet_handle connection(WinHttpConnect(session.get(), wide_host.c_str(),
-			INTERNET_DEFAULT_HTTPS_PORT, 0));
-		if (!connection) return false;
-
-		internet_handle request(WinHttpOpenRequest(connection.get(), L"GET", wide_path.c_str(),
-			nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE));
-		if (!request) return false;
-
-		const std::wstring headers = L"User-Agent: " + widen(lyrics_user_agent) + L"\r\nAccept: application/json\r\n";
-		if (!WinHttpSendRequest(request.get(), headers.c_str(),
-			static_cast<DWORD>(-1), WINHTTP_NO_REQUEST_DATA, 0, 0, 0)) return false;
-		if (!WinHttpReceiveResponse(request.get(), nullptr)) return false;
-
-		DWORD status = 0;
-		DWORD status_size = sizeof(status);
-		if (!WinHttpQueryHeaders(request.get(),
-			WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-			WINHTTP_HEADER_NAME_BY_INDEX, &status, &status_size, WINHTTP_NO_HEADER_INDEX) ||
-			status != 200)
-			return false;
-
-		out.clear();
-		char buffer[4096];
-		for (;;)
-		{
-			DWORD available = 0;
-			if (!WinHttpQueryDataAvailable(request.get(), &available)) return false;
-			if (available == 0) break;
-			const DWORD chunk = (std::min)(available, static_cast<DWORD>(sizeof(buffer)));
-			DWORD read = 0;
-			if (!WinHttpReadData(request.get(), buffer, chunk, &read)) return false;
-			if (read == 0) break;
-			if (out.size() + read > 2u * 1024u * 1024u) return false;
-			out.append(buffer, buffer + read);
-		}
-		return !out.empty();
-	}
+    template<class Cancelled>
+    bool http_get(const std::string& host,const std::string& path,std::string& out,
+        Cancelled&& cancelled,std::chrono::steady_clock::time_point deadline)
+    {
+        if (cancelled() || std::chrono::steady_clock::now()>=deadline) return false;
+        try {
+            using namespace winrt::Windows::Web::Http;
+            HttpClient client;
+            client.DefaultRequestHeaders().TryAppendWithoutValidation(L"User-Agent",winrt::to_hstring(lyrics_user_agent));
+            client.DefaultRequestHeaders().TryAppendWithoutValidation(L"Accept",L"application/json");
+            const auto response=await_result(client.GetAsync(
+                winrt::Windows::Foundation::Uri(winrt::to_hstring("https://"+host+path)),
+                HttpCompletionOption::ResponseHeadersRead),cancelled,deadline);
+            if (response.StatusCode()!=HttpStatusCode::Ok) return false;
+            const auto stream=await_result(response.Content().ReadAsInputStreamAsync(),cancelled,deadline);
+            winrt::Windows::Storage::Streams::DataReader reader(stream);
+            reader.InputStreamOptions(winrt::Windows::Storage::Streams::InputStreamOptions::Partial);
+            out.clear();
+            for (;;) {
+                const auto count=await_result(reader.LoadAsync(4096),cancelled,deadline);
+                if (!count) break;
+                if (out.size()+count>2u*1024u*1024u) return false;
+                std::array<unsigned char,4096> bytes{};
+                reader.ReadBytes(winrt::array_view<unsigned char>(bytes.data(),bytes.data()+count));
+                out.append(reinterpret_cast<const char*>(bytes.data()),count);
+            }
+            return !cancelled() && !out.empty();
+        } catch (...) { return false; }
+    }
 
 	// --------------------------------------------------------- JSON (lrclib)
 
@@ -669,40 +607,55 @@ modules::spotify::source& modules::spotify::source::instance()
 	return singleton;
 }
 
-modules::spotify::source::~source()
+modules::spotify::source::~source() { shutdown(); }
+
+bool modules::spotify::source::cancelled(std::uint64_t epoch) const
 {
-	stop();
+    return closing.load(std::memory_order_acquire) || !running.load(std::memory_order_acquire) ||
+        generation.load(std::memory_order_acquire)!=epoch;
 }
 
 void modules::spotify::source::start(bool enable_lyrics)
 {
-	lyrics_enabled.store(enable_lyrics, std::memory_order_relaxed);
-	if (running.load(std::memory_order_acquire)) return;
-
-	running.store(true, std::memory_order_release);
-	refresh_requested.store(true, std::memory_order_release);
-	try
-	{
-		worker_thread = std::thread([this] { worker(); });
-	}
-	catch (...)
-	{
-		running.store(false, std::memory_order_release);
-	}
+    std::lock_guard lifecycle(lifecycle_mutex);
+    if (closing.load(std::memory_order_acquire)) return;
+    lyrics_enabled.store(enable_lyrics,std::memory_order_relaxed);
+    if (running.load(std::memory_order_acquire)) return;
+    ++generation;
+    running.store(true,std::memory_order_release);
+    refresh_requested.store(true,std::memory_order_release);
+    try {
+        if (worker_thread.joinable() && worker_finished.load(std::memory_order_acquire)) worker_thread.join();
+        if (!worker_thread.joinable()) {
+            worker_finished.store(false,std::memory_order_release);
+            worker_thread=std::thread([this] { worker(); });
+        }
+    } catch (...) { worker_finished.store(true,std::memory_order_release); running.store(false,std::memory_order_release); }
+    wake_signal.notify_all();
 }
 
 void modules::spotify::source::stop()
 {
-	if (!running.exchange(false, std::memory_order_acq_rel)) return;
-	wake_signal.notify_all();
-	if (worker_thread.joinable()) worker_thread.join();
+    std::lock_guard lifecycle(lifecycle_mutex);
+    running.store(false,std::memory_order_release);
+    ++generation;
+    wake_signal.notify_all();
+    std::lock_guard lock(state_mutex);
+    const auto revision=state.artwork_revision;
+    state=now_playing{};
+    state.artwork_revision=revision;
+}
 
-	std::lock_guard lock(state_mutex);
-	// Keep the revision counter moving across restarts so a later re-enable
-	// cannot mistake a freshly decoded cover for the one already on the GPU.
-	const std::uint64_t revision = state.artwork_revision;
-	state = now_playing{};
-	state.artwork_revision = revision;
+void modules::spotify::source::shutdown()
+{
+    std::lock_guard lifecycle(lifecycle_mutex);
+    closing.store(true,std::memory_order_release);
+    running.store(false,std::memory_order_release);
+    ++generation;
+    wake_signal.notify_all();
+    if (worker_thread.joinable()) worker_thread.join();
+    std::lock_guard lock(state_mutex);
+    state=now_playing{};
 }
 
 void modules::spotify::source::set_lyrics_enabled(bool enable_lyrics)
@@ -757,65 +710,75 @@ modules::spotify::now_playing modules::spotify::source::snapshot() const
 	return copy;
 }
 
-void modules::spotify::source::publish(now_playing& local)
+void modules::spotify::source::publish(now_playing& local,std::uint64_t epoch)
 {
-	local.sampled_at = std::chrono::steady_clock::now();
-	std::lock_guard lock(state_mutex);
-	state = local;
+    std::lock_guard lock(state_mutex);
+    if (!cancelled(epoch)) {
+        state=local;
+        if (!lyrics_enabled.load(std::memory_order_relaxed)) { state.lyrics.clear(); state.lyrics_loaded=false; }
+    }
 }
+
+struct modules::spotify::source::poll_state
+{
+    GlobalSystemMediaTransportControlsSessionManager manager{nullptr};
+    GlobalSystemMediaTransportControlsSession selected{nullptr};
+    GlobalSystemMediaTransportControlsSessionMediaProperties properties{nullptr};
+    std::chrono::steady_clock::time_point metadata_due{};
+    double previous_position=0,previous_duration=0;
+};
 
 void modules::spotify::source::worker()
 {
-	// SMTC requires a COM/WinRT apartment; this thread owns its own.
-	bool apartment_ready = false;
-	try
-	{
-		winrt::init_apartment(winrt::apartment_type::multi_threaded);
-		apartment_ready = true;
-	}
-	catch (...)
-	{
-		try
-		{
-			winrt::init_apartment(winrt::apartment_type::single_threaded);
-			apartment_ready = true;
-		}
-		catch (...) { apartment_ready = false; }
-	}
-
-	now_playing local;
-	std::string active_key;
-
-	while (running.load(std::memory_order_acquire))
-	{
-		if (apartment_ready)
-		{
-			try { poll(local, active_key); }
-			catch (...) { local.active = false; }
-		}
-
-		try { publish(local); }
-		catch (...) { break; }
-
-		std::unique_lock lock(wake_mutex);
-		wake_signal.wait_for(lock, poll_interval, [this]
-		{
-			return !running.load(std::memory_order_acquire) ||
-				refresh_requested.load(std::memory_order_acquire);
-		});
-		refresh_requested.store(false, std::memory_order_release);
-	}
-
-	if (apartment_ready)
-	{
-		try { winrt::uninit_apartment(); }
-		catch (...) { }
-	}
+    struct completion { std::atomic_bool& flag; ~completion() { flag.store(true,std::memory_order_release); } } done{worker_finished};
+    try { winrt::init_apartment(winrt::apartment_type::multi_threaded); }
+    catch (...) { running.store(false,std::memory_order_release); return; }
+    {
+        poll_state cache;
+        now_playing local;
+        std::string active_key;
+        std::uint64_t epoch=0;
+        while (!closing.load(std::memory_order_acquire)) {
+            {
+                std::unique_lock lock(wake_mutex);
+                wake_signal.wait_for(lock,poll_interval,[&] {
+                    return closing.load(std::memory_order_acquire) ||
+                        (running.load(std::memory_order_acquire) && refresh_requested.load(std::memory_order_acquire));
+                });
+            }
+            if (closing.load(std::memory_order_acquire)) break;
+            if (!running.load(std::memory_order_acquire)) {
+                cache={}; local={}; active_key.clear();
+                std::unique_lock lock(wake_mutex);
+                wake_signal.wait(lock,[&] { return closing.load(std::memory_order_acquire) || running.load(std::memory_order_acquire); });
+                continue;
+            }
+            const auto next_epoch=generation.load(std::memory_order_acquire);
+            if (epoch!=next_epoch) {
+                epoch=next_epoch; cache={}; active_key.clear();
+                const auto revision=local.artwork_revision;
+                local={}; local.artwork_revision=revision;
+                // Preserve monotonic GPU revisions across disabled periods.
+                std::lock_guard lock(state_mutex);
+                local.artwork_revision=(std::max)(local.artwork_revision,state.artwork_revision);
+            }
+            refresh_requested.store(false,std::memory_order_release);
+            try { poll(local,active_key,cache,epoch); publish(local,epoch); }
+            catch (...) {
+                if (!cancelled(epoch)) { local.active=false; publish(local,epoch); }
+                cache={}; active_key.clear();
+            }
+        }
+    } // Release all WinRT objects in their owning apartment.
+    winrt::uninit_apartment();
 }
 
-void modules::spotify::source::poll(now_playing& local, std::string& active_key)
+void modules::spotify::source::poll(now_playing& local,std::string& active_key,poll_state& cache,std::uint64_t epoch)
 {
-	const auto manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync().get();
+    const auto aborted=[&] { return cancelled(epoch); };
+    const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(3);
+    if (!cache.manager) cache.manager=await_result(GlobalSystemMediaTransportControlsSessionManager::RequestAsync(),aborted,deadline);
+    const auto& manager=cache.manager;
 
 	GlobalSystemMediaTransportControlsSession session{ nullptr };
 	if (const auto current = manager.GetCurrentSession())
@@ -872,11 +835,25 @@ void modules::spotify::source::poll(now_playing& local, std::string& active_key)
 	{
 		local.active = false;
 		local.playing = false;
-		active_key.clear();
-		return;
-	}
+        active_key.clear(); cache.selected=nullptr; cache.properties=nullptr;
+        local.artwork.clear(); local.lyrics.clear();
+        return;
+    }
 
-	const auto properties = session.TryGetMediaPropertiesAsync().get();
+    const auto timeline=session.GetTimelineProperties();
+    const double base_position=static_cast<double>(timeline.Position().count())/1e7;
+    const double duration=static_cast<double>(timeline.EndTime().count())/1e7;
+    const auto now=std::chrono::steady_clock::now();
+    // Retain the manager and metadata. Timeline/playback remain live every poll;
+    // periodic fallback also catches title changes with identical durations.
+    if (!cache.properties || cache.selected!=session || now>=cache.metadata_due ||
+        std::abs(duration-cache.previous_duration)>.01 || base_position+1.<cache.previous_position) {
+        cache.properties=await_result(session.TryGetMediaPropertiesAsync(),aborted,deadline);
+        cache.selected=session;
+        cache.metadata_due=now+std::chrono::seconds(1);
+    }
+    cache.previous_position=base_position; cache.previous_duration=duration;
+    const auto& properties=cache.properties;
 	std::string title = winrt::to_string(properties.Title());
 	std::string artist = winrt::to_string(properties.Artist());
 	std::string album = winrt::to_string(properties.AlbumTitle());
@@ -889,13 +866,8 @@ void modules::spotify::source::poll(now_playing& local, std::string& active_key)
 	const bool playing =
 		playback.PlaybackStatus() == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing;
 
-	const auto timeline = session.GetTimelineProperties();
-	const double base_position = static_cast<double>(timeline.Position().count()) / 1e7;
-	const double duration = static_cast<double>(timeline.EndTime().count()) / 1e7;
 	const auto last_updated = timeline.LastUpdatedTime();
-
-	const auto now = std::chrono::steady_clock::now();
-	const std::string key = title + "\x1f" + artist;
+	const std::string key = title + "\x1f" + artist + "\x1f" + album;
 	const bool track_changed = (key != active_key);
 
 	double real_position = base_position;
@@ -932,9 +904,28 @@ void modules::spotify::source::poll(now_playing& local, std::string& active_key)
 	local.position = real_position;
 	local.sampled_at = now;
 
+    const auto update_lyrics=[&] {
+        refresh_lyrics(local, title, artist, album, local.duration,epoch);
+        // A song can change while lyrics are in flight. Verify before publishing
+        // the result; a later poll will populate the new track immediately.
+        if (!aborted()) {
+            auto latest=await_result(session.TryGetMediaPropertiesAsync(),aborted,
+                std::chrono::steady_clock::now()+std::chrono::seconds(2));
+            if (latest.Title()!=properties.Title() || latest.Artist()!=properties.Artist() || latest.AlbumTitle()!=properties.AlbumTitle()) {
+                local.lyrics.clear(); local.active=false; active_key.clear();
+                cache.properties=latest; cache.metadata_due={};
+                refresh_requested.store(true,std::memory_order_release);
+            }
+        }
+    };
 	// Everything below is per-track work: only run it when the song changed.
-	if (!track_changed) return;
-	active_key = key;
+    if (!lyrics_enabled.load(std::memory_order_relaxed)) { local.lyrics.clear(); local.lyrics_loaded=false; }
+    if (!track_changed) {
+        if (lyrics_enabled.load(std::memory_order_relaxed) && !local.lyrics_loaded)
+            update_lyrics();
+        return;
+    }
+    active_key = key;
 
 	local.lyrics.clear();
 	local.lyrics_loaded = false;
@@ -948,13 +939,13 @@ void modules::spotify::source::poll(now_playing& local, std::string& active_key)
 		const auto reference = properties.Thumbnail();
 		if (reference)
 		{
-			const auto stream = reference.OpenReadAsync().get();
+			const auto stream = await_result(reference.OpenReadAsync(),aborted,deadline);
 			const uint32_t stream_size = static_cast<uint32_t>(stream.Size());
 			if (stream_size > 0 && stream_size < 8u * 1024u * 1024u)
 			{
 				std::vector<unsigned char> encoded(stream_size);
 				winrt::Windows::Storage::Streams::DataReader reader(stream);
-				reader.LoadAsync(stream_size).get();
+				await_result(reader.LoadAsync(stream_size),aborted,deadline);
 				reader.ReadBytes(winrt::array_view<unsigned char>(encoded));
 
 				int width = 0;
@@ -977,7 +968,8 @@ void modules::spotify::source::poll(now_playing& local, std::string& active_key)
 
 	if (lyrics_enabled.load(std::memory_order_relaxed))
 	{
-		refresh_lyrics(local, title, artist, album, local.duration);
+		publish(local,epoch); // Show the new cover before the optional network lookup.
+        update_lyrics();
 	}
 }
 
@@ -1058,9 +1050,12 @@ cleanup:
 }
 
 void modules::spotify::source::refresh_lyrics(now_playing& local, const std::string& title,
-	const std::string& artist, const std::string& album, double duration)
+	const std::string& artist, const std::string& album, double duration,std::uint64_t epoch)
 {
-	if (!lyrics_enabled.load(std::memory_order_relaxed)) return;
+    const auto aborted=[&] { return cancelled(epoch) || !lyrics_enabled.load(std::memory_order_relaxed); };
+    if (aborted()) return;
+    // All fallbacks and streaming reads share one overall budget.
+    const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(4);
 
 	const std::string c_title = clean_title(title);
 	const std::string c_artist = clean_artist(artist);
@@ -1070,7 +1065,7 @@ void modules::spotify::source::refresh_lyrics(now_playing& local, const std::str
 
 	// Cascade 1: Exact get with clean title and clean artist
 	std::string path = "/api/get?" + make_track_query(c_title, c_artist, "", "");
-	if (http_get("lrclib.net", path, document))
+	if (http_get("lrclib.net", path, document,aborted,deadline))
 	{
 		std::size_t search_from = 0;
 		if (find_and_parse_synced_lyrics(document, search_from, parsed) && !parsed.empty())
@@ -1086,7 +1081,7 @@ void modules::spotify::source::refresh_lyrics(now_playing& local, const std::str
 	{
 		document.clear();
 		path = "/api/get?" + make_track_query(title, artist, "", "");
-		if (http_get("lrclib.net", path, document))
+		if (http_get("lrclib.net", path, document,aborted,deadline))
 		{
 			std::size_t search_from = 0;
 			if (find_and_parse_synced_lyrics(document, search_from, parsed) && !parsed.empty())
@@ -1101,12 +1096,12 @@ void modules::spotify::source::refresh_lyrics(now_playing& local, const std::str
 	// Cascade 3: Search with clean artist and clean title
 	document.clear();
 	path = "/api/search?q=" + url_encode(c_artist + " " + c_title);
-	if (!http_get("lrclib.net", path, document))
+	if (!http_get("lrclib.net", path, document,aborted,deadline))
 	{
 		// Cascade 4: Search with just clean title
 		document.clear();
 		path = "/api/search?q=" + url_encode(c_title);
-		if (!http_get("lrclib.net", path, document))
+		if (!http_get("lrclib.net", path, document,aborted,deadline))
 		{
 			local.lyrics.clear();
 			local.lyrics_loaded = true;

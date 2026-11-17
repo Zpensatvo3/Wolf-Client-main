@@ -1,6 +1,7 @@
 #include "sky_panorama.hpp"
 #include "sky_bindings.hpp"
 #include "sky_animation.hpp"
+#include "runtime_budget.hpp"
 #include "../../gui/gui.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../../services/game/client_context.hpp"
@@ -130,10 +131,13 @@ namespace
         const auto data=LoadResource(module,entry);
         return {static_cast<const unsigned char*>(LockResource(data)),SizeofResource(module,entry)};
     }
-    GLuint load_texture(gl_api& gl,int id)
+    struct decoded_panorama { UINT width=0,height=0; std::vector<BYTE> pixels; };
+    constexpr int panorama_resources[]{IDR_SKY_NIGHT,IDR_SKY_MILKY_WAY,IDR_SKY_SUNRISE,
+        IDR_SKY_CANDY_DUSK,IDR_SKY_NEBULA,IDR_SKY_AURORA};
+    decoded_panorama decode_texture(int id)
     {
         const auto bytes=resource(id);
-        if (bytes.empty()) return 0;
+        if (bytes.empty()) return {};
         const HRESULT com=CoInitializeEx(nullptr,COINIT_MULTITHREADED);
         struct com_restore { HRESULT result; ~com_restore() { if (SUCCEEDED(result)) CoUninitialize(); } } undo_com{com};
         ComPtr<IWICImagingFactory> factory; ComPtr<IWICStream> stream;
@@ -144,13 +148,20 @@ namespace
             FAILED(stream->InitializeFromMemory(const_cast<BYTE*>(bytes.data()),static_cast<DWORD>(bytes.size()))) ||
             FAILED(factory->CreateDecoderFromStream(stream.Get(),nullptr,WICDecodeMetadataCacheOnLoad,&decoder)) ||
             FAILED(decoder->GetFrame(0,&frame)) || FAILED(factory->CreateFormatConverter(&converter)) ||
-            FAILED(converter->Initialize(frame.Get(),GUID_WICPixelFormat32bppRGBA,WICBitmapDitherTypeNone,nullptr,0,WICBitmapPaletteTypeCustom))) return 0;
+            FAILED(converter->Initialize(frame.Get(),GUID_WICPixelFormat32bppRGBA,WICBitmapDitherTypeNone,nullptr,0,WICBitmapPaletteTypeCustom))) return {};
         UINT width=0,height=0;
-        if (FAILED(frame->GetSize(&width,&height)) || !width || !height || width>8192 || height>4096) return 0;
+        if (FAILED(frame->GetSize(&width,&height)) || !width || !height || width>8192 || height>4096) return {};
+        std::vector<BYTE> pixels(static_cast<std::size_t>(width)*height*4);
+        if (FAILED(converter->CopyPixels(nullptr,width*4,static_cast<UINT>(pixels.size()),pixels.data()))) return {};
+        return {width,height,std::move(pixels)};
+    }
+    GLuint upload_texture(gl_api& gl,const decoded_panorama& decoded)
+    {
+        const auto width=decoded.width,height=decoded.height;
+        const auto& pixels=decoded.pixels;
+        if (pixels.empty()) return 0;
         GLint maximum=0; glGetIntegerv(GL_MAX_TEXTURE_SIZE,&maximum);
         if (width>static_cast<UINT>(maximum) || height>static_cast<UINT>(maximum)) return 0;
-        std::vector<BYTE> pixels(static_cast<std::size_t>(width)*height*4);
-        if (FAILED(converter->CopyPixels(nullptr,width*4,static_cast<UINT>(pixels.size()),pixels.data()))) return 0;
         struct unpack_restore
         {
             gl_api& gl; GLint buffer=0,alignment=0,rows=0,skip_rows=0,skip_pixels=0;
@@ -266,6 +277,8 @@ struct sky_panorama::renderer::runtime
     HGLRC owner=nullptr;
     GLuint program=0,vao=0;
     std::array<GLuint,6> textures{};
+    visual_runtime::latest_job<decoded_panorama> preparation{
+        [](int selected) { return decode_texture(panorama_resources[selected]); }};
     jclass bridge=nullptr;
     jmethodID stop=nullptr,shader_check=nullptr,healthy=nullptr,color_configure=nullptr;
     jvmtiEnv* tooling=nullptr;
@@ -468,6 +481,16 @@ struct sky_panorama::renderer::runtime
         gl_restore restore(gl);
         if (!program && !initialize()) { failed=true; failure="Could not initialize the panorama shader."; return; }
         const int requested=std::clamp(config.panorama,0,5);
+        if (!textures[requested]) {
+            preparation.request(requested);
+            if (auto ready=preparation.take(requested)) {
+                // At most one upload per callback, always on the owning GL context.
+                textures[requested]=upload_texture(gl,*ready);
+                if (!textures[requested]) { failed=true; failure="Could not load the panorama image."; return; }
+            }
+        } else preparation.cancel();
+        if (!visual_initialized && !textures[requested]) return;
+        const int ready_requested=textures[requested] ? requested : transition.to;
         const double now=static_cast<double>(GetTickCount64())/1000.;
         const double dt=motion.advance(now,config.animate,config.drift,reduced,config.animation_speed);
         if (!visual_initialized) {
@@ -480,7 +503,7 @@ struct sky_panorama::renderer::runtime
         const float blend=reduced ? 1.f : visual_effects_logic::response(dt,7.);
         visual_rotation=visual_effects_logic::smooth_angle(visual_rotation,config.rotation,dt,reduced);
         visual_exposure+=(config.exposure-visual_exposure)*blend;
-        transition.advance(requested,dt,reduced);
+        transition.advance(ready_requested,dt,reduced);
         visual_strength+=(config.strength-visual_strength)*blend;
         const int selected=transition.progress>=1. ? transition.to : transition.from;
         const int next=transition.to;
@@ -491,11 +514,7 @@ struct sky_panorama::renderer::runtime
         visual_density+=(density-visual_density)*blend;
         if (visual_density<.002f || reduced) visual_atmosphere=atmosphere;
         if (reduced) visual_density=atmosphere==0 ? 0.f : config.atmosphere_density;
-        constexpr int resources[]{IDR_SKY_NIGHT,IDR_SKY_MILKY_WAY,IDR_SKY_SUNRISE,
-            IDR_SKY_CANDY_DUSK,IDR_SKY_NEBULA,IDR_SKY_AURORA};
-        if (!textures[selected]) textures[selected]=load_texture(gl,resources[selected]);
-        if (!textures[next]) textures[next]=load_texture(gl,resources[next]);
-        if (!textures[selected] || !textures[next]) { failed=true; failure="Could not load the panorama image."; return; }
+        if (!textures[selected] || !textures[next]) return;
         glEnable(GL_DEPTH_TEST); glDepthFunc(GL_LEQUAL); glDepthMask(GL_FALSE); glDepthRange(0,1);
         glEnable(GL_BLEND); gl.BlendEquationSeparate(func_add,func_add);
         gl.BlendFuncSeparate(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA,GL_ONE,GL_ONE_MINUS_SRC_ALPHA);
@@ -592,7 +611,7 @@ bool sky_panorama::renderer::connect()
 void sky_panorama::renderer::configure(const module_settings::sky& config,bool enabled,bool reduced)
 {
     state_->config=config; state_->enabled=enabled && !state_->failed; state_->reduced=reduced;
-    if (!enabled) { state_->motion.pause(); state_->visual_initialized=false; }
+    if (!enabled) { state_->preparation.cancel(); state_->motion.pause(); state_->visual_initialized=false; }
 }
 void sky_panorama::renderer::configure_colors(int sky,int fog,float strength,bool match_fog,bool enabled)
 {
@@ -619,6 +638,7 @@ void sky_panorama::renderer::configure_colors(int sky,int fog,float strength,boo
 void sky_panorama::renderer::shutdown()
 {
     auto& s=*state_; s.enabled=false;
+    s.preparation.shutdown();
     if (platform::jni_context::bind_current_thread() && s.bridge)
     {
         auto* env=jni::get_env();

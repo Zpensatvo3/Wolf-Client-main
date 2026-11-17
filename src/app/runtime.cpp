@@ -6,6 +6,7 @@
 #include "../gui/gui.hpp"
 #include "../loader/loader_ui.hpp"
 #include "../modules/module_lifecycle.hpp"
+#include "../modules/visual/spotify_source.hpp"
 #include "../platform/adapter/game_adapter.hpp"
 #include "../platform/jni/jvm_session.hpp"
 #include "../platform/test_crash_report.hpp"
@@ -50,6 +51,7 @@ namespace
             loader_ui::closing();
             gui::draw = false;
             if (renderer_started) gui::shutdown();
+            modules::spotify::source::instance().shutdown();
             services::game::client_bridge::shutdown();
             services::game::world_bridge::shutdown();
             services::game::inventory_bridge::shutdown();
