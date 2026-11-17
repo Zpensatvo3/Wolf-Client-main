@@ -720,13 +720,6 @@ void modules::spotify_hud::render_overlay()
 	const ImVec2 display = ImGui::GetIO().DisplaySize;
 	if (display.x < 40.0f || display.y < 40.0f) return;
 
-	// Keep background service alive while module is active
-	if (!spotify::source::instance().is_running())
-	{
-		applied_lyrics = settings_snapshot.show_lyrics && settings_snapshot.enable_lyrics;
-		spotify::source::instance().start(applied_lyrics);
-	}
-
 	// Overlays must render on the foreground draw list so they remain visible on top of Minecraft and the UI
 	ImDrawList* draw = ImGui::GetForegroundDrawList();
 	if (!draw) return;

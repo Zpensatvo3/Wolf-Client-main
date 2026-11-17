@@ -149,6 +149,9 @@ int main() {
 '''
 
 spotify = (ROOT / "src/modules/visual/spotify_source.cpp").read_text()
+hud = (ROOT / "src/modules/visual/spotify_hud.cpp").read_text()
+render = hud.split("void modules::spotify_hud::render_overlay()", 1)[1].split("void modules::", 1)[0]
+assert ".start(" not in render, "Render must not restart media after worker-side disable"
 media = common + r'''
 #include "src/modules/visual/spotify_source.hpp"
 std::atomic<bool> fail_init{true}, allow_finish{false};
