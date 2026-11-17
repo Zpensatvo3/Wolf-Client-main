@@ -45,6 +45,7 @@ def main():
 #include <string>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 JNIEnv* current_env=nullptr;
 bool java_error=false, fail_restore=false;
 namespace jni { struct frame {}; JNIEnv* get_env() { return current_env; } }
@@ -73,8 +74,9 @@ struct cache { bool valid=false; maps::World world; bool is_valid() const { retu
 std::map<std::string,std::string> original_team_by_player;
 std::string retire_after,hidden_team_name;
 jobject scoreboard_identity=nullptr,carrier_identity=nullptr;
+std::vector<int> suppressed_carriers;
 bool cleanup_pending=false;
-bool release_suppressed_carriers(bool) {
+bool release_suppressed_carriers(bool, std::size_t=64) {
     if (carrier_identity) { current_env->DeleteGlobalRef(carrier_identity); carrier_identity=nullptr; }
     return true;
 }

@@ -239,9 +239,10 @@ struct cache { bool valid=true; maps::World world; bool is_valid() const { retur
 std::map<std::string,std::string> original_team_by_player;
 std::string retire_after,hidden_team_name;
 void* scoreboard_identity=nullptr;
+std::vector<int> suppressed_carriers;
 bool cleanup_pending=false, reject=false;
 int carrier_releases=0;
-bool release_suppressed_carriers(bool) { ++carrier_releases; return true; }
+bool release_suppressed_carriers(bool, std::size_t=64) { ++carrier_releases; return true; }
 bool restore_team(const maps::Scoreboard& board,const maps::Team&,const std::string& name,const std::string& original) {
     if (reject && name=="a") return false;
     if (board.object_instance->players[name]=="hidden") board.object_instance->players[name]=original;

@@ -51,6 +51,8 @@ namespace maps {
 enum class carrier_kind {armor_stand,text_display};
 struct suppressed_carrier {void* entity;void* original_text;carrier_kind kind;int original_name_visible;};
 CARRIER
+std::vector<suppressed_carrier> suppressed_carriers;
+RELEASE_LIST
 struct glow_record { jobject entity=nullptr; jboolean original=JNI_FALSE,written=JNI_TRUE; };
 std::vector<glow_record> glow_records;
 jobject glow_world=nullptr;
@@ -79,12 +81,17 @@ int main(){
  failure=true; bright.restore_gamma(false); assert(bright.gamma_option_ && gamma==16);
  bright.restore_gamma(false); assert(!bright.gamma_option_ && gamma==.5 && !bright.original_gamma_captured);
  int count=deleted; bright.restore_gamma(true); assert(count==deleted);
+ std::vector<item> many(200);
+ for(auto& one:many) suppressed_carriers.push_back({&one,nullptr,carrier_kind::armor_stand,0});
+ assert(!release_suppressed_carriers(true,64)); assert(suppressed_carriers.size()==136);
+ assert(release_suppressed_carriers(true,suppressed_carriers.size())); assert(suppressed_carriers.empty());
  std::cout<<"PASS shipping input: reserved keys, mouse/legacy VK, numpad; carrier/glow/gamma: failure, retry, external state, idempotent release\n";
 }
 '''
 for marker,value in {
  'BLOCK':block,
  'CARRIER':function((ROOT/'src/modules/visual/nametag.cpp').read_text(),'bool restore_and_release_carrier('),
+ 'RELEASE_LIST':function((ROOT/'src/modules/visual/nametag.cpp').read_text(),'    bool release_suppressed_carriers('),
  'GLOW':function((ROOT/'src/modules/visual/glow_esp.cpp').read_text(),'    void release_native_glow('),
  'GAMMA':function((ROOT/'src/modules/visual/full_bright.cpp').read_text(),'void modules::full_bright::restore_gamma('),
 }.items(): source=source.replace(marker,value)

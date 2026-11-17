@@ -195,14 +195,17 @@ std::string text_to_string(const maps::Text& text)
         return true;
 	}
 
-    bool release_suppressed_carriers(bool restore)
+    bool release_suppressed_carriers(bool restore, std::size_t budget=64)
     {
         std::size_t attempted=0;
-        for (auto it=suppressed_carriers.begin(); it!=suppressed_carriers.end();) {
-            if (restore && attempted++>=64) break;
+        auto it=suppressed_carriers.begin();
+        for (; it!=suppressed_carriers.end();) {
+            if (restore && attempted++>=budget) break;
             if (restore_and_release_carrier(*it,restore)) it=suppressed_carriers.erase(it);
             else ++it;
         }
+        // Rotate failed records behind untouched ones so retries stay fair.
+        if (restore && it!=suppressed_carriers.end()) std::rotate(suppressed_carriers.begin(),it,suppressed_carriers.end());
         return suppressed_carriers.empty();
     }
 
@@ -703,7 +706,7 @@ namespace
                     env->IsSameObject(scoreboard_identity,current.object_instance)!=JNI_TRUE)
                     release_suppressed_carriers(false);
             }
-            const bool carriers_done=release_suppressed_carriers(true);
+            const bool carriers_done=release_suppressed_carriers(true, final ? suppressed_carriers.size() : 64);
             if (cleanup_pending && hidden_team_name.empty() && original_team_by_player.empty())
                 cleanup_pending=false;
             if (cleanup_pending && scoreboard_identity && cache.is_valid() && cache.world) {
