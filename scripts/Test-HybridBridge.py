@@ -17,6 +17,8 @@ def main():
     javac, java = shutil.which("javac"), shutil.which("java")
     if not javac or not java:
         raise SystemExit("A JDK 17+ with java and javac on PATH is required")
+    subprocess.run([shutil.which("python") or "python", str(ROOT / "scripts/Test-TriggerLifecycle.py")], check=True)
+    subprocess.run([shutil.which("python") or "python", str(ROOT / "scripts/Test-TriggerTiming.py")], check=True)
     embedded = ROOT / "assets/hybrid"
     for name in (() if args.source_only else ("GameBridge", "UtilityBridge", "ItemBridge", "InventoryBridge", "WorldBridge", "ClientBridge")):
         if not (embedded / "net/onestep/hybrid" / (name + ".class")).is_file():

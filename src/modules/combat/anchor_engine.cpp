@@ -1,4 +1,3 @@
-#include "../../ui/settings_renderer.hpp"
 #include "anchor_engine.hpp"
 #include "anchor_timing.hpp"
 #include "../../cache/cache.hpp"
@@ -13,10 +12,8 @@
 #include <cmath>
 #include <random>
 
-#include <imgui/imgui.h>
 
 #include "../../gui/gui.hpp"
-#include "../../gui/widgets.hpp"
 #include "../../mappings.hpp"
 #include "../core/module.hpp"
 
@@ -472,11 +469,6 @@ namespace
 	}
 }
 
-bool anchor_engine::run_overlay(config& settings, runtime& state, profile mode)
-{
-	return tick(settings, state, mode);
-}
-
 bool anchor_engine::tick(config& settings, runtime& state, profile mode)
 {
 	if (!platform::jni_context::bind_current_thread())
@@ -894,12 +886,6 @@ bool anchor_engine::tick(config& settings, runtime& state, profile mode)
 	return true;
 }
 
-void anchor_engine::stop(::cache& cache, runtime& state)
-{
-	(void)cache;
-	cancel_on_client_thread(state);
-}
-
 void anchor_engine::cancel_on_client_thread(runtime& state)
 {
 	if (!platform::jni_context::bind_current_thread()) return;
@@ -921,11 +907,4 @@ void anchor_engine::cancel_on_client_thread(runtime& state)
 	}
 	platform::jni_context::clear_exception();
 	reset_runtime(state);
-}
-
-void anchor_engine::render_options(config& settings, profile mode, const char* id_suffix)
-{
-    ImGui::PushID(id_suffix);
-    gui::settings::render(settings, schema(mode));
-    ImGui::PopID();
 }

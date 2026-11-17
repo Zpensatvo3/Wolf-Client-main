@@ -363,8 +363,31 @@ Java tarafında GLFW'den okur. Java'nın dar native callback'i yalnızca
 ortak Friends/Anti Bot, combat ownership ve mevcut Shield Breaker/Mace Swap
 hazırlama/bitirme servislerini çağırır. Bu servislerin kendi politikaları korunur.
 `trigger_adapter` artık native hedef/saldırı motoru çalıştırmaz ve Windows click
-ticket'i üretmez. Eski saf C++ model ve fixture'ları tarihsel regresyon referansı
-olarak kalır; canlı modül o modeli kullanmaz. Eski config alanları ve stable ID korunur.
+ticket'i üretmez. Kullanılmayan eski C++ karar motoru ve ona ait fixture kaldırılmıştır;
+C++ tarafında yalnızca ayar doğrulaması, UI ve reset taşıması kalır.
+Kullanılmayan Windows Triggerbot tıklama/Jump Reset Space ticket yolları,
+event filtreleri ve onarım kodu kaldırılmıştır. Fiziksel giriş takibi ile
+aktif modüllerin genel sentetik giriş etiketi korunur; GLFW/Windows tuş
+eşlemesi `src/services/input/key_mapping.hpp` içindedir. `input_tracking`
+offline testi gerçek input service üzerinden fiziksel basışların tek kez
+sayılmasını, sentetik etiketi ve tuş durumlarını kontrol eder; Windows API
+yerine etkisiz test karşılıkları kullanır, işletim sistemine giriş göndermez.
+Eski config alanları ve stable ID korunur. Hedef değişiminde yalnızca takip
+döngüsü sıfırlanır; tick denetleyicisi çalışmaya devam eder. Tam iptal,
+istemci kaybında ve helper temizliği hata verdiğinde de hedef referanslarını bırakır.
+`scripts/Test-TriggerLifecycle.py` gerçek kaynak metotlarını izole Java
+nesneleriyle çalıştırarak bu yaşam döngüsünü ve Swing Hand tercihini doğrular.
+
+Bekleyen cooldown eşiği ve reaksiyon son zamanı hedef takibinden bağımsızdır.
+Hedeften çıkıp yeniden girmek, hedef/slot değiştirmek veya iptal etmek bu
+değerleri yeniden örneklemez; saldırı sonrası minimum bekleme de korunur.
+İlk döngüde, başarılı saldırı sonrasında veya mevcut manuel saldırı algılamasında
+yeni örnek alınır. Ayar değişiminde bekleyen eşik yeni aralığa sınırlandırılır.
+Hedef referansları iptal sırasında yine bırakılır; ray sorguları ve son saldırı
+doğrulaması değişmez. `scripts/Test-TriggerTiming.py` gerçek karar metotlarını
+kontrollü saat ve sahte oyun nesneleriyle çalıştırarak tekrarlı hedefe giriş,
+hedef/slot değişimi, kısmi/tam cooldown ve son anda geçersizleşen hedefi denetler.
+Bu test sunucu hasar davranışını veya oyun içi isabet oranını ölçmez.
 
 Kaynak Java/C++ derleme kontrolleri oyun içi test değildir. Bu geçişten sonra
 DLL yeniden üretilmeden önceki test DLL'i yeni Triggerbot'u içermez.
@@ -389,7 +412,7 @@ callback imzası kullanılır; lazy çözümleme yalnızca seçenek açıkken ya
 sağlar; çalışan native karar motoru veya JNI oyun okuması içermez. WorldBridge
 özelliği 5, mevcut SDK profilinin exact adlarıyla yedi DLL hedefinde bağımsız
 hazırlanır. Binding hatası modülü pasif bırakır; native karar motoruna dönülmez.
-`jump_reset_engine.hpp` yalnızca eski sözleşmenin offline geçiş referansıdır.
+Eski native model ve ona ait test kaldırılmıştır; Java Jump Reset fixture testleri korunur.
 
 Java client thread'inde dünya/oyuncu/options/binding kimliği, canlılık, ekran,
 eşya kullanımı, yüzme/uçuş/tırmanma/araç ve fiziksel jump durumu okunur. Hasar
@@ -536,8 +559,8 @@ servislerini sunar. Saldırı kilidi altında Java executeAuraAction çağrılı
 burada oturum, hedef, seçili eşya, güncel vanilla ray ve mesafeler son kez
 kontrol edilir, vanilla attackEntity/interactBlock/swing çağrıları Java’dan
 yapılır. Triggerbot önceliği ve ortak saldırı sahipliği koordinasyonu korunur.
-crystal_aura_engine.hpp yalnızca eski offline regresyon modeli olarak kalır;
-çalışan modül tarafından kullanılmaz. Desteklenen yedi SDK profilinin kesin
+Eski native model ve ona ait test kaldırılmıştır; Java denetleyici testleri korunur.
+Desteklenen yedi SDK profilinin kesin
 isimleri aynı native binding tablosundan alınır.
 
 

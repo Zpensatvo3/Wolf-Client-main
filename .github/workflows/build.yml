@@ -38,7 +38,9 @@ jobs:
           python scripts/Test-AnchorHooks.py --asm-classpath "$RUNNER_TEMP/anchor-asm/asm.jar:$RUNNER_TEMP/anchor-asm/asm-tree.jar"
           python scripts/Test-AutoTotem.py --asm-classpath "$RUNNER_TEMP/anchor-asm/asm.jar:$RUNNER_TEMP/anchor-asm/asm-tree.jar"
       - name: Compile and run offline tests
-        run: python scripts/Test-Offline.py --jobs 2
+        run: |
+          python scripts/Test-Offline.py --jobs 2
+          python scripts/Test-SpotifyTexture.py
       - name: Check local profile persistence
         run: |
           g++ -std=c++20 -Wall -Wextra -pthread tests/local_config_service_test.cpp src/configs/configs.cpp -o "$RUNNER_TEMP/local-config-test"

@@ -18,6 +18,8 @@ namespace modules
 		void render_options() override;
 		void on_enable(::cache& cache) override;
 		void on_disable(::cache& cache) override;
+		bool render_when_disabled() const override { return true; }
+		void on_render_shutdown() override;
 
 		float get_options_height() override { const auto settings_snapshot = settings_.read(); return settings_snapshot.show_lyrics ? 422.0f : 384.0f; }
 

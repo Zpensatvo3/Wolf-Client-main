@@ -123,11 +123,16 @@ def validate_overlay_sessions():
         if "clear_snapshot(); return;" not in panel and "clear_tag_snapshot(); return;" not in panel:
             errors.append(f"Disconnected overlay must clear its snapshot: {name}")
     player = (ROOT / "src/modules/visual/player_esp.cpp").read_text(encoding="utf-8")
+    if "s_player_boxes" in player or "void modules::player_esp::run(" in player:
+        errors.append("Player ESP must not duplicate its live render scan on the worker")
     panel = player.split("void modules::player_esp::render_overlay()", 1)[1].split("void modules::", 1)[0]
     if "boxes = s_player_boxes" in panel or "capture_client_context(context, true, false)" not in panel:
         errors.append("Player ESP must never fall back to boxes from a disconnected world")
     if "!read_render_camera(context," not in panel or "!read_render_players(context, boxes)" not in panel:
         errors.append("Player ESP must require a live camera and player list from the same context")
+    reader = player.split("static bool read_render_players(", 1)[1].split("// Shared state", 1)[0]
+    if "services::anti_bot::is_bot(entity)" not in reader:
+        errors.append("Player ESP live reader must retain its AntiBot filter")
     return errors
 
 def validate_esp_ranges():
@@ -174,7 +179,7 @@ def validate_anti_bot():
     consumers = {
         "modules/combat/legit_aim_engine.cpp": 1, "modules/combat/blatant_aim_engine.cpp": 2,
         "services/game/world_bridge.cpp": 1, "modules/vape/vape_module.cpp": 1,
-        "modules/visual/player_esp.cpp": 2, "modules/visual/glow_esp.cpp": 1,
+        "modules/visual/player_esp.cpp": 1, "modules/visual/glow_esp.cpp": 1,
         "modules/visual/chams.cpp": 1, "modules/visual/nametag.cpp": 1,
         "modules/visual/radar.cpp": 1, "services/game/target_service.cpp": 1,
         "services/game/attack_service.cpp": 1,

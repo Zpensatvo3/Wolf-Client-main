@@ -22,7 +22,6 @@ namespace modules
         void visit_config(config_visitor& visitor) override
         {
             if (trigger_engine::visit_config(visitor, settings)) {
-                ++state.settings_revision;
                 trigger_engine::request_reset(state);
             }
         }

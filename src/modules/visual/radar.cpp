@@ -190,9 +190,15 @@ void modules::radar::render_overlay()
 	static std::uint64_t visual_generation=0;
 	static double last_time=-1.;
 	static float visual_yaw=0.f;
+	static ImVec4 visual_accent{};
+	static double scan_phase=0.;
+	const ImVec4 desired_accent=gui::get_dynamic_color().Value;
 	const double now=ImGui::GetTime();
 	const bool reset=generation!=visual_generation || last_time<0. || now<last_time || now-last_time>.5;
-	if (reset) { markers.clear(); visual_yaw=yaw; visual_generation=generation; }
+	if (reset) {
+		markers.clear(); visual_yaw=yaw; visual_generation=generation;
+		visual_accent=desired_accent; scan_phase=0.;
+	}
 	last_time=now;
 	const bool reduced=gui::ui_state::get_preferences().reduce_motion;
 	const float dt=ImGui::GetIO().DeltaTime;
@@ -200,6 +206,11 @@ void modules::radar::render_overlay()
 	yaw=visual_yaw;
 	const int frame=ImGui::GetFrameCount();
 	const float blend=reduced ? 1.f : visual_effects_logic::response(dt,22.);
+	const float tint_blend=reduced ? 1.f : visual_effects_logic::response(dt,10.);
+	visual_accent={visual_accent.x+(desired_accent.x-visual_accent.x)*tint_blend,
+		visual_accent.y+(desired_accent.y-visual_accent.y)*tint_blend,
+		visual_accent.z+(desired_accent.z-visual_accent.z)*tint_blend,desired_accent.w};
+	if (!reduced && !reset && std::isfinite(dt)) scan_phase=std::fmod(scan_phase+std::max(dt,0.f)*.85,6.283185307179586);
 	for (const auto& player:players) {
 		auto [entry,inserted]=markers.try_emplace(player.id);
 		auto& m=entry->second;
@@ -223,7 +234,7 @@ void modules::radar::render_overlay()
 	ImDrawList* draw = ImGui::GetBackgroundDrawList();
 	if (!draw) return;
 
-	const ImColor accent = gui::get_dynamic_color();
+	const ImColor accent(visual_accent);
 	const ImU32 accent_color = ImGui::ColorConvertFloat4ToU32(ImVec4(
 		accent.Value.x, accent.Value.y, accent.Value.z, 0.94f));
 	const ImU32 accent_soft = ImGui::ColorConvertFloat4ToU32(ImVec4(
@@ -241,6 +252,21 @@ void modules::radar::render_overlay()
 	{
 		draw->AddCircle(center, usable_radius * 0.5f, IM_COL32(132, 137, 155, 32), 0, 1.0f);
 		draw->AddCircle(center, usable_radius * 0.76f, IM_COL32(132, 137, 155, 22), 0, 1.0f);
+		if (!reduced) {
+			// A restrained sweep under labels/markers, confined to the radar disc.
+			const auto flags=draw->Flags;
+			draw->Flags &= ~ImDrawListFlags_AntiAliasedFill;
+			for (int i=0;i<16;++i) {
+				const double a=scan_phase-.48+i*.03, b=a+.03;
+				const ImVec2 p(center.x+float(std::cos(a))*usable_radius,center.y+float(std::sin(a))*usable_radius);
+				const ImVec2 q(center.x+float(std::cos(b))*usable_radius,center.y+float(std::sin(b))*usable_radius);
+				draw->AddTriangleFilled(center,p,q,ImGui::ColorConvertFloat4ToU32(
+					ImVec4(accent.Value.x,accent.Value.y,accent.Value.z,.025f*(i+1)/16.f)));
+			}
+			draw->Flags=flags;
+			draw->AddLine(center,ImVec2(center.x+float(std::cos(scan_phase))*usable_radius,
+				center.y+float(std::sin(scan_phase))*usable_radius),accent_soft,1.f);
+		}
 	}
 	draw->AddLine(ImVec2(center.x - usable_radius, center.y),
 		ImVec2(center.x + usable_radius, center.y), IM_COL32(132, 137, 155, 27), 1.0f);
@@ -288,9 +314,15 @@ void modules::radar::render_overlay()
 		}
 
 		++visible_count;
-		draw->AddCircleFilled(point, 5.0f, player.friend_player
+		const float marker_scale=reduced ? 1.f : .7f+.3f*marker.alpha;
+		draw->AddCircleFilled(point, 7.0f*marker_scale, player.friend_player
+			? faded(IM_COL32(75,226,155,10)) : faded(ImGui::ColorConvertFloat4ToU32(
+				ImVec4(accent.Value.x,accent.Value.y,accent.Value.z,.04f))), 0);
+		draw->AddCircleFilled(point, 4.5f*marker_scale, player.friend_player
 			? faded(IM_COL32(75, 226, 155, 28)) : faded(accent_soft), 0);
-		draw->AddCircleFilled(point, 2.4f, color, 0);
+		draw->AddCircleFilled(point, 2.4f*marker_scale, color, 0);
+		draw->AddCircleFilled(ImVec2(point.x-.45f,point.y-.45f),.7f*marker_scale,
+			faded(IM_COL32(255,255,255,145)),0);
 		if (settings_snapshot.show_names && !player.name.empty())
 		{
 			const auto display_name=services::privacy::display_name(player.name);

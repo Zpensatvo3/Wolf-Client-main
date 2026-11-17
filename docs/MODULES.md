@@ -173,10 +173,15 @@ Dünya/oyuncu kimliğine bağlı overlay snapshot'ları geçersiz oturumda temiz
 Radar işaretçileri ve kamera yönü kare hızından bağımsız yumuşatılır; açı
 geçişleri ±180° sınırında kısa yolu izler. Yeni işaretçiler yumuşak belirir;
 oturum değişiminde ve büyük konum sıçramalarında animasyon sıfırlanır.
+Radar tema rengi yumuşak geçer; işaretçiler katmanlı halo ve küçük bir parlak
+merkezle çizilir. Mesafe halkaları açıkken hafif tarama animasyonu görünür;
+Reduce Motion taramayı kapatır ve işaretçi büyümesini anlık yapar.
 Player ESP can çubuğu kademeli güncellenir, kaybedilen can kısa süre sıcak
 renkli bir iz bırakır. Tema/özel renk değişiklikleri yumuşatılır. Oyuncu
 listesinden çıkan kayıtların animasyonları tutulmaz. Reduce Motion bu
 hareketleri ve can geçişlerini anlık yapar.
+Player ESP kamera/oyuncu verisini yalnızca çizim sırasında okur; kullanılmayan
+ikinci worker taraması yoktur. Güncel oturum ve AntiBot kontrolleri korunur.
 
 Target HUD gerçek skin, can, mesafe, zırh ve eli 232×94 kartta gösterir.
 Native item projeksiyonu GUI dönüşümlerini, atlası ve renk katmanlarını korur;
@@ -184,6 +189,9 @@ built-in özel Java çizicisi isteyen modelde soru işareti kullanılabilir.
 Dayanıklılık çubuğu/büyü çerçevesi vardır. Varsayılan iki saniyelik hedef tutma
 süresi ayarlanır; ölüm/dünya/oyuncu kaybında temizlenir. HUD editörü taşıma,
 ölçek, hizalama, undo ve yerel kaydı yönetir.
+Yeni hedef kartı 220 ms'de hafif büyüyerek belirir; can çubuğu yuvarlatılmış
+kenarları koruyan bir renk geçişi kullanır. Reduce Motion ve editör önizlemesi
+kartı doğrudan gösterir; animasyon kartın yerleşim sınırları içinde kalır.
 
 ### Kozmetikler ve efektler
 
@@ -221,11 +229,23 @@ Trails, Hit Particles ve Jump Circles kısa bir görünme geçişiyle başlar,
 ömürleri boyunca yumuşakça söner ve canlı tema rengini takip eder. Parçacık
 boyutları ve çift halkalar kademeli açılır; Reduce Motion ek dönüş/büyüme
 hareketlerini sabitler. Block Highlight yeni blokta 120 ms'de belirir.
+Hit Particles halkaları ve Jump Circles ekran/framebuffer boyutuna göre
+12–128 parçaya ayrılır; küçük efektlerde geometri azaltılır. Birleşen konturlar
+tek çizgi yolu olarak çizilir, uçların üst üste binmesinden doğan parlak noktalar
+azaltılır. Glow dört sönümlü katman kullanır. Çift Jump Circle stilinde iki halka
+arasındaki kısa vurgu yayı döner; Reduce Motion bu ek yayı kapatır.
 Target HUD can rengi düşük canda kırmızıya yumuşak geçer; hasar çubuğu kısa
 bir beklemeden sonra mevcut cana iner. Reduce Motion bu can geçişlerini anlık yapar.
 Spotify HUD ilerleme ve görselleştirici geçişleri kare hızından bağımsızdır;
 parça kimliği başlık, sanatçı ve süreyle ayrılır. Reduce Motion ilerleme
 çubuğunu doğrudan günceller.
+Spotify kapak pikselleri ve şarkı sözleri snapshot'lar arasında salt okunur
+paylaşılır; her karede büyük vektör kopyası yapılmaz. Şarkı sözü satırı sıralı
+zaman damgalarında ikili aramayla bulunur. Kapak dokusu parça değişiminde yeniden
+kullanılır; modül kapatılınca, kapak gizlenince ve render kapanışında bırakılır.
+`spotify_snapshot` offline testi uzun snapshot/değiştirme döngülerini,
+`scripts/Test-SpotifyTexture.py` gerçek upload/cleanup kodunu etkisiz GL
+karşılıklarıyla sınar. Bunlar oyun içi FPS veya GPU sürücü testi değildir.
 View Model yalnızca vanilla el push/pop aralığındaki eşya transformunu değiştirir;
 Vanilla/Compact/PvP/Low/Cinematic profilleri, elle değişince Custom görünümü vardır.
 Menzil, kamera, envanter ve saldırı mekaniği değişmez; sözleşme eşleşmezse durur.

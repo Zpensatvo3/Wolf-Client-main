@@ -17,19 +17,14 @@ TESTS = {
     "menu_input_policy": ["tests/menu_input_policy_test.cpp"],
     "popup_controls": ["tests/popup_controls_test.cpp", "include/imgui/imgui.cpp", "include/imgui/imgui_draw.cpp",
                        "include/imgui/imgui_widgets.cpp", "include/imgui/imgui_tables.cpp"],
-    "spotify_vector": ["tests/spotify_vector_test.cpp", "include/imgui/imgui.cpp", "include/imgui/imgui_draw.cpp",
-                       "include/imgui/imgui_widgets.cpp", "include/imgui/imgui_tables.cpp"],
     "menu_background_renderer": ["tests/menu_background_renderer_test.cpp", "src/ui/menu_background.cpp", "src/ui/themes_page.cpp",
                                  "include/imgui/imgui.cpp", "include/imgui/imgui_draw.cpp", "include/imgui/imgui_widgets.cpp", "include/imgui/imgui_tables.cpp"],
     "module_runtime": ["tests/module_runtime_test.cpp"],
     "vape_adapter": ["tests/vape_adapter_test.cpp"],
     "aimassist_math": ["tests/aimassist_math_test.cpp"],
-    "trigger_engine": ["tests/trigger_engine_test.cpp", "src/modules/combat/trigger_engine.cpp"],
-    "trigger_input": ["tests/trigger_input_test.cpp", "src/services/game/attack_coordinator.cpp"],
-    "crystal_aura_engine": ["tests/crystal_aura_engine_test.cpp"],
+    "input_tracking": ["tests/input_tracking_test.cpp", "src/services/input/input_service.cpp"],
     "anchor_timing": ["tests/anchor_timing_test.cpp"],
     "crystal_aura_ownership": ["tests/crystal_aura_ownership_test.cpp", "src/services/game/attack_coordinator.cpp"],
-    "jump_reset_engine": ["tests/jump_reset_engine_test.cpp"],
     "no_jump_delay": ["tests/no_jump_delay_test.cpp"],
     "fast_stop_engine": ["tests/fast_stop_engine_test.cpp"],
     "auto_tool_scoring": ["tests/auto_tool_scoring_test.cpp"],
@@ -44,6 +39,7 @@ TESTS = {
     "item_esp_geometry": ["tests/item_esp_geometry_test.cpp"],
     "cosmetic_physics": ["tests/cosmetic_physics_test.cpp"],
     "visual_animation": ["tests/visual_animation_test.cpp"],
+    "spotify_snapshot": ["tests/spotify_snapshot_test.cpp"],
     "config_fields": ["tests/config_fields_test.cpp", "src/modules/core/config_fields.cpp"],
     "aimassist_config": ["tests/aimassist_config_test.cpp", "src/modules/core/config_fields.cpp"],
     "jump_reset_config": ["tests/jump_reset_config_test.cpp", "src/modules/core/config_fields.cpp"],
@@ -89,7 +85,10 @@ def main():
                          "26.1": 26100, "26.1.1": 26101, "26.1.2": 26102}[args.minecraft_version]
             target_define = f"ONESTEP_MINECRAFT_VERSION={target_id}"
             command += [f"/D{target_define}"] if msvc else [f"-D{target_define}"]
-            if name in ("settings_renderer", "notification_renderer", "menu_background", "menu_background_renderer", "spotify_vector", "popup_controls"):
+            if name == "input_tracking":
+                # Even Windows runs use inert API doubles: never inject input.
+                command += [f"/I{ROOT / 'tests/input_support'}"] if msvc else ["-I", str(ROOT / "tests/input_support")]
+            if name in ("settings_renderer", "notification_renderer", "menu_background", "menu_background_renderer", "popup_controls"):
                 command += [f"/I{ROOT / 'include'}"] if msvc else ["-I", str(ROOT / "include")]
             if name in ("menu_background_renderer") and os.name != "nt":
                 command += ["-I", str(ROOT / "tests/support")]

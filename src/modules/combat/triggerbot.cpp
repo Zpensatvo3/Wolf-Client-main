@@ -1,7 +1,3 @@
-#include <imgui/imgui.h>
-#include "../../cache/cache.hpp"
-
-#include "trigger_engine.hpp"
 #include "triggerbot.hpp"
 #include "../../services/game/world_bridge.hpp"
 #include "../ui_redirect.hpp"

@@ -1,32 +1,7 @@
 #pragma once
-#include <cstdint>
 
 namespace services::input
 {
-    inline constexpr std::uint32_t jump_key_prefix = 0xd5000000u;
-    inline bool jump_key_tag(std::uintptr_t tag) { return (static_cast<std::uint32_t>(tag) & 0xff000000u) == jump_key_prefix; }
-    inline std::uintptr_t jump_key_event_tag(std::uint32_t id, bool pressed) { return jump_key_prefix | (id << 1) | (pressed ? 1u : 0u); }
-    struct jump_key_ledger
-    {
-        std::uint32_t next = 0, active = 0;
-        bool cancelled = true, delivered = false, up_queued = true;
-        std::uint32_t reserve()
-        {
-            if (((!cancelled || !up_queued) && active) || next == 0x7fffffu) return 0;
-            active = ++next; cancelled = false; delivered = false; up_queued = false; return active;
-        }
-        void cancel(std::uint32_t id) { if (id && id == active) cancelled = true; }
-        bool observe(std::uintptr_t tag, bool pressed, bool physical_down, bool valid = true)
-        {
-            const auto encoded = static_cast<std::uint32_t>(tag);
-            const auto id = (encoded & 0x00ffffffu) >> 1;
-            if (!jump_key_tag(tag) || !id || id != active || (encoded & 1u) != static_cast<unsigned>(pressed)) return false;
-            if (cancelled) return !pressed && !physical_down;
-            if (pressed && (!valid || physical_down)) { cancel(id); return false; }
-            if (pressed) { if (delivered) return false; delivered = true; }
-            return true;
-        }
-    };
     // GLFW symbolic key codes -> Windows virtual keys. Unsupported keys fail
     // closed; scancode bindings are handled separately using recorded scancodes.
     inline unsigned windows_key_for_glfw(int key)

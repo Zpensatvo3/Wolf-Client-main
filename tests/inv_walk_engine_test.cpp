@@ -1,9 +1,14 @@
 #include "../src/modules/misc/inv_walk_engine.hpp"
+#include "../src/services/input/key_mapping.hpp"
 #include <cassert>
 #include <iostream>
 
 int main()
 {
+    using services::input::windows_key_for_glfw;
+    assert(windows_key_for_glfw(32)==32 && windows_key_for_glfw(71)==71);
+    assert(windows_key_for_glfw(340)==0xa0 && windows_key_for_glfw(344)==0xa1);
+    assert(windows_key_for_glfw(-1)==0);
     using namespace inv_walk_engine;
     module_settings::inv_walk config;
     for (bool enabled : {false, true}) for (bool focused : {false, true})

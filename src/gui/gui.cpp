@@ -35,7 +35,6 @@
 #include "../platform/jni/client_dispatcher.hpp"
 #include "../platform/input/key_codes.hpp"
 #include "../services/input/input_service.hpp"
-#include "../services/game/attack_service.hpp"
 #include "../services/game/menu_input.hpp"
 #include "../services/game/menu_input_policy.hpp"
 #include "../../resource.h"
@@ -308,7 +307,6 @@ namespace
 		const bool opening = open && !panel_was_open;
 		if (open != panel_was_open)
 		{
-			services::input::cancel_trigger_click();
 			services::input::reset_physical_buttons();
 			modules::fast_exp::notify_manual_right_click(false);
 			panel_was_open = open;
@@ -459,7 +457,6 @@ static LRESULT CALLBACK detour_WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			jump->cancel_on_client_thread();
 		if (auto* walk = dynamic_cast<modules::inv_walk*>(modules::find_module_by_id("inv_walk")))
 			walk->cancel_on_client_thread();
-		services::input::cancel_trigger_click();
 		if (gui::draw) release_panel_mouse(hWnd);
 	}
 	if (msg == WM_SETFOCUS)
@@ -479,20 +476,7 @@ static LRESULT CALLBACK detour_WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		{
 			const USHORT flags = raw.data.mouse.usButtonFlags;
 			const auto tag = static_cast<std::uintptr_t>(raw.data.mouse.ulExtraInformation);
-			if (services::input::restore_tag(tag))
-			{
-				if (services::input::accept_restore_event(tag))
-					services::attack::restore_left_hold(!gui::draw && services::input::physical_button_down(services::input::mouse_button::left));
-				return DefWindowProcA(hWnd, msg, wParam, lParam);
-			}
-			if (services::input::tracked_tag(tag))
-			{
-				bool allow = true;
-				if (flags & RI_MOUSE_LEFT_BUTTON_DOWN) allow &= services::input::observe_tracked_event(tag, true, services::input::event_path::raw);
-				if (flags & RI_MOUSE_LEFT_BUTTON_UP) allow &= services::input::observe_tracked_event(tag, false, services::input::event_path::raw);
-				if (!allow) return DefWindowProcA(hWnd, msg, wParam, lParam);
-			}
-			else if (!gui::draw && !services::input::is_synthetic_tag(tag))
+			if (!gui::draw && !services::input::is_synthetic_tag(tag))
 			{
 				if (flags & RI_MOUSE_LEFT_BUTTON_DOWN) update_physical_button(true, true);
 				if (flags & RI_MOUSE_LEFT_BUTTON_UP) update_physical_button(true, false);
@@ -507,13 +491,8 @@ static LRESULT CALLBACK detour_WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	if (gui::draw && (key_down || key_up) && services::game::menu_input::system_shortcut(
 		static_cast<unsigned>(wParam), msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP || (lParam & (1LL << 29))))
 		return CallWindowProcA(original_WndProc, hWnd, msg, wParam, lParam);
-	if ((key_down || key_up) && services::input::jump_key_tag(mouse_tag))
-	{
-		if (wParam != VK_SPACE || !services::input::observe_jump_space_event(mouse_tag, key_down)) return 0;
-	}
-	else if ((key_down || key_up) && !services::input::is_synthetic_tag(mouse_tag))
+	if ((key_down || key_up) && !services::input::is_synthetic_tag(mouse_tag))
 		services::input::observe_physical_key(static_cast<unsigned>(wParam), static_cast<unsigned>((lParam >> 16) & 0x1ff), key_down);
-	if ((msg == WM_CHAR || msg == WM_SYSCHAR) && services::input::jump_key_tag(mouse_tag)) return 0;
 	if (!services::input::is_synthetic_tag(mouse_tag))
 	{
 		if (msg == WM_MBUTTONDOWN || msg == WM_MBUTTONUP)
@@ -522,15 +501,6 @@ static LRESULT CALLBACK detour_WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			services::input::observe_physical_key(GET_XBUTTON_WPARAM(wParam) == XBUTTON1 ? VK_XBUTTON1 : VK_XBUTTON2,
 				0, msg == WM_XBUTTONDOWN && !gui::draw);
 	}
-	if ((msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP) && services::input::restore_tag(mouse_tag))
-	{
-		if (services::input::accept_restore_event(mouse_tag))
-			services::attack::restore_left_hold(!gui::draw && services::input::physical_button_down(services::input::mouse_button::left));
-		return 0; // State restoration must not enqueue another Minecraft attack.
-	}
-	if ((msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP) && services::input::tracked_tag(mouse_tag) &&
-		!services::input::observe_tracked_event(mouse_tag, msg == WM_LBUTTONDOWN, services::input::event_path::window)) return 0;
-
 	if ((msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN) && !services::input::is_synthetic_tag(mouse_tag))
 		last_pressed_key = platform::keys::from_message(static_cast<int>(wParam), static_cast<unsigned>((lParam >> 16) & 0x1ff));
 	else if (msg == WM_MBUTTONDOWN)

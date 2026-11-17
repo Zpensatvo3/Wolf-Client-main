@@ -7,6 +7,16 @@ using namespace visual_effects_logic;
 
 int main()
 {
+    assert(circle_segments(0.)==12);
+    assert(circle_segments(std::numeric_limits<double>::quiet_NaN())==12);
+    assert(circle_segments(1e20)==128);
+    int previous_segments=0;
+    for (double radius=.5;radius<=4096.;radius*=1.2) {
+        const int count=circle_segments(radius);
+        assert(count>=12 && count<=128 && count%4==0 && count>=previous_segments);
+        if (count<128) assert(radius*(1.-std::cos(3.14159265358979323846/count))<=.350001);
+        previous_segments=count;
+    }
     assert(envelope(-.1) == 0. && envelope(0.) == 0.);
     assert(envelope(1.) == 0. && envelope(1.1) == 0.);
     assert(smoothstep(-1.) == 0. && smoothstep(2.) == 1.);

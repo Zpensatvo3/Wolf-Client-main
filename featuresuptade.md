@@ -20,9 +20,18 @@
 
 ## 4. Geliştirilecekler
 
+- [x] Uzun kullanım: Player ESP'nin çift taraması kaldırıldı; Spotify kapak/söz
+  snapshot'ları paylaşımlı hale getirildi, söz araması ve GPU doku yaşam döngüsü
+  iyileştirildi. Oyun içi uzun oturum FPS/bellek ölçümü bekliyor.
+- [x] Çağrılmayan native giriş yolları, eski Jump Reset/Crystal Aura modelleri
+  ve testleri, kullanılmayan yardımcılar ve Spotify vektör üretim hattı kaldırıldı.
+  Canlı Java denetleyici testleri ve Safe Anchor motoru korundu.
 - [x] Legit ve Blatant Click Aim Assist, Mode: Legit/Blatant seçimiyle tek Click Aim Assist altında birleştirildi.
 - Cape ve Wings modülleri Java'ya taşınacak. **Resimsiz olan Cape ve Wings kaldırılacak.**
 - Hit Particles'ın oluşturduğu partiküller tamamen yeniden oluşturulacak.
+- [x] Visual çizimleri: boyuta göre ayrıntılanan halkalar, birleşik yumuşak konturlar,
+  katmanlı glow, Radar taraması ve Target HUD açılış/can rengi geçişi eklendi;
+  Reduce Motion desteklenir, oyun içi görünüm ve FPS kontrolü bekliyor.
 - [x] Sky'a Auto/Mist/Aurora/Nebula atmosferleri, ayarlanabilir ufuk sisi,
   animasyon hızı ve yumuşak panorama/renk geçişleri eklendi; oyun içi kontrol bekliyor.
 - [x] Hit Crystal'ın karar akışı, zamanlaması, slot sahipliği ve oyun işlemleri tamamen Java'ya geçirildi; [Argon](docs/ARGON_REFERENCE.md) davranış referansı olarak kullanıldı.

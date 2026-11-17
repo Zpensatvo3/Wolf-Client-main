@@ -226,7 +226,7 @@ void modules::fast_exp::render_overlay()
         // Keep older targets unchanged. The 1.21.11 fallback also uses only one
         // vanilla entry point, so a rejected Java binding cannot reintroduce duplicates.
         if constexpr (mc::target.build_id != 12111)
-            services::input::mouse_click(services::input::mouse_button::right, nullptr, true);
+            services::input::mouse_click(services::input::mouse_button::right, true);
 
 		// Invoke vanilla item use on the client thread; server acceptance is separate.
 		instance.doItemUse.call();

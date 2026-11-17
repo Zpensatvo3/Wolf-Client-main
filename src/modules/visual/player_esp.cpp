@@ -129,24 +129,12 @@ static bool read_render_players(const services::game::client_context& context, s
 
 // Shared state - protected by mutex
 static std::mutex              s_mutex;
-static std::vector<PlayerBox>  s_player_boxes;
 static services::game::overlay_session s_visual_session;
-
-// Camera data - atomic writes from game thread, reads from render thread
-static std::atomic<bool>  s_cam_valid{ false };
-static std::atomic<float> s_cam_yaw{ 0.f };
-static std::atomic<float> s_cam_pitch{ 0.f };
-static std::atomic<double> s_cam_x{ 0.0 };
-static std::atomic<double> s_cam_y{ 0.0 };
-static std::atomic<double> s_cam_z{ 0.0 };
-static std::atomic<float> s_game_fov{ 70.f };
 
 static void clear_player_snapshot()
 {
-    s_cam_valid.store(false, std::memory_order_release);
     std::lock_guard lock(s_mutex);
     if (jni::get_env()) s_visual_session.reset(); else s_visual_session.invalidate();
-    s_player_boxes.clear();
 }
 
 void modules::player_esp::on_disable(::cache&)
@@ -284,241 +272,6 @@ static bool clip_edge_to_near_plane(ViewPoint& from, ViewPoint& to)
 	return true;
 }
 
-// ---- Game thread: cache bbox + read camera + FOV from JNI ----
-void modules::player_esp::run(::cache& cache)
-{
-    auto settings_snapshot = settings_.read();
-    // Need a fresh JNI frame for all local references in this call
-    jni::frame frame{};
-
-    try
-    {
-        if (!cache.is_valid() || !cache.instance || !cache.world || !cache.player) { clear_player_snapshot(); return; }
-
-        JNIEnv* env = jni::get_env();
-
-		// Match the exact partial tick used by the renderer. It is also required
-		// by GameRenderer#getFov for smooth zoom/FOV transitions.
-		float tick_delta = 1.0f;
-		try
-		{
-			maps::RenderTickCounter rtc = cache.instance.renderTickCounter.get();
-			if (rtc)
-				tick_delta = std::clamp(rtc.tickDelta.get(), 0.0f, 1.0f);
-		}
-		catch (...)
-		{
-			if (env->ExceptionCheck()) env->ExceptionClear();
-		}
-
-        // ----- Read FOV from GameOptions (1.21.1: field_1826 = SimpleOption<Integer>) -----
-        if (settings_snapshot.use_game_fov)
-        {
-            try
-            {
-                maps::GameOptions opts = cache.instance.options.get();
-                if (opts)
-                {
-                    maps::SimpleOption fov_opt = opts.fov.get();
-                    if (fov_opt)
-                    {
-                        maps::Object val = fov_opt.getValue();
-                        if (val)
-                        {
-                            // FOV is SimpleOption<Integer> in 1.21.1
-                            jclass num_cls = env->FindClass("java/lang/Number");
-                            if (num_cls && !env->ExceptionCheck())
-                            {
-                                jmethodID dv = env->GetMethodID(num_cls, "doubleValue", "()D");
-                                if (dv && !env->ExceptionCheck())
-                                {
-                                    jdouble fov_d = env->CallDoubleMethod(val.object_instance, dv);
-                                    if (!env->ExceptionCheck())
-                                    {
-                                        float game_fov = (float)fov_d;
-                                        if (game_fov >= 30.f && game_fov <= 120.f)
-                                        {
-                                            s_game_fov.store(game_fov, std::memory_order_relaxed);
-                                            settings_snapshot.fov_value = game_fov;
-                                            settings_.update([&](auto& current) { current.fov_value = settings_snapshot.fov_value; return true; });
-                                        }
-                                    }
-                                    else { env->ExceptionClear(); }
-                                }
-                                else { if (env->ExceptionCheck()) env->ExceptionClear(); }
-                                env->DeleteLocalRef(num_cls);
-                            }
-                            else { if (env->ExceptionCheck()) env->ExceptionClear(); }
-                        }
-                    }
-                }
-            }
-            catch (...)
-            {
-                if (env->ExceptionCheck()) env->ExceptionClear();
-            }
-        }
-
-        // ----- Read camera position & angles from the shared adapter -----
-        bool got_cam = false;
-        try
-        {
-            auto& adapter = platform::adapter::get();
-            const auto cam_data = adapter.get_camera_data(cache.instance, cache.player, tick_delta);
-            if (cam_data.valid)
-            {
-                s_cam_x.store(cam_data.pos.x,     std::memory_order_relaxed);
-                s_cam_y.store(cam_data.pos.y,     std::memory_order_relaxed);
-                s_cam_z.store(cam_data.pos.z,     std::memory_order_relaxed);
-                s_cam_yaw.store(cam_data.yaw,     std::memory_order_relaxed);
-                s_cam_pitch.store(cam_data.pitch, std::memory_order_relaxed);
-				if (settings_snapshot.use_game_fov && std::isfinite(cam_data.fov) &&
-					cam_data.fov >= 1.0f && cam_data.fov <= 179.0f)
-				{
-					s_game_fov.store(cam_data.fov, std::memory_order_relaxed);
-					settings_snapshot.fov_value = cam_data.fov;
-					settings_.update([&](auto& current) { current.fov_value = settings_snapshot.fov_value; return true; });
-				}
-                got_cam = true;
-            }
-        }
-        catch (...)
-        {
-            if (env->ExceptionCheck()) env->ExceptionClear();
-        }
-
-        if (!got_cam)
-        {
-            // Fallback: use entity pos + fixed eye offset (1.62 for 1.21.1) + body yaw
-            try
-            {
-                auto pos = cache.player.get_position();
-                auto ang = cache.player.get_angles();
-                s_cam_x.store(pos.x,         std::memory_order_relaxed);
-                s_cam_y.store(pos.y + 1.62,  std::memory_order_relaxed);
-                s_cam_z.store(pos.z,         std::memory_order_relaxed);
-                s_cam_yaw.store(ang.yaw,     std::memory_order_relaxed);
-                s_cam_pitch.store(ang.pitch, std::memory_order_relaxed);
-                got_cam = true;
-            }
-            catch (...)
-            {
-                if (env->ExceptionCheck()) env->ExceptionClear();
-            }
-        }
-        
-        s_cam_valid.store(got_cam, std::memory_order_release);
-
-        // Get local player position for distance calculation
-        auto local_pos = cache.player.get_position();
-
-        std::vector<PlayerBox> new_boxes;
-
-        try {
-            auto iterable = cache.world.getEntities.call();
-            if (iterable) {
-                auto iterator = iterable.iterator.call();
-                if (iterator) {
-                    while (iterator.hasNext.call() == JNI_TRUE) {
-                        auto obj = iterator.next.call();
-                        if (obj) {
-                            maps::Entity entity(obj.object_instance);
-                            if (!entity) continue;
-                            if (entity.is_same_object(cache.player)) continue;
-                            if (entity.isAlive.call() == JNI_FALSE) continue;
-                            
-                            // Check if it's a player
-                            if (!entity.is_instance_of<maps::PlayerEntity>()) continue;
-                            if (services::anti_bot::is_bot(entity)) continue;
-
-                            // Cast to LivingEntity for health
-                            maps::LivingEntity player(entity.object_instance);
-
-                            // Use bounding box for ESP (1.21.1 compatible - field_6005)
-                            maps::Box bb = entity.boundingBox.get();
-                            if (!bb) continue;
-
-                            // Interpolate position using tickDelta
-                            maths::vector3d cur_pos = entity.get_position();
-							maps::Vec3d lerped = entity.getLerpedPos.call(tick_delta);
-							double interpX = lerped ? lerped.x.get() : cur_pos.x;
-							double interpY = lerped ? lerped.y.get() : cur_pos.y;
-							double interpZ = lerped ? lerped.z.get() : cur_pos.z;
-							if (env->ExceptionCheck())
-							{
-								env->ExceptionClear();
-								interpX = cur_pos.x; interpY = cur_pos.y; interpZ = cur_pos.z;
-							}
-
-                            double dx_box = interpX - cur_pos.x;
-                            double dy_box = interpY - cur_pos.y;
-                            double dz_box = interpZ - cur_pos.z;
-
-                            PlayerBox box;
-							box.entityId = entity.getId.call();
-                            box.minX = bb.minX.get() + dx_box; box.minY = bb.minY.get() + dy_box; box.minZ = bb.minZ.get() + dz_box;
-                            box.maxX = bb.maxX.get() + dx_box; box.maxY = bb.maxY.get() + dy_box; box.maxZ = bb.maxZ.get() + dz_box;
-                            
-                            // Health info
-                            try
-                            {
-                                box.health = player.getHealth();
-                                box.maxHealth = player.getMaxHealth();
-								if (!std::isfinite(box.health) || !std::isfinite(box.maxHealth) ||
-									box.maxHealth <= 0.0f)
-								{
-									box.health = 20.0f;
-									box.maxHealth = 20.0f;
-								}
-								else
-								{
-									box.health = std::fmax(0.0f, std::fmin(box.health, box.maxHealth));
-								}
-                            }
-                            catch (...)
-                            {
-                                if (env->ExceptionCheck()) env->ExceptionClear();
-                                box.health = 20.f;
-                                box.maxHealth = 20.f;
-                            }
-
-                            // Distance calculation
-                            double dx = (box.minX + box.maxX) * 0.5 - local_pos.x;
-                            double dy = (box.minY + box.maxY) * 0.5 - local_pos.y;
-                            double dz = (box.minZ + box.maxZ) * 0.5 - local_pos.z;
-                            box.distance = (float)std::sqrt(dx * dx + dy * dy + dz * dz);
-
-                            // Player name
-                            try
-                            {
-                                maps::String s = entity.getEntityName();
-                                if (s) { box.name = s.to_string(); }
-                            }
-                            catch (...)
-                            {
-                                if (env->ExceptionCheck()) env->ExceptionClear();
-                            }
-
-                            new_boxes.push_back(box);
-                        }
-                    }
-                }
-            }
-        } catch (...) {
-            if (env->ExceptionCheck()) env->ExceptionClear();
-        }
-
-        std::lock_guard<std::mutex> lock(s_mutex);
-        s_player_boxes = std::move(new_boxes);
-    }
-    catch (...)
-    {
-        JNIEnv* env = jni::get_env();
-        if (env && env->ExceptionCheck()) env->ExceptionClear();
-        clear_player_snapshot();
-    }
-}
-
 // Live client-thread reads only: disconnects must never fall back to old boxes.
 void modules::player_esp::render_overlay()
 {
@@ -534,13 +287,10 @@ void modules::player_esp::render_overlay()
     ImDrawList* dl = ImGui::GetBackgroundDrawList();
     if (!dl) return;
 
-    // Snapshot camera atomically
-    double cx    = s_cam_x.load(std::memory_order_relaxed);
-    double cy    = s_cam_y.load(std::memory_order_relaxed);
-    double cz    = s_cam_z.load(std::memory_order_relaxed);
-    float  yaw   = s_cam_yaw.load(std::memory_order_relaxed);
-    float  pitch = s_cam_pitch.load(std::memory_order_relaxed);
-    float  fov   = settings_snapshot.use_game_fov ? s_game_fov.load(std::memory_order_relaxed) : settings_snapshot.fov_value;
+    // Fresh client-thread data is the only source used by the renderer.
+    double cx=0., cy=0., cz=0.;
+    float yaw=0.f, pitch=0.f;
+    float fov=settings_snapshot.fov_value;
 	float render_fov = fov;
 	if (!read_render_camera(context, cx, cy, cz, yaw, pitch, render_fov)) { clear_player_snapshot(); return; }
     if (settings_snapshot.use_game_fov) fov = render_fov;

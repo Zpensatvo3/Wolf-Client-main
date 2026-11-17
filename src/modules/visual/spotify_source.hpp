@@ -8,6 +8,9 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <algorithm>
+#include <cmath>
+#include "shared_media_buffer.hpp"
 
 // Windows SMTC (GlobalSystemMediaTransportControls) polling service used by the
 // Spotify HUD module.
@@ -48,13 +51,20 @@ namespace modules
 			std::uint64_t artwork_revision = 0;
 			int artwork_width = 0;
 			int artwork_height = 0;
-			std::vector<unsigned char> artwork;
+			shared_media_buffer<unsigned char> artwork;
 
 			bool lyrics_loaded = false;
-			std::vector<lyric_line> lyrics;
+			shared_media_buffer<lyric_line> lyrics;
 
 			// Index of the line that should be highlighted for `position`, or -1.
-			int current_lyric() const;
+			int current_lyric() const
+			{
+				if (std::isnan(position)) return -1;
+				const auto& lines=lyrics.view();
+				const auto next=std::upper_bound(lines.begin(),lines.end(),position+.05,
+					[](double at,const lyric_line& line) { return at<line.timestamp; });
+				return next==lines.begin() ? -1 : static_cast<int>(next-lines.begin()-1);
+			}
 		};
 
 		class source
@@ -65,9 +75,6 @@ namespace modules
 			void start(bool enable_lyrics);
 			void stop();
 			void set_lyrics_enabled(bool enable_lyrics);
-
-			// Ask the worker to re-scan immediately (used when the toggle flips).
-			void request_refresh();
 
 			now_playing snapshot() const;
 			bool is_running() const { return running.load(std::memory_order_acquire); }

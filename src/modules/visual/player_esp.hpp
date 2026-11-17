@@ -12,7 +12,6 @@ class player_esp : public module
 	public:
 		player_esp() : module("player esp", "Visual") {}
 
-		void run(::cache& cache) override;
 		void render_overlay() override;
 		void on_disable(::cache& cache) override;
 		void render_options() override;

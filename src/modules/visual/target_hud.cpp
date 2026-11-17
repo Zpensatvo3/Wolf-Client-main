@@ -178,6 +178,21 @@ namespace
         value.w *= opacity;
         return ImGui::ColorConvertFloat4ToU32(value);
     }
+    struct card_opacity
+    {
+        ImDrawList* draw;
+        int first;
+        float opacity;
+        ~card_opacity()
+        {
+            if (opacity >= 1.f) return;
+            for (int i=first;i<draw->VtxBuffer.Size;++i) {
+                auto& c=draw->VtxBuffer[i].col;
+                const auto alpha=static_cast<ImU32>(((c&IM_COL32_A_MASK)>>IM_COL32_A_SHIFT)*opacity);
+                c=(c&~IM_COL32_A_MASK)|(alpha<<IM_COL32_A_SHIFT);
+            }
+        }
+    };
 }
 
 struct modules::target_hud::runtime
@@ -190,6 +205,7 @@ struct modules::target_hud::runtime
     float health_ratio = 0.f;
     float damage_ratio = 0.f, health_tint = 0.f, previous_health = 0.f;
     double damage_until = 0.;
+    double revealed_at = 0.;
     bool preview = false;
 };
 
@@ -315,6 +331,7 @@ void modules::target_hud::refresh(bool preview)
         if (platform::jni_context::clear_exception()) { state.target = {}; return; }
         if (!same_target)
         {
+            state.revealed_at = ImGui::GetTime();
             state.health_ratio = next.health / next.maximum_health;
             state.damage_ratio = state.health_tint = state.previous_health = state.health_ratio;
             state.damage_until = 0.;
@@ -350,7 +367,13 @@ void modules::target_hud::draw_card(ImDrawList* draw, float x, float y, bool pre
     const auto settings = settings_.read();
     const auto& target = runtime_->target;
     if (!target.valid && !preview) return;
-    const float scale = settings.scale;
+    const bool reduced = gui::ui_state::get_preferences().reduce_motion;
+    const float reveal=preview || reduced ? 1.f : static_cast<float>(
+        visual_effects_logic::ease_out((ImGui::GetTime()-runtime_->revealed_at)/.22));
+    const card_opacity fade{draw,draw->VtxBuffer.Size,reveal};
+    const float scale = settings.scale*(.97f+.03f*reveal);
+    x+=(settings.scale-scale)*card_width*.5f;
+    y+=(settings.scale-scale)*card_height*.5f;
     const auto point = [&](float px, float py) { return ImVec2(x + px * scale, y + py * scale); };
     const ImVec4 accent = gui::get_dynamic_color().Value;
     ImFont* font = gui::ui_font ? gui::ui_font : ImGui::GetFont();
@@ -404,7 +427,6 @@ void modules::target_hud::draw_card(ImDrawList* draw, float x, float y, bool pre
     const float ratio = target.valid ? target.health / target.maximum_health : 0.f;
     const float dt = ImGui::GetIO().DeltaTime;
     const double now = ImGui::GetTime();
-    const bool reduced = gui::ui_state::get_preferences().reduce_motion;
     if (ratio < runtime_->previous_health - .002f) runtime_->damage_until = now + .18;
     runtime_->previous_health = ratio;
     runtime_->health_ratio += (ratio - runtime_->health_ratio) * (reduced ? 1.f : visual_effects_logic::response(dt, 14.));
@@ -420,9 +442,21 @@ void modules::target_hud::draw_card(ImDrawList* draw, float x, float y, bool pre
     if (runtime_->damage_ratio > runtime_->health_ratio + .002f)
         draw->AddRectFilled(point(65.f, 47.f), point(65.f + 157.f * std::clamp(runtime_->damage_ratio, 0.f, 1.f), 51.f),
             color(ImVec4(1.f, .66f, .40f, .45f)), 2.f * scale);
-    if (runtime_->health_ratio > .001f)
+    if (runtime_->health_ratio > .001f) {
+        const int first=draw->VtxBuffer.Size;
+        const float width=157.f*std::clamp(runtime_->health_ratio,0.f,1.f);
         draw->AddRectFilled(point(65.f, 47.f), point(65.f + 157.f * std::clamp(runtime_->health_ratio, 0.f, 1.f), 51.f),
             color(health_color), 2.f * scale);
+        // Shade the existing rounded geometry; retain its anti-aliased fringe.
+        for (int i=first;i<draw->VtxBuffer.Size;++i) {
+            auto& v=draw->VtxBuffer[i];
+            const float t=std::clamp((v.pos.x-point(65.f,47.f).x)/std::max(1.f,width*scale),0.f,1.f);
+            const float light=.16f*t;
+            const ImU32 rgb=color({health_color.x+(1.f-health_color.x)*light,
+                health_color.y+(1.f-health_color.y)*light,health_color.z+(1.f-health_color.z)*light,1.f});
+            v.col=(v.col&IM_COL32_A_MASK)|(rgb&~IM_COL32_A_MASK);
+        }
+    }
 
     const std::array<const equipment*, 5> items = {&target.hand, &target.armor[0], &target.armor[1],
         &target.armor[2], &target.armor[3]};

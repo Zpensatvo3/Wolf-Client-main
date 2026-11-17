@@ -59,9 +59,6 @@ namespace anchor_engine
 
 	// Returns false after a one-shot sequence completes or aborts; the module
 	// wrapper then turns itself off.
-	bool run_overlay(config& settings, runtime& state, profile mode);
 	bool tick(config& settings, runtime& state, profile mode);
-	void stop(::cache& cache, runtime& state);
 	void cancel_on_client_thread(runtime& state);
-	void render_options(config& settings, profile mode, const char* id_suffix);
 }

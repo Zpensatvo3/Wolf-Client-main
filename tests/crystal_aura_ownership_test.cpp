@@ -26,6 +26,8 @@ int main()
     assert(try_crystal_aura_action(6,1,attack));
     claim_trigger(8,2); // Triggerbot retains priority.
     assert(trigger_owns_attack() && !claim_crystal_aura(6,1));
+    const int before=attacks;
+    assert(!try_unowned_attack(attack) && attacks==before);
     assert(!try_crystal_aura_action(6,1,attack));
     release_crystal_aura();
     assert(trigger_owns_attack());

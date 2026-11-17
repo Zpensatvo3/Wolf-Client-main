@@ -1682,7 +1682,7 @@
     <ClInclude Include="src\services\game\attack_coordinator.hpp">
       <Filter>Header Files\src\services\game</Filter>
     </ClInclude>
-    <ClInclude Include="src\services\input\click_tracking.hpp">
+    <ClInclude Include="src\services\input\key_mapping.hpp">
       <Filter>Header Files\src\services\input</Filter>
     </ClInclude>
     <ClInclude Include="src\jvmti\jvmti.hpp">
@@ -1740,12 +1740,6 @@
       <Filter>Header Files\src\ui</Filter>
     </ClInclude>
     <ClInclude Include="src\ui\item_icon.hpp">
-      <Filter>Header Files\src\ui</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ui\spotify_vector.hpp">
-      <Filter>Header Files\src\ui</Filter>
-    </ClInclude>
-    <ClInclude Include="src\ui\spotify_vector_data.hpp">
       <Filter>Header Files\src\ui</Filter>
     </ClInclude>
     <ClInclude Include="src\sdk\minecraft\common\*.hpp">

@@ -719,6 +719,7 @@ public class WorldBridge {
     private long triggerEpoch, triggerGeneration, triggerManual, triggerReady, triggerCritical = -1, triggerNotBefore;
     private int triggerSlot = -1, triggerLastTicks = -1, triggerPreparedSlot = -1, triggerPreparationTicks = -1;
     private float triggerThreshold, triggerLastCooldown;
+    private boolean triggerCycleSeeded;
     private boolean triggerFailed;
     private boolean triggerSimulationPrepared;
     private Field triggerMouse, triggerMouseLeft, triggerBindings, triggerBindingPressed, triggerBindingCount, triggerBindingKey;
@@ -1024,16 +1025,31 @@ public class WorldBridge {
         triggerThreshold = low == high ? low : (float) r.nextDouble(low, high);
         triggerReady = now + (reactionLow == reactionHigh ? reactionLow : r.nextInt(reactionLow, reactionHigh + 1)) * 1_000_000L;
         triggerCritical = -1;
+        triggerCycleSeeded = true;
+    }
+    private void ensureTriggerCycle(long now, float low, float high, int reactionLow, int reactionHigh) {
+        // A new target/slot is not a new attack. Keep the pending sample and deadline;
+        // only an actual attack (ours or observed manual input) starts another cycle.
+        if (!triggerCycleSeeded) triggerCycle(now, low, high, reactionLow, reactionHigh);
+        else triggerThreshold = Math.max(low, Math.min(high, triggerThreshold));
     }
     public void cancelTrigger() throws ReflectiveOperationException {
         triggerActive = false;
-        Object c = client(); if (c == null) return;
+        resetTriggerCycle();
+    }
+    private void resetTriggerCycle() throws ReflectiveOperationException {
         // Do not retain targets or JNI objects across menus, focus/session loss or disable.
-        triggerService(5, triggerPlayer != null ? triggerPlayer : player.get(c),
-            triggerWorld != null ? triggerWorld : world.get(c), null, 0, 0);
-        triggerPlayer = triggerWorld = triggerManager = triggerTarget = triggerInv = null;
-        triggerSlot = triggerPreparedSlot = triggerPreparationTicks = triggerLastTicks = -1; triggerLastCooldown = 0; triggerCritical = -1;
-        triggerReady = 0;
+        try {
+            Object c = client();
+            triggerService(5, triggerPlayer != null ? triggerPlayer : c != null ? player.get(c) : null,
+                triggerWorld != null ? triggerWorld : c != null ? world.get(c) : null, null, 0, 0);
+        } finally {
+            triggerPlayer = triggerWorld = triggerManager = triggerTarget = triggerInv = null;
+            triggerSlot = triggerPreparedSlot = triggerPreparationTicks = triggerLastTicks = -1;
+            // Timing contains no game references and must survive target loss,
+            // cancellation and helper restoration. Never reroll it on reacquisition.
+            triggerLastCooldown = 0; triggerCritical = -1;
+        }
     }
     public void tickTrigger(boolean active, long generation, long manual,
         float low, float high, int reactionLow, int reactionHigh, int targets, int weapon, int criticals, boolean onClick, boolean swingHand, boolean clickSimulation)
@@ -1083,12 +1099,12 @@ public class WorldBridge {
             if (!Float.isFinite(cd) || cd < 0 || cd > 1 || ticks < 0) { cancelTrigger(); return; }
             if (triggerPlayer != p || triggerWorld != w || triggerManager != m || triggerTarget != e ||
                 triggerInv != inv || triggerSlot != slot || triggerGeneration != generation) {
-                cancelTrigger();
+                resetTriggerCycle();
                 triggerPlayer = p; triggerWorld = w; triggerManager = m; triggerTarget = e; triggerInv = inv;
                 triggerSlot = slot; triggerGeneration = generation; triggerManual = manual;
                 triggerLastTicks = ticks; triggerLastCooldown = cd;
                 if (++triggerEpoch <= 0) throw new IllegalStateException("Trigger epoch exhausted");
-                triggerCycle(now, low, high, reactionLow, reactionHigh);
+                ensureTriggerCycle(now, low, high, reactionLow, reactionHigh);
             }
             int id = (int) triggerId.invoke(e);
             if (id < 0 || triggerService(1, p, w, e, id, triggerEpoch) == 0) { cancelTrigger(); return; }
@@ -1142,7 +1158,7 @@ public class WorldBridge {
             // follow an already sent packet, so this feature then suspends.
             triggerNotBefore = now + 50_000_000L;
             triggerAttack.invoke(m, p, e);
-            triggerSwing.invoke(p, triggerHand);
+            if (swingHand) triggerSwing.invoke(p, triggerHand);
             if (clickSimulation) simulateTriggerClick(c, p, w, generation, manual);
             triggerService(4, p, w, e, 0, 0);
             triggerPreparedSlot = triggerPreparationTicks = -1;
@@ -2760,6 +2776,7 @@ public class WorldBridge {
         jumpOwner = null;
         triggerActive = false;
         triggerPlayer = triggerWorld = triggerManager = triggerTarget = triggerInv = null;
+        triggerCycleSeeded = false; triggerReady = triggerNotBefore = 0;
         stopped = true; sneakOwner = pearlOwner = null; bridgeNonce = pearlNonce = 0;
         crystalPlayer = crystalWorld = crystalManager = crystalInv = crystalBase = crystalTarget = crystalArea = null;
         crystalOldSlot = crystalOwnedSlot = crystalTargetId = -1; crystalStage = 0;

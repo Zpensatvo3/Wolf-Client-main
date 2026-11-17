@@ -426,12 +426,36 @@ namespace
                 a=s.to_view(a); b=s.to_view(b);
                 if (clip_segment(a,b,planes)) lines.push_back({s.project(a),s.project(b),edge.color});
             }
+        struct stroke { std::size_t first; int count; ImVec4 color; bool closed=false; };
+        std::vector<stroke> strokes;
+        std::vector<ImVec2> stroke_points;
+        strokes.reserve(lines.size());
+        stroke_points.reserve(lines.size()*2);
+        const auto adjacent=[](ImVec2 a,ImVec2 b) {
+            const float x=a.x-b.x,y=a.y-b.y; return x*x+y*y<=.0001f;
+        };
+        for (const auto& line:lines) {
+            if (!strokes.empty()) {
+                auto& path=strokes.back(); const auto c=path.color;
+                if (!path.closed && adjacent(stroke_points.back(),line.a) &&
+                    c.x==line.color.x && c.y==line.color.y && c.z==line.color.z && c.w==line.color.w) {
+                    stroke_points.push_back(line.b); ++path.count;
+                    if (path.count>3 && adjacent(stroke_points[path.first],line.b)) {
+                        stroke_points.pop_back(); --path.count; path.closed=true;
+                    }
+                    continue;
+                }
+            }
+            strokes.push_back({stroke_points.size(),2,line.color});
+            stroke_points.push_back(line.a); stroke_points.push_back(line.b);
+        }
         std::sort(faces.begin(),faces.end(),[](const auto& a,const auto& b) { return a.depth>b.depth; });
         auto* draw=ImGui::GetBackgroundDrawList();
         // Adjacent mesh triangles must share a solid edge. ImGui's per-polygon
         // AA fringe creates a visible transparent grid between those triangles.
         const auto fill_flags=draw->Flags;
         draw->Flags &= ~ImDrawListFlags_AntiAliasedFill;
+        draw->Flags |= ImDrawListFlags_AntiAliasedLines;
         draw->PushClipRect(s.origin,ImVec2(s.origin.x+s.size.x,s.origin.y+s.size.y),true);
         const auto image_face=[&](const face& f,ImVec2 offset,ImU32 color) {
             draw->PushTextureID(f.texture);
@@ -446,16 +470,21 @@ namespace
             const auto color=ImGui::ColorConvertFloat4ToU32(c); const float distance=layer*1.5f;
             for (const auto offset:{ImVec2(-distance,0),ImVec2(distance,0),ImVec2(0,-distance),ImVec2(0,distance)}) image_face(f,offset,color);
         }
-        if (glow) for (int layer=3;layer>0;--layer) for (const auto& line:lines)
+        const auto draw_stroke=[&](const stroke& path,ImVec4 color,float width) {
+            draw->AddPolyline(stroke_points.data()+path.first,path.count,
+                ImGui::ColorConvertFloat4ToU32(color),path.closed ? ImDrawFlags_Closed : 0,width);
+        };
+        // Joined outlines avoid bright overlapping line caps at every ring segment.
+        if (glow) for (int layer=4;layer>0;--layer) for (const auto& path:strokes)
         {
-            ImVec4 c=line.color; c.w*=.06f;
-            draw->AddLine(line.a,line.b,ImGui::ColorConvertFloat4ToU32(c),1.f+layer*1.5f);
+            ImVec4 c=path.color; c.w*=.09f*std::exp(-.45f*layer);
+            draw_stroke(path,c,1.25f+layer*1.75f);
         }
         for (const auto& face:faces) {
             if (face.texture) image_face(face,{0,0},face.color);
             else draw->AddConvexPolyFilled(face.vertices.data(),static_cast<int>(face.vertices.size()),face.color);
         }
-        for (const auto& line:lines) draw->AddLine(line.a,line.b,ImGui::ColorConvertFloat4ToU32(line.color),1.25f);
+        for (const auto& path:strokes) draw_stroke(path,path.color,1.25f);
         draw->PopClipRect();
         draw->Flags=fill_flags;
     }
@@ -1093,10 +1122,18 @@ void cosmetics::visual_effect_state::clear() { state_->reset(); state_->session.
 
 namespace
 {
-    void effect_ring(mesh& m, point center, point right, point up, double radius, ImVec4 color, int segments = 32)
+    int effect_segments(const scene& s, point center, double radius)
+    {
+        const auto framebuffer=ImGui::GetIO().DisplayFramebufferScale;
+        const double pixels=radius*s.focal/std::max(.05,s.to_view(center).z-radius)
+            *std::max(framebuffer.x,framebuffer.y);
+        return visual_effects_logic::circle_segments(pixels);
+    }
+    void effect_ring(mesh& m, point center, point right, point up, double radius, ImVec4 color, int segments,
+        double phase=0., double sweep=1.)
     {
         for (int i=0;i<segments;++i) {
-            const double a=2*pi*i/segments,b=2*pi*(i+1)/segments;
+            const double a=phase+2*pi*sweep*i/segments,b=phase+2*pi*sweep*(i+1)/segments;
             m.edges.push_back({center+(right*std::cos(a)+up*std::sin(a))*radius,
                 center+(right*std::cos(b)+up*std::sin(b))*radius,color});
         }
@@ -1179,7 +1216,10 @@ void cosmetics::draw_hit_particles(const module_settings::hit_particles& config,
             const bool reduced=gui::ui_state::get_preferences().reduce_motion;
             const double growth=reduced ? 1. : .55+.45*visual_effects_logic::ease_out(t/.16);
             const double r=p.radius*std::clamp(config.size,.5f,2.f)*growth*(1-t*.3);
-            if (config.style==2) effect_ring(m,center,s.view.right,s.view.up,r*(reduced ? 1. : 1.+t*.5),color,24);
+            if (config.style==2) {
+                const double radius=r*(reduced ? 1. : 1.+t*.5);
+                effect_ring(m,center,s.view.right,s.view.up,radius,color,effect_segments(s,center,radius));
+            }
             else if (config.style==1) m.edges.push_back({center,center-p.velocity*(.035+.045*(1.-t)),color});
             else {
                 const double angle=reduced ? 0. : age*1.6;
@@ -1235,11 +1275,20 @@ void cosmetics::draw_jump_circles(const module_settings::jump_circles& config, v
             const double radius=std::clamp(config.radius,.3f,1.5f)*expand;
             auto color=effect_tint(ring.color,config.theme_color,config.color);
             color.w*=config.opacity*static_cast<float>(visual_effects_logic::envelope(t));
-            effect_ring(m,ring.position,{1,0,0},{0,0,1},radius,color,64);
+            const int segments=effect_segments(s,ring.position,radius);
+            effect_ring(m,ring.position,{1,0,0},{0,0,1},radius,color,segments);
             if (config.style==1) {
-                color.w*=.6f;
+                auto inner_color=color; inner_color.w*=.6f;
                 const double inner=reduced ? .77 : .48+.29*visual_effects_logic::ease_out(t);
-                effect_ring(m,ring.position,{1,0,0},{0,0,1},radius*inner,color,64);
+                effect_ring(m,ring.position,{1,0,0},{0,0,1},radius*inner,inner_color,
+                    effect_segments(s,ring.position,radius*inner));
+                if (!reduced) {
+                    // A short moving accent between the expanding rings, bounded
+                    // to a quarter of the outer ring's geometry budget.
+                    auto accent=color; accent.w*=.35f;
+                    effect_ring(m,ring.position,{1,0,0},{0,0,1},radius*(inner+1.)*.5,accent,
+                        std::max(4,segments/4),t*pi*1.5,.18);
+                }
             }
         }
         render(s,m,config.glow); state.advance(s,now);

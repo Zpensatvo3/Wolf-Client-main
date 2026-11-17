@@ -32,6 +32,15 @@
 
 namespace
 {
+    // Owned exclusively by the render thread, including disable/unload cleanup.
+    GLuint artwork_texture = 0;
+    std::uint64_t artwork_texture_revision = static_cast<std::uint64_t>(-1);
+    void release_artwork_texture()
+    {
+        if (artwork_texture) glDeleteTextures(1, &artwork_texture);
+        artwork_texture = 0;
+        artwork_texture_revision = static_cast<std::uint64_t>(-1);
+    }
 	constexpr ImU32 color_title = IM_COL32(255, 255, 255, 255);
 	constexpr ImU32 color_artist = IM_COL32(166, 169, 178, 255);
 	constexpr ImU32 color_label = IM_COL32(30, 215, 96, 255);
@@ -319,6 +328,7 @@ namespace
 	{
 		if (!draw) return;
 		size_scale = modules::spotify_hud::fixed_scale;
+        if (is_idle || !show_artwork) release_artwork_texture();
 
 		const ImFont* regular_font = gui::ui_font ? gui::ui_font : ImGui::GetFont();
 		const ImFont* bold_font = gui::ui_bold_font ? gui::ui_bold_font : ImGui::GetFont();
@@ -376,17 +386,19 @@ namespace
 			// Art slot base
 			draw->AddRectFilled(art_min, art_max, IM_COL32(18, 22, 20, 255), layout.art_radius);
 
-			static GLuint texture = 0;
-			static std::uint64_t texture_revision = static_cast<std::uint64_t>(-1);
+			auto& texture = artwork_texture;
+			auto& texture_revision = artwork_texture_revision;
 
 			if (!info.artwork.empty() && info.artwork_width > 0 && info.artwork_height > 0)
 			{
 				if (texture_revision != info.artwork_revision)
 				{
-					if (texture) { glDeleteTextures(1, &texture); texture = 0; }
-					glGenTextures(1, &texture);
+					if (!texture) glGenTextures(1, &texture);
 					if (texture)
 					{
+                        GLint previous_texture=0, previous_alignment=0;
+                        glGetIntegerv(GL_TEXTURE_BINDING_2D,&previous_texture);
+                        glGetIntegerv(GL_UNPACK_ALIGNMENT,&previous_alignment);
 						glBindTexture(GL_TEXTURE_2D, texture);
 						glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 						glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
@@ -415,16 +427,15 @@ namespace
 							glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 							glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 						}
-						glBindTexture(GL_TEXTURE_2D, 0);
+						glPixelStorei(GL_UNPACK_ALIGNMENT,previous_alignment);
+						glBindTexture(GL_TEXTURE_2D,static_cast<GLuint>(previous_texture));
+						texture_revision = info.artwork_revision;
 					}
-					texture_revision = info.artwork_revision;
 				}
 			}
-			else if (texture && texture_revision != info.artwork_revision)
+			else if (texture)
 			{
-				glDeleteTextures(1, &texture);
-				texture = 0;
-				texture_revision = info.artwork_revision;
+                release_artwork_texture();
 			}
 
 			if (texture)
@@ -638,6 +649,11 @@ void modules::spotify_hud::on_disable(::cache&)
 	spotify::source::instance().stop();
 }
 
+void modules::spotify_hud::on_render_shutdown()
+{
+    release_artwork_texture();
+}
+
 modules::spotify_hud::bounds modules::spotify_hud::get_bounds(float display_w, float display_h) const
 {
     auto settings_snapshot = settings_.read();
@@ -697,8 +713,9 @@ void modules::spotify_hud::render_hud_preview(ImDrawList* draw, float x, float y
 
 void modules::spotify_hud::render_overlay()
 {
-    auto settings_snapshot = settings_.read();
 	if (gui::hud_editor_active) return;
+    if (!enabled) { release_artwork_texture(); return; }
+    auto settings_snapshot = settings_.read();
 
 	const ImVec2 display = ImGui::GetIO().DisplaySize;
 	if (display.x < 40.0f || display.y < 40.0f) return;
@@ -716,6 +733,7 @@ void modules::spotify_hud::render_overlay()
 
 	const spotify::now_playing info = spotify::source::instance().snapshot();
 	const bool has_track = info.active && !info.title.empty();
+    if (!has_track || !settings_snapshot.show_artwork) release_artwork_texture();
 	const float size_scale = fixed_scale;
 
 	float width = 0.0f;

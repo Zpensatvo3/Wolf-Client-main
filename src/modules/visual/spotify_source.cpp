@@ -663,18 +663,6 @@ namespace
 	}
 }
 
-int modules::spotify::now_playing::current_lyric() const
-{
-	if (lyrics.empty()) return -1;
-	int index = -1;
-	for (std::size_t scan = 0; scan < lyrics.size(); ++scan)
-	{
-		if (lyrics[scan].timestamp <= position + 0.05) index = static_cast<int>(scan);
-		else break;
-	}
-	return index;
-}
-
 modules::spotify::source& modules::spotify::source::instance()
 {
 	static source singleton;
@@ -720,12 +708,6 @@ void modules::spotify::source::stop()
 void modules::spotify::source::set_lyrics_enabled(bool enable_lyrics)
 {
 	if (lyrics_enabled.exchange(enable_lyrics, std::memory_order_relaxed) == enable_lyrics) return;
-	refresh_requested.store(true, std::memory_order_release);
-	wake_signal.notify_all();
-}
-
-void modules::spotify::source::request_refresh()
-{
 	refresh_requested.store(true, std::memory_order_release);
 	wake_signal.notify_all();
 }

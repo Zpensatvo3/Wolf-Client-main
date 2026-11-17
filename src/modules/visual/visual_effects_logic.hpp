@@ -5,6 +5,15 @@
 namespace visual_effects_logic
 {
     inline constexpr std::size_t max_particles = 96, max_circles = 8, max_shape_boxes = 24;
+    // Bound chord error in framebuffer pixels, with a hard geometry budget.
+    inline int circle_segments(double radius_pixels)
+    {
+        if (!std::isfinite(radius_pixels) || radius_pixels <= 0.) return 12;
+        const double angle=std::acos(std::clamp(1.-.35/radius_pixels,-1.,1.));
+        if (angle <= 3.14159265358979323846/128.) return 128;
+        const int count=static_cast<int>(std::ceil(3.14159265358979323846/angle));
+        return std::clamp((count+3)/4*4,12,128);
+    }
     inline double smoothstep(double value)
     {
         const double t = std::clamp(value, 0., 1.);

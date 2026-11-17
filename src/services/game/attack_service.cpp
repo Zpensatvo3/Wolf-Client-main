@@ -1,6 +1,5 @@
 #include "attack_service.hpp"
 #include "anti_bot_service.hpp"
-#include "client_context.hpp"
 
 #include "../../platform/jni/jni_context.hpp"
 #include <cmath>
@@ -29,25 +28,6 @@ bool services::attack::swing_main_hand(const maps::ClientPlayerEntity& player)
     if (!hand || platform::jni_context::clear_exception())
         return false;
     player.swingHand.call(hand);
-    return !platform::jni_context::clear_exception();
-}
-
-bool services::attack::restore_left_hold(bool pressed)
-{
-    if (!platform::jni_context::bind_current_thread()) return false;
-    jni::frame frame{16};
-    services::game::client_context context;
-    if (!services::game::capture_client_context(context, false, false)) return false;
-    auto options = context.instance.options.get();
-    auto mouse = context.instance.mouse.get();
-    if (platform::jni_context::clear_exception() || !options || !mouse) return false;
-    auto attack_key = options.attackKey.get();
-    if (platform::jni_context::clear_exception() || !attack_key) return false;
-    const jboolean held = pressed && !context.screen ? JNI_TRUE : JNI_FALSE;
-    // Unlike Mouse.onMouseButton, setPressed does not increment timesPressed.
-    // Existing manual presses are neither consumed nor cleared here.
-    attack_key.setPressed.call(held);
-    mouse.leftButtonClicked.set(held);
     return !platform::jni_context::clear_exception();
 }
 
