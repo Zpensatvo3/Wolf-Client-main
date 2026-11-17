@@ -137,6 +137,7 @@ static bool read_render_players(const services::game::client_context& context, s
 // Shared state - protected by mutex
 static std::mutex              s_mutex;
 static services::game::overlay_session s_visual_session;
+static std::vector<PlayerBox> s_render_boxes; // Render-thread owned; released before DLL unload.
 
 static void clear_player_snapshot()
 {
@@ -147,6 +148,11 @@ static void clear_player_snapshot()
 void modules::player_esp::on_disable(::cache&)
 {
     clear_player_snapshot();
+}
+
+void modules::player_esp::on_render_shutdown()
+{
+    std::vector<PlayerBox>{}.swap(s_render_boxes);
 }
 
 // Correct Minecraft 1.21.1 world-to-screen projection.
@@ -306,7 +312,7 @@ void modules::player_esp::render_overlay()
 		? gui::get_dynamic_color().Value
 		: ImVec4(settings_snapshot.esp_color[0], settings_snapshot.esp_color[1], settings_snapshot.esp_color[2], settings_snapshot.esp_color[3]);
 	active_color.w = std::clamp(active_color.w, 0.05f, 1.0f);
-	static thread_local std::vector<PlayerBox> boxes;
+	auto& boxes=s_render_boxes;
     struct release_boxes {
         std::vector<PlayerBox>& value;
         ~release_boxes() {

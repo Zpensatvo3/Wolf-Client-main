@@ -14,6 +14,7 @@ class player_esp : public module
 
 		void render_overlay() override;
 		void on_disable(::cache& cache) override;
+		void on_render_shutdown() override;
 		void render_options() override;
 		float get_options_height() override { return 300.0f; }
 		struct preview_settings

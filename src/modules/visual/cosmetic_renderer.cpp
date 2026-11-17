@@ -22,6 +22,7 @@
 #include <span>
 #include <vector>
 #include <memory_resource>
+#include <mutex>
 
 namespace
 {
@@ -383,9 +384,11 @@ namespace
     }
     void render(const scene& s, const mesh& m, bool glow)
     {
-        // Fixed retained memory per render thread. Any overflow belongs to this
-        // call and is released after ImGui has copied the submitted vertices.
-        alignas(std::max_align_t) static thread_local std::array<std::byte,256*1024> storage;
+        // One fixed buffer per DLL, not a large static TLS block on every JVM
+        // thread. Overflow lives only until ImGui has copied the vertices.
+        static std::mutex scratch_mutex;
+        std::lock_guard scratch_lock(scratch_mutex);
+        alignas(std::max_align_t) static std::array<std::byte,256*1024> storage;
         std::pmr::monotonic_buffer_resource backing(storage.data(),storage.size());
         std::pmr::unsynchronized_pool_resource arena(std::pmr::pool_options{32,4096},&backing);
         struct face {
