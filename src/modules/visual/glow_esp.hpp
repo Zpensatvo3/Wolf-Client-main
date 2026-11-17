@@ -14,6 +14,8 @@ class glow_esp : public module
 
 		void run(::cache& cache) override;
 		void on_disable(::cache& cache) override;
+        void maintenance(::cache&) override;
+        void on_worker_shutdown(::cache&) override;
 		void render_overlay() override;
         bool render_when_disabled() const override { return mc::target.build_id == 12111; }
         void on_render_shutdown() override;

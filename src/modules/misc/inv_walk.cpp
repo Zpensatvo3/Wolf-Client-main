@@ -167,7 +167,7 @@ bool modules::inv_walk::gate_inventory_input(UINT message, WPARAM key, LPARAM da
     int kind=2,code=0;
     switch(message) {
     case WM_KEYDOWN: case WM_SYSKEYDOWN:
-        if (key==VK_RSHIFT || key==VK_END || key==VK_LWIN || key==VK_RWIN || key==VK_MENU ||
+        if ((key==VK_INSERT && ((data>>16)&0x1ff)==0x152) || key==VK_END || key==VK_LWIN || key==VK_RWIN || key==VK_MENU ||
             (message==WM_SYSKEYDOWN && key==VK_F4)) return false;
         kind=0;code=static_cast<int>((data>>16)&0x1ff);break;
     case WM_LBUTTONDOWN: case WM_RBUTTONDOWN: case WM_MBUTTONDOWN: case WM_XBUTTONDOWN:

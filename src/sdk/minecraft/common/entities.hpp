@@ -89,6 +89,7 @@ namespace maps
     jni::method<void, ONESTEP_MC_NAME("method_5728"), jni::NOT_STATIC, jboolean> setSprinting{ *this };
     jni::method<void, ONESTEP_MC_NAME("method_5660"), jni::NOT_STATIC, jboolean> setSneaking{ *this };
     jni::method<void, ONESTEP_MC_NAME("method_5834"), jni::NOT_STATIC, jboolean> setGlowing{ *this };
+    jni::method<jboolean, ONESTEP_MC_NAME("method_5795"), jni::NOT_STATIC, jint> getFlag{ *this };
     jni::method<void, ONESTEP_MC_NAME("method_5729"), jni::NOT_STATIC, jint, jboolean> setFlag{ *this };
     jni::method<jboolean, ONESTEP_MC_NAME("method_5681")> isSwimming{ *this };
     jni::method<Vec3d, ONESTEP_MC_NAME("method_18798")> getVelocity{ *this };

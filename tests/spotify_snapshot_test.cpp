@@ -14,6 +14,19 @@ namespace {
 
 int main()
 {
+    {
+        modules::spotify::now_playing sample;
+        sample.active=true; sample.playing=true; sample.position=100.; sample.duration=200.;
+        sample.sampled_at=std::chrono::steady_clock::time_point{};
+        auto a=sample,b=sample,c=sample;
+        a.extrapolate(sample.sampled_at+std::chrono::milliseconds(4900));
+        b.extrapolate(sample.sampled_at+std::chrono::milliseconds(5100));
+        c.extrapolate(sample.sampled_at+std::chrono::seconds(30));
+        assert(a.position>104.89 && b.position==105. && c.position==105.);
+        sample.position=20.; sample.title="same title"; sample.artist="new artist";
+        sample.extrapolate(sample.sampled_at+std::chrono::seconds(1));
+        assert(sample.position==21.);
+    }
     using namespace modules::spotify;
     now_playing published;
     published.active=true;

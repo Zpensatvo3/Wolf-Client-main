@@ -361,7 +361,7 @@ namespace
 void gui::render_click_gui_options()
 {
 	// This is deliberately fixed and has no keybind-capture control in the UI.
-	gui::menu_key = VK_RSHIFT;
+	gui::menu_key = VK_INSERT;
 
 }
 
@@ -829,13 +829,12 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 
 	const bool focus_interrupted = focus_reset_pending.exchange(false, std::memory_order_acq_rel);
 
-	// Poll the fixed Right Shift shortcut every frame. GLFW does not reliably
-	// expose every Windows virtual key through the hooked WndProc path.
+	// The extended Insert scan distinguishes it from NumPad 0 with NumLock off.
 	{
 		static services::game::menu_input::focused_shortcut menu_shortcut;
 		if (focus_interrupted) menu_shortcut.pressed(false, false);
 		const bool focused = window && GetForegroundWindow() == window;
-		const bool current_menu_key = (GetAsyncKeyState(VK_RSHIFT) & 0x8000) != 0;
+		const bool current_menu_key = services::input::physical_scan_down(platform::keys::scan_for(VK_INSERT));
 		const bool shortcut_pressed = menu_shortcut.pressed(focused, current_menu_key);
 		if (gui::suppress_menu_key_until_release)
 		{
@@ -1162,8 +1161,16 @@ void gui::shutdown()
 {
 	gui::ui_state::flush_preferences(true);
 	request_shutdown.store(true, std::memory_order_release);
-	while (!shut_down.load(std::memory_order_acquire))
-		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    auto next_report=std::chrono::steady_clock::now()+std::chrono::seconds(5);
+    if (window) RedrawWindow(window,nullptr,nullptr,RDW_INVALIDATE);
+    while (!shut_down.load(std::memory_order_acquire)) {
+        if (std::chrono::steady_clock::now()>=next_report) {
+            OutputDebugStringA("OneStep: unload pending; waiting for render context cleanup\n");
+            if (window) RedrawWindow(window,nullptr,nullptr,RDW_INVALIDATE);
+            next_report=std::chrono::steady_clock::now()+std::chrono::seconds(5);
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
 
 	// Give the detour epilogue time to return completely before MinHook data
 	// and the DLL image can be released by the worker thread.

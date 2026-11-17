@@ -7,7 +7,38 @@ permissions:
   contents: read
 
 jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Validate runtime and menu
+        run: |
+          python scripts/Test-Infrastructure.py
+          python -m unittest discover -s tests -p 'test_repository_hygiene.py' -v
+          python scripts/Test-Offline.py --minecraft-version 1.21.11 --test visual_runtime --test spotify_snapshot --test visual_animation --test snapshot_session --test cosmetic_physics --test remaining_settings --test key_codes --test keybinds_presentation --test input_tracking --test inv_walk_engine --jobs 2
+          python scripts/Test-ClientConsistency.py
+          python scripts/Test-VisualRuntime.py
+          python scripts/Test-NametagJvm.py --java-home "$JAVA_HOME"
+          python scripts/Test-SpotifyTexture.py
+          python scripts/Test-GrimUI.py
+      - name: Compile and render Sky shaders on EGL
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libegl1-mesa-dev libgl1-mesa-dri
+          python -m pip install moderngl==5.12.0 glcontext==3.0.0
+          python scripts/Test-SkyShader.py
   windows-dll:
+    needs: offline-tests
     runs-on: windows-2025
     timeout-minutes: 30
     steps:

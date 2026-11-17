@@ -66,6 +66,7 @@ namespace modules {
     void spotify_hud::render_options() {}
     void spotify_hud::on_enable(::cache&) {}
     void spotify_hud::on_disable(::cache&) {}
+    void spotify_hud::on_render_shutdown() {}
     spotify_hud::bounds spotify_hud::get_bounds(float, float) const { return {}; }
     void spotify_hud::render_hud_preview(ImDrawList*, float, float) {}
     struct target_hud::runtime {};
@@ -263,7 +264,8 @@ int main(int argc, char** argv)
     assert(gui::keybinds_model::filtered("plain", "Custom group").size() == 1);
     assert(gui::keybinds_model::filtered("fixed shortcut", "").empty());
     assert(gui::keybinds_model::assign(no_options,'G') && !gui::keybinds_model::assign(fixed,'G'));
-    assert(!gui::keybinds_model::assign(no_options,0xa1));
+    assert(!gui::keybinds_model::assign(no_options,0x2d));
+    assert(gui::keybinds_model::assign(no_options,0xa1));
     auto groups = gui::keybinds_model::categories();
     assert(std::find(groups.begin(),groups.end(),"Custom group") != groups.end());
     {

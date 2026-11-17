@@ -50,11 +50,12 @@ namespace platform::keys
     constexpr unsigned scan_for(int code) { const auto* item = find(code); return item ? item->scan : 0; }
     constexpr const char* reserved_reason(int code) {
         if (code == 0x1b) return "Esc clears a binding or closes the menu.";
-        if (code == 0xa1) return "Right Shift is the fixed menu shortcut.";
+        if (code == 0x2d) return "Insert is the fixed menu shortcut.";
         if (code == 0x23) return "End is the emergency unload shortcut.";
         if (code == 0x5b || code == 0x5c) return "Windows keys are reserved for the operating system.";
         return nullptr;
     }
+    constexpr bool binding_allowed(int code) { return valid(code) && !reserved_reason(code); }
     constexpr bool assignable(int code) { return find(code) && !reserved_reason(code); }
     inline std::string label(int code) {
         if (code == 0) return "none";

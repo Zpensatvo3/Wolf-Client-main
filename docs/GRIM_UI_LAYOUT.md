@@ -88,7 +88,7 @@ kayıt hatası görünürdür. Reduce Motion tüm sayfa geçişlerine uygulanır
 Ayrılmış tuşlar seçilip incelenebilir ama yeni atama alamaz:
 
 - ESC: yakalayıcı temizleme veya menü kapatma.
-- Right Shift: sabit menü kısayolu.
+- Insert: sabit menü kısayolu.
 - End: acil unload; Windows tuşları: işletim sistemi.
 
 Eski/import edilmiş ayrılmış atamalar zorla göç ettirilmez; temizlenebilir.

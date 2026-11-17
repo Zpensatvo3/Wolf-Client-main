@@ -3,6 +3,8 @@
 #include "../module_support.hpp"
 #include "../../platform/adapter/target_version.hpp"
 
+class _jobject;
+
 namespace modules
 {
 class full_bright : public module
@@ -12,11 +14,15 @@ class full_bright : public module
 
 		void run(::cache& cache) override;
 		void on_disable(::cache& cache) override;
+        void maintenance(::cache&) override;
+        void on_worker_shutdown(::cache&) override;
         void render_overlay() override;
         void on_render_shutdown() override;
         bool render_when_disabled() const override { return mc::target.build_id == 12111; }
 
 	private:
+        _jobject* gamma_option_ = nullptr; // Worker-owned global ref.
+        void restore_gamma(bool final);
 		double original_gamma = 0.5;
 		bool original_gamma_captured = false;
         std::atomic_bool native_fallback_{false};

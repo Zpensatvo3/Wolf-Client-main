@@ -10,7 +10,7 @@ inline void* SecureZeroMemory(void* destination, std::size_t length) {
     return destination;
 }
 using HWND = void*;
-constexpr int VK_RSHIFT = 0xA1, VK_ESCAPE = 0x1B, VK_MENU = 0x12;
+constexpr int VK_RSHIFT = 0xA1, VK_INSERT = 0x2D, VK_ESCAPE = 0x1B, VK_MENU = 0x12;
 constexpr int VK_LMENU = 0xA4, VK_RMENU = 0xA5, VK_SPACE = 0x20;
 constexpr int VK_LBUTTON = 1, VK_RBUTTON = 2, VK_MBUTTON = 4, VK_TAB = 9;
 constexpr unsigned MAPVK_VK_TO_CHAR = 2;

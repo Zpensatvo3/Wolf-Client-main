@@ -625,6 +625,9 @@ void modules::spotify::source::start(bool enable_lyrics)
     if (closing.load(std::memory_order_acquire)) return;
     lyrics_enabled.store(enable_lyrics,std::memory_order_relaxed);
     if (running.load(std::memory_order_acquire)) return;
+    const auto now=std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+    if (now<retry_after_ns.load(std::memory_order_acquire)) return;
     ++generation;
     running.store(true,std::memory_order_release);
     refresh_requested.store(true,std::memory_order_release);
@@ -634,7 +637,12 @@ void modules::spotify::source::start(bool enable_lyrics)
             worker_finished.store(false,std::memory_order_release);
             worker_thread=std::thread([this] { worker(); });
         }
-    } catch (...) { worker_finished.store(true,std::memory_order_release); running.store(false,std::memory_order_release); }
+    } catch (...) {
+        const auto failures=(std::min)(startup_failures.fetch_add(1)+1,6u);
+        const auto delay=(std::min)(250u << (failures-1),5000u);
+        retry_after_ns.store(now+static_cast<std::int64_t>(delay)*1000000,std::memory_order_release);
+        worker_finished.store(true,std::memory_order_release); running.store(false,std::memory_order_release);
+    }
     wake_signal.notify_all();
 }
 
@@ -680,43 +688,7 @@ modules::spotify::now_playing modules::spotify::source::snapshot() const
 {
 	std::lock_guard lock(state_mutex);
 	now_playing copy = state;
-	// SMTC only samples the position when it changes; extrapolate between polls.
-	if (copy.active && copy.playing)
-	{
-		const double elapsed = std::chrono::duration<double>(
-			std::chrono::steady_clock::now() - copy.sampled_at).count();
-		if (elapsed > 0.0 && elapsed < 5.0)
-		{
-			copy.position += elapsed;
-			if (copy.duration > 0.0 && copy.position > copy.duration)
-				copy.position = copy.duration;
-		}
-	}
-
-	static double last_snapshot_pos = 0.0;
-	static std::string last_snapshot_track;
-	if (last_snapshot_track != copy.title)
-	{
-		last_snapshot_track = copy.title;
-		last_snapshot_pos = copy.position;
-	}
-	else if (copy.playing && copy.active)
-	{
-		// Guarantee strictly non-decreasing position during normal playback,
-		// only allowing backward jumps if it's a deliberate user seek (> 1.5 seconds)
-		if (copy.position < last_snapshot_pos && (last_snapshot_pos - copy.position) < 1.5)
-		{
-			copy.position = last_snapshot_pos;
-		}
-		else
-		{
-			last_snapshot_pos = copy.position;
-		}
-	}
-	else
-	{
-		last_snapshot_pos = copy.position;
-	}
+	copy.extrapolate(std::chrono::steady_clock::now());
 
 	return copy;
 }
@@ -751,7 +723,16 @@ void modules::spotify::source::worker()
         }
     } done{worker_finished,running};
     try { winrt::init_apartment(winrt::apartment_type::multi_threaded); }
-    catch (...) { done.failed=true; return; }
+    catch (...) {
+        const auto failures=(std::min)(startup_failures.fetch_add(1)+1,6u);
+        const auto delay=(std::min)(250u << (failures-1),5000u);
+        const auto now=std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+        retry_after_ns.store(now+static_cast<std::int64_t>(delay)*1000000,std::memory_order_release);
+        done.failed=true; return;
+    }
+    startup_failures.store(0,std::memory_order_release);
+    retry_after_ns.store(0,std::memory_order_release);
     {
         poll_state cache;
         now_playing local;
@@ -859,6 +840,7 @@ void modules::spotify::source::poll(now_playing& local,std::string& active_key,p
         return;
     }
 
+    const bool session_changed=cache.selected!=session;
     const auto timeline=session.GetTimelineProperties();
     const double base_position=static_cast<double>(timeline.Position().count())/1e7;
     const double duration=static_cast<double>(timeline.EndTime().count())/1e7;
@@ -887,7 +869,7 @@ void modules::spotify::source::poll(now_playing& local,std::string& active_key,p
 
 	const auto last_updated = timeline.LastUpdatedTime();
 	const std::string key = title + "\x1f" + artist + "\x1f" + album;
-	const bool track_changed = (key != active_key);
+	const bool track_changed = session_changed || (key != active_key);
 
 	double real_position = base_position;
 	if (playing && last_updated.time_since_epoch().count() > 0)
@@ -904,15 +886,6 @@ void modules::spotify::source::poll(now_playing& local,std::string& active_key,p
 	if (duration > 0.0 && real_position > duration) real_position = duration;
 	if (real_position < 0.0) real_position = 0.0;
 
-	// In normal playback, ensure monotonic progress.
-	// Only accept a backward jump if it's a genuine deliberate seek (> 1.5 seconds)
-	if (playing && !track_changed && local.active)
-	{
-		if (real_position < local.position && (local.position - real_position) < 1.5)
-		{
-			real_position = local.position;
-		}
-	}
 
 	local.active = true;
 	local.playing = playing;

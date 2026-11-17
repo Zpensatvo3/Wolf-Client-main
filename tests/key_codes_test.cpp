@@ -31,8 +31,8 @@ int main()
     assert(from_message(0x10,0x2a) == 0xa0 && from_message(0x10,0x36) == 0xa1);
     assert(from_message(0x11,0x1d) == 0xa2 && from_message(0x11,0x11d) == 0xa3);
     assert(from_message(0x12,0x38) == 0xa4 && from_message(0x12,0x138) == 0xa5);
-    for (int reserved : {0x1b,0xa1,0x23,0x5b,0x5c}) assert(!assignable(reserved) && reserved_reason(reserved));
-    assert(assignable('A') && assignable(num_enter));
+    for (int reserved : {0x1b,0x2d,0x23,0x5b,0x5c}) assert(!assignable(reserved) && !binding_allowed(reserved) && reserved_reason(reserved));
+    assert(assignable('A') && assignable(num_enter) && assignable(0xa1));
     assert(valid(255) && valid(num_enter) && !valid(256) && !valid(-1) && !valid(270));
     assert(label(num_enter) == "Num Enter" && label(0x60) == "Num 0" && label(0x70) == "F1");
     modules::key_edge edge;

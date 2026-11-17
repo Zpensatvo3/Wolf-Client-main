@@ -271,7 +271,7 @@ void gui::keybinds_page::render()
         } else {
             ImGui::Spacing(); ImGui::TextDisabled("Select a key to manage its module bindings.");
             ImGui::PushTextWrapPos(0.f);
-            ImGui::TextDisabled("Colored keys have assignments. Esc, Right Shift, End and Windows keys are reserved.");
+            ImGui::TextDisabled("Colored keys have assignments. Esc, Insert, End and Windows keys are reserved.");
             ImGui::PopTextWrapPos();
         }
     }

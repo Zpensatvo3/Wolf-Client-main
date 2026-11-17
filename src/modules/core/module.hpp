@@ -28,6 +28,10 @@ namespace modules
         virtual bool render_when_disabled() const { return false; }
         // Render-thread cleanup before the swap hook and client JNI go away.
         virtual void on_render_shutdown() {}
+        // Worker-thread maintenance and final native/JNI cleanup. These do not
+        // imply a valid game world; implementations must check what they use.
+        virtual void maintenance(::cache&) {}
+        virtual void on_worker_shutdown(::cache&) {}
         virtual void on_enable(::cache& cache);
         virtual void on_disable(::cache& cache);
 

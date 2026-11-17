@@ -276,6 +276,26 @@ struct sky_panorama::renderer::runtime
     gl_api gl;
     HGLRC owner=nullptr;
     GLuint program=0,vao=0;
+    struct uniform_locations {
+        GLint Panorama=-1;
+        GLint PanoramaNext=-1;
+        GLint PanoramaBlend=-1;
+        GLint InverseViewProjection=-1;
+        GLint Rotation=-1;
+        GLint Exposure=-1;
+        GLint Opacity=-1;
+        GLint Atmosphere=-1;
+        GLint AtmosphereDensity=-1;
+        GLint MistHeight=-1;
+        GLint MotionTime=-1;
+        GLint SkyCrop=-1;
+        GLint Stylized=-1;
+        GLint NextCrop=-1;
+        GLint NextStylized=-1;
+        GLint FogVisibility=-1;
+        GLint HazeHeight=-1;
+        GLint FogColor=-1;
+    } uniforms;
     std::array<GLuint,6> textures{};
     visual_runtime::latest_job<decoded_panorama> preparation{
         [](int selected) { return decode_texture(panorama_resources[selected]); }};
@@ -438,6 +458,24 @@ struct sky_panorama::renderer::runtime
         gl.LinkProgram(program); gl.DeleteShader(vertex); gl.DeleteShader(fragment);
         GLint ok=0; gl.GetProgramiv(program,0x8B82,&ok);
         if (!ok) { gl.DeleteProgram(program); program=0; return false; }
+        uniforms.Panorama=gl.GetUniformLocation(program,"Panorama");
+        uniforms.PanoramaNext=gl.GetUniformLocation(program,"PanoramaNext");
+        uniforms.PanoramaBlend=gl.GetUniformLocation(program,"PanoramaBlend");
+        uniforms.InverseViewProjection=gl.GetUniformLocation(program,"InverseViewProjection");
+        uniforms.Rotation=gl.GetUniformLocation(program,"Rotation");
+        uniforms.Exposure=gl.GetUniformLocation(program,"Exposure");
+        uniforms.Opacity=gl.GetUniformLocation(program,"Opacity");
+        uniforms.Atmosphere=gl.GetUniformLocation(program,"Atmosphere");
+        uniforms.AtmosphereDensity=gl.GetUniformLocation(program,"AtmosphereDensity");
+        uniforms.MistHeight=gl.GetUniformLocation(program,"MistHeight");
+        uniforms.MotionTime=gl.GetUniformLocation(program,"MotionTime");
+        uniforms.SkyCrop=gl.GetUniformLocation(program,"SkyCrop");
+        uniforms.Stylized=gl.GetUniformLocation(program,"Stylized");
+        uniforms.NextCrop=gl.GetUniformLocation(program,"NextCrop");
+        uniforms.NextStylized=gl.GetUniformLocation(program,"NextStylized");
+        uniforms.FogVisibility=gl.GetUniformLocation(program,"FogVisibility");
+        uniforms.HazeHeight=gl.GetUniformLocation(program,"HazeHeight");
+        uniforms.FogColor=gl.GetUniformLocation(program,"FogColor");
         gl.GenVertexArrays(1,&vao);
         return vao!=0;
     }
@@ -525,30 +563,30 @@ struct sky_panorama::renderer::runtime
         gl.ActiveTexture(texture0+1); glBindTexture(GL_TEXTURE_2D,textures[next]);
         if (gl.BindSampler) gl.BindSampler(1,0);
         gl.ActiveTexture(texture0);
-        gl.Uniform1i(gl.GetUniformLocation(program,"Panorama"),0);
-        gl.Uniform1i(gl.GetUniformLocation(program,"PanoramaNext"),1);
-        gl.Uniform1f(gl.GetUniformLocation(program,"PanoramaBlend"),selected==next ? 0.f : transition.blend());
-        gl.UniformMatrix4fv(gl.GetUniformLocation(program,"InverseViewProjection"),1,GL_FALSE,glm::value_ptr(inverse));
-        gl.Uniform1f(gl.GetUniformLocation(program,"Rotation"),visual_rotation/360.f+static_cast<float>(motion.rotation));
-        gl.Uniform1f(gl.GetUniformLocation(program,"Exposure"),visual_exposure);
-        gl.Uniform1f(gl.GetUniformLocation(program,"Opacity"),visual_strength);
-        gl.Uniform1f(gl.GetUniformLocation(program,"Atmosphere"),static_cast<float>(visual_atmosphere));
-        gl.Uniform1f(gl.GetUniformLocation(program,"AtmosphereDensity"),visual_density);
-        gl.Uniform1f(gl.GetUniformLocation(program,"MistHeight"),visual_height);
-        gl.Uniform1f(gl.GetUniformLocation(program,"MotionTime"),static_cast<float>(motion.time));
+        gl.Uniform1i(uniforms.Panorama,0);
+        gl.Uniform1i(uniforms.PanoramaNext,1);
+        gl.Uniform1f(uniforms.PanoramaBlend,selected==next ? 0.f : transition.blend());
+        gl.UniformMatrix4fv(uniforms.InverseViewProjection,1,GL_FALSE,glm::value_ptr(inverse));
+        gl.Uniform1f(uniforms.Rotation,visual_rotation/360.f+static_cast<float>(motion.rotation));
+        gl.Uniform1f(uniforms.Exposure,visual_exposure);
+        gl.Uniform1f(uniforms.Opacity,visual_strength);
+        gl.Uniform1f(uniforms.Atmosphere,static_cast<float>(visual_atmosphere));
+        gl.Uniform1f(uniforms.AtmosphereDensity,visual_density);
+        gl.Uniform1f(uniforms.MistHeight,visual_height);
+        gl.Uniform1f(uniforms.MotionTime,static_cast<float>(motion.time));
         // The generated skies place their horizon below the equator. Extend the
         // sample range a little rather than stretching clouds into the zenith.
         constexpr float crops[]{.98f,.68f,.98f,1.12f,1.16f,1.24f};
-        gl.Uniform1f(gl.GetUniformLocation(program,"SkyCrop"),crops[selected]);
-        gl.Uniform1f(gl.GetUniformLocation(program,"Stylized"),selected>=3 ? 1.f : 0.f);
-        gl.Uniform1f(gl.GetUniformLocation(program,"NextCrop"),crops[next]);
-        gl.Uniform1f(gl.GetUniformLocation(program,"NextStylized"),next>=3 ? 1.f : 0.f);
+        gl.Uniform1f(uniforms.SkyCrop,crops[selected]);
+        gl.Uniform1f(uniforms.Stylized,selected>=3 ? 1.f : 0.f);
+        gl.Uniform1f(uniforms.NextCrop,crops[next]);
+        gl.Uniform1f(uniforms.NextStylized,next>=3 ? 1.f : 0.f);
         const float fog_end=std::clamp(fog[4],0.f,65536.f);
         const float visibility=std::clamp((fog_end-16.f)/48.f,0.f,1.f);
-        gl.Uniform1f(gl.GetUniformLocation(program,"FogVisibility"),visibility*visibility*(3.f-2.f*visibility));
+        gl.Uniform1f(uniforms.FogVisibility,visibility*visibility*(3.f-2.f*visibility));
         const float clear_fraction=std::clamp(fog[3]/std::max(fog_end,.001f),0.f,1.f);
-        gl.Uniform1f(gl.GetUniformLocation(program,"HazeHeight"),.14f+.14f*(1.f-clear_fraction));
-        gl.Uniform3f(gl.GetUniformLocation(program,"FogColor"),std::clamp(fog[0],0.f,1.f),
+        gl.Uniform1f(uniforms.HazeHeight,.14f+.14f*(1.f-clear_fraction));
+        gl.Uniform3f(uniforms.FogColor,std::clamp(fog[0],0.f,1.f),
             std::clamp(fog[1],0.f,1.f),std::clamp(fog[2],0.f,1.f));
         glDrawArrays(GL_TRIANGLES,0,3);
         failure.clear();
@@ -665,7 +703,7 @@ void sky_panorama::renderer::shutdown()
         if (s.vao) s.gl.DeleteVertexArrays(1,&s.vao);
         glDeleteTextures(static_cast<GLsizei>(s.textures.size()),s.textures.data());
     }
-    s.owner=nullptr; s.program=s.vao=0; s.textures={};
+    s.owner=nullptr; s.program=s.vao=0; s.textures={}; s.uniforms={};
     s.motion={}; s.visual_initialized=false;
 }
 const char* sky_panorama::renderer::error() const

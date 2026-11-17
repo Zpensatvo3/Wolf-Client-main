@@ -43,9 +43,11 @@ void app::module_loop::tick(::cache& game)
             pressed = binding != gui::menu_key && services::input::physical_key_down(VK_SPACE);
         else if (const auto scan = platform::keys::scan_for(binding))
             pressed = services::input::physical_scan_down(scan);
+        pressed = pressed && platform::keys::binding_allowed(binding) && binding != gui::menu_key;
         if (keys_[entry].sample(binding, pressed, allow_input))
             entry->enabled = !entry->enabled;
         const bool before = entry->prev_enabled;
+        entry->maintenance(game);
         modules::tick_module(*entry, game);
         if (notifications_initialized_ && before != entry->prev_enabled && !gui::should_unload)
             services::notifications::module_changed(entry->get_id(), entry->get_name(), entry->prev_enabled);

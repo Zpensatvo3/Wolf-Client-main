@@ -41,7 +41,17 @@ jobs:
         run: |
           python scripts/Test-Offline.py --jobs 2
           python scripts/Test-SpotifyTexture.py
+          python scripts/Test-ClientConsistency.py
           python scripts/Test-VisualRuntime.py
+          python scripts/Test-NametagJvm.py --java-home "$JAVA_HOME"
+      - name: Compile and render Sky shaders on EGL
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libegl1-mesa-dev libgl1-mesa-dri
+          python -m pip install moderngl==5.12.0 glcontext==3.0.0
+          python scripts/Test-SkyShader.py
       - name: Check local profile persistence
         run: |
           g++ -std=c++20 -Wall -Wextra -pthread tests/local_config_service_test.cpp src/configs/configs.cpp -o "$RUNNER_TEMP/local-config-test"

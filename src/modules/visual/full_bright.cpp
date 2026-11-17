@@ -1,4 +1,5 @@
 #include "full_bright.hpp"
+#include <Windows.h>
 #include "../../cache/cache.hpp"
 #include "../../platform/jni/jni_context.hpp"
 #include "../../services/game/utility_bridge.hpp"
@@ -51,8 +52,18 @@ void modules::full_bright::run(::cache& cache)
 		maps::SimpleOption gamma = options ? options.getGamma.call() : maps::SimpleOption{};
 		if (!options || !gamma || platform::jni_context::clear_exception())
 			return;
-		if (!original_gamma_captured)
-			original_gamma_captured = read_gamma(gamma, original_gamma);
+        auto* env = jni::get_env();
+        if (gamma_option_ && !env->IsSameObject(gamma_option_, gamma.object_instance)) {
+            restore_gamma(false);
+            if (gamma_option_) return;
+        }
+        if (!original_gamma_captured) {
+            double value = 0;
+            if (!read_gamma(gamma,value)) return;
+            gamma_option_ = env->NewGlobalRef(gamma.object_instance);
+            if (!gamma_option_ || platform::jni_context::clear_exception()) return;
+            original_gamma=value; original_gamma_captured=true;
+        }
 		write_gamma(gamma, 16.0);
 	}
 	catch (...)
@@ -68,26 +79,28 @@ void modules::full_bright::on_disable(::cache& cache)
         reset_requested_.store(true, std::memory_order_release);
         if (!native_fallback_.load(std::memory_order_acquire)) return;
     }
-	if (!original_gamma_captured || !cache.instance || !jni::get_env())
-	{
-		original_gamma_captured = false;
-		return;
-	}
-
-	try
-	{
-		jni::frame frame{ 24 };
-		maps::GameOptions options = cache.instance.options.get();
-		maps::SimpleOption gamma = options ? options.getGamma.call() : maps::SimpleOption{};
-		if (gamma && !platform::jni_context::clear_exception())
-			write_gamma(gamma, original_gamma);
-	}
-	catch (...)
-	{
-		platform::jni_context::clear_exception();
-	}
-	original_gamma_captured = false;
+    restore_gamma(false);
 }
+
+void modules::full_bright::restore_gamma(bool final)
+{
+    auto* env=jni::get_env();
+    if (!env || !gamma_option_) return;
+    bool restored=false;
+    try {
+        jni::frame frame{24};
+        maps::SimpleOption gamma(gamma_option_,false);
+        restored=write_gamma(gamma,original_gamma);
+    } catch (...) { platform::jni_context::clear_exception(); }
+    if (restored || final) {
+        if (!restored) OutputDebugStringA("OneStep: gamma restore failed at unload\n");
+        env->DeleteGlobalRef(gamma_option_); gamma_option_=nullptr;
+        original_gamma_captured=false;
+    }
+}
+
+void modules::full_bright::maintenance(::cache&) { if (!enabled) restore_gamma(false); }
+void modules::full_bright::on_worker_shutdown(::cache&) { restore_gamma(true); }
 
 void modules::full_bright::render_overlay()
 {

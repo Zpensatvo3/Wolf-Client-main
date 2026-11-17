@@ -1,4 +1,5 @@
 #include "nametag.hpp"
+#include <Windows.h>
 #include "runtime_budget.hpp"
 #include <chrono>
 #include <unordered_set>
@@ -111,6 +112,9 @@ namespace
     std::unordered_map<std::string,armor_metadata> armor_cache;
     tag_clock::time_point next_discovery{};
     std::uint64_t worker_generation=0;
+    bool cleanup_pending=false;
+    std::atomic_bool cleanup_waiting{false};
+    tag_clock::time_point next_cleanup{};
 
     bool restore_team(const maps::Scoreboard& board,const maps::Team& hidden,
         const std::string& name,const std::string& original)
@@ -163,11 +167,11 @@ std::string text_to_string(const maps::Text& text)
 		return nullptr;
 	}
 
-	void restore_and_release_carrier(suppressed_carrier& carrier, bool restore)
+	bool restore_and_release_carrier(suppressed_carrier& carrier, bool restore)
 	{
 		JNIEnv* env = jni::get_env();
 		if (!env)
-			return;
+			return false;
 		if (restore && carrier.entity)
 		{
 			if (carrier.kind == carrier_kind::armor_stand)
@@ -180,7 +184,7 @@ std::string text_to_string(const maps::Text& text)
 				maps::TextDisplayEntity display(carrier.entity, false);
 				display.setText.call(maps::Text(carrier.original_text, false));
 			}
-			platform::jni_context::clear_exception();
+			if (platform::jni_context::clear_exception()) return false;
 		}
 		if (carrier.original_text)
 			env->DeleteGlobalRef(carrier.original_text);
@@ -188,14 +192,19 @@ std::string text_to_string(const maps::Text& text)
 			env->DeleteGlobalRef(carrier.entity);
 		carrier.original_text = nullptr;
 		carrier.entity = nullptr;
+        return true;
 	}
 
-	void release_suppressed_carriers(bool restore)
-	{
-		for (suppressed_carrier& carrier : suppressed_carriers)
-			restore_and_release_carrier(carrier, restore);
-		suppressed_carriers.clear();
-	}
+    bool release_suppressed_carriers(bool restore)
+    {
+        std::size_t attempted=0;
+        for (auto it=suppressed_carriers.begin(); it!=suppressed_carriers.end();) {
+            if (restore && attempted++>=64) break;
+            if (restore_and_release_carrier(*it,restore)) it=suppressed_carriers.erase(it);
+            else ++it;
+        }
+        return suppressed_carriers.empty();
+    }
 
 	std::string read_carrier_text(jobject object, carrier_kind kind)
 	{
@@ -428,6 +437,7 @@ void modules::nametag::run(::cache& cache)
 	jni::frame frame{};
 	JNIEnv* env = jni::get_env();
 	if (!env || !cache.is_valid() || !cache.instance || !cache.world || !cache.player) { clear_tag_snapshot(); return; }
+    if (cleanup_pending) return;
 
 	try
 	{
@@ -655,8 +665,8 @@ void modules::nametag::run(::cache& cache)
 		{
 			if (!iterator->active)
 			{
-				restore_and_release_carrier(*iterator, true);
-				iterator = suppressed_carriers.erase(iterator);
+                if (restore_and_release_carrier(*iterator,true)) iterator=suppressed_carriers.erase(iterator);
+                else ++iterator;
 			}
 			else
 			{
@@ -676,41 +686,100 @@ void modules::nametag::run(::cache& cache)
 	}
 }
 
+namespace
+{
+    // Called only on the module worker while JNI is attached. A pending
+    // restoration belongs exclusively to the scoreboard that was modified.
+    void process_tag_cleanup(::cache& cache, bool final)
+    {
+        JNIEnv* env=jni::get_env();
+        if (!env) return; // Do not pretend JNI references have been released.
+        jni::frame frame{};
+        try {
+            // Discard undo refs from an old world without mutating it.
+            if (scoreboard_identity && cache.is_valid() && cache.world) {
+                auto current=cache.world.getScoreboard();
+                if (!platform::jni_context::clear_exception() && current &&
+                    env->IsSameObject(scoreboard_identity,current.object_instance)!=JNI_TRUE)
+                    release_suppressed_carriers(false);
+            }
+            const bool carriers_done=release_suppressed_carriers(true);
+            if (cleanup_pending && hidden_team_name.empty() && original_team_by_player.empty())
+                cleanup_pending=false;
+            if (cleanup_pending && scoreboard_identity && cache.is_valid() && cache.world) {
+                maps::Scoreboard board=cache.world.getScoreboard();
+                if (platform::jni_context::clear_exception()) board={};
+                if (board && env->IsSameObject(scoreboard_identity,board.object_instance)!=JNI_TRUE) {
+                    // The old world cannot be safely modified through the new one.
+                    original_team_by_player.clear();
+                    hidden_team_name.clear();
+                    cleanup_pending=false;
+                } else if (board && !hidden_team_name.empty()) {
+                    auto hidden=board.getTeam(maps::String::create(hidden_team_name.c_str()));
+                    if (!platform::jni_context::clear_exception()) {
+                        if (!hidden) {
+                            original_team_by_player.clear();
+                            cleanup_pending=false;
+                        } else {
+                            const auto count=original_team_by_player.size();
+                            std::unordered_set<std::string> no_players;
+                            visual_runtime::retire_records(original_team_by_player,no_players,retire_after,
+                                [&](const auto& name,const auto& old) { return restore_team(board,hidden,name,old); },
+                                final ? count : 64);
+                            if (original_team_by_player.empty()) {
+                                board.removeTeam(hidden);
+                                if (!platform::jni_context::clear_exception()) cleanup_pending=false;
+                            }
+                        }
+                    }
+                }
+            }
+            cleanup_pending=cleanup_pending || !carriers_done;
+        } catch (...) { platform::jni_context::clear_exception(); }
+        if (final) release_suppressed_carriers(false);
+        if (!cleanup_pending || final) {
+            // During final unload no later retry is possible; release references
+            // even if the game could not restore a disconnected scoreboard.
+            original_team_by_player.clear(); retire_after.clear(); hidden_team_name.clear();
+            if (scoreboard_identity) env->DeleteGlobalRef(scoreboard_identity);
+            scoreboard_identity=nullptr; cleanup_pending=false;
+        }
+    }
+}
+
 void modules::nametag::on_disable(::cache& cache)
 {
     clear_tag_snapshot();
-
-	jni::frame frame{};
-	JNIEnv* env = jni::get_env();
-	try
-	{
-		if (env)
-			release_suppressed_carriers(true);
-		if (env && cache.is_valid() && cache.world && !hidden_team_name.empty())
-		{
-			maps::Scoreboard scoreboard = cache.world.getScoreboard();
-			maps::String hidden_name = maps::String::create(hidden_team_name.c_str());
-			maps::Team hidden_team = scoreboard ? scoreboard.getTeam(hidden_name) : maps::Team{};
-			if (scoreboard && hidden_team && !platform::jni_context::clear_exception())
-			{
-                    for (const auto& [name,original]:original_team_by_player)
-                        restore_team(scoreboard,hidden_team,name,original);
-				scoreboard.removeTeam(hidden_team);
-				platform::jni_context::clear_exception();
-			}
-		}
-	}
-	catch (...)
-	{
-		platform::jni_context::clear_exception();
-	}
-
-	original_team_by_player.clear(); retire_after.clear();
     armor_cache.clear(); next_discovery={}; worker_generation=0;
-	hidden_team_name.clear();
-	if (env && scoreboard_identity)
-		env->DeleteGlobalRef(scoreboard_identity);
-	scoreboard_identity = nullptr;
+    cleanup_pending=scoreboard_identity!=nullptr || !suppressed_carriers.empty();
+    next_cleanup={};
+    process_tag_cleanup(cache,false);
+    cleanup_waiting.store(cleanup_pending,std::memory_order_release);
+}
+
+void modules::nametag::maintenance(::cache& cache)
+{
+    if (!cleanup_pending || tag_clock::now()<next_cleanup) return;
+    next_cleanup=tag_clock::now()+std::chrono::milliseconds(100);
+    process_tag_cleanup(cache,false);
+    cleanup_waiting.store(cleanup_pending,std::memory_order_release);
+    static auto next_report=tag_clock::time_point{};
+    if (cleanup_pending && tag_clock::now()>=next_report) {
+        char message[160]{};
+        std::snprintf(message,sizeof(message),"OneStep: Nametag waiting for cleanup: %zu teams, %zu carriers; retrying\n",
+            original_team_by_player.size(),suppressed_carriers.size());
+        OutputDebugStringA(message); next_report=tag_clock::now()+std::chrono::seconds(5);
+    }
+}
+
+void modules::nametag::on_worker_shutdown(::cache& cache)
+{
+    clear_tag_snapshot();
+    cleanup_pending=cleanup_pending || scoreboard_identity!=nullptr || !suppressed_carriers.empty();
+    if (cleanup_pending) OutputDebugStringA("OneStep: final Nametag cleanup; unresolved restoration may be discarded\n");
+    process_tag_cleanup(cache,true);
+    cleanup_waiting.store(cleanup_pending,std::memory_order_release);
+    armor_cache.clear(); next_discovery={}; worker_generation=0;
 }
 
 void modules::nametag::render_overlay()
@@ -870,4 +939,6 @@ void modules::nametag::render_overlay()
 void modules::nametag::render_options()
 {
     gui::settings::render(settings_, module_settings::nametag::schema());
+    if (cleanup_waiting.load(std::memory_order_acquire))
+        ImGui::TextDisabled("Restoring previous nametags; retrying...");
 }

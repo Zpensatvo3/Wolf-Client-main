@@ -433,6 +433,7 @@ template<> struct symbol<"method_5809"> { static constexpr auto value = jni::str
 template<> struct symbol<"method_5814"> { static constexpr auto value = jni::string_litteral("setPos"); };
 template<> struct symbol<"method_5820"> { static constexpr auto value = jni::string_litteral("getScoreboardName"); };
 template<> struct symbol<"method_5829"> { static constexpr auto value = jni::string_litteral("getBoundingBox"); };
+template<> struct symbol<"method_5795"> { static constexpr auto value = jni::string_litteral("getSharedFlag"); };
 template<> struct symbol<"method_5834"> { static constexpr auto value = jni::string_litteral("setGlowingTag"); };
 template<> struct symbol<"method_5858"> { static constexpr auto value = jni::string_litteral("distanceToSqr"); };
 template<> struct symbol<"method_58694"> { static constexpr auto value = jni::string_litteral("get"); };

@@ -151,7 +151,7 @@ bool modules::apply_public_config(const std::string& payload, std::string& messa
     }
     for (const auto& item : pending) {
         item.target->enabled = item.enabled;
-        if (restore_keybinds) item.target->set_keybind(item.keybind);
+        if (restore_keybinds) item.target->set_keybind(platform::keys::binding_allowed(item.keybind) ? item.keybind : 0);
     }
     message = std::to_string(pending.size()) + " module settings loaded.";
     return true;
@@ -194,13 +194,13 @@ bool modules::apply_keybind_config(const std::string& payload, std::string& mess
         if (id->text == "legit_click_aim_assist") { click_legit = &entry; continue; }
         if (id->text == "blatant_click_aim_assist") { click_blatant = &entry; continue; }
         if (auto* target = find_module_by_id(id->text); target && target->supports_keybind())
-            pending.emplace_back(target, *value);
+            pending.emplace_back(target, platform::keys::binding_allowed(*value) ? *value : 0);
     }
     // Modern binding wins; otherwise the nonzero Legit binding wins ties.
     const auto* selected = click_modern ? click_modern : click_legit;
     if (!selected || (!click_modern && *selected->find("keybind")->integer() == 0)) selected = click_blatant ? click_blatant : selected;
     if (selected) if (auto* target = find_module_by_id("click_aim_assist"))
-        pending.emplace_back(target, *selected->find("keybind")->integer());
+        pending.emplace_back(target, platform::keys::binding_allowed(*selected->find("keybind")->integer()) ? *selected->find("keybind")->integer() : 0);
     for (const auto& [target, value] : pending) target->set_keybind(value);
     message = "Local keybinds loaded.";
     return true;

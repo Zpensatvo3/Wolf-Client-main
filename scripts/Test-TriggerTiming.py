@@ -174,6 +174,12 @@ public final class TriggerTimingTest {
         check(full.c.attacks==0,"post-attack minimum guard bypassed");
         full.now=full.triggerNotBefore; full.run();
         check(full.c.attacks==1,"guard adds an extra cycle");
+        // This fixture checks the game API threshold, not Minecraft Haste mechanics.
+        TriggerTimingTest effect=new TriggerTimingTest(); effect.pending(.98f,0);
+        effect.c.player.cooldown=.7f; effect.run();
+        check(effect.c.attacks==0,"partial game cooldown bypassed");
+        effect.c.player.cooldown=1.f; effect.run();
+        check(effect.c.attacks==1 && effect.c.raycasts>=2,"game cooldown ignored");
         System.out.println("PASS Trigger timing: repeated reentry, target/slot change, partial/full cooldown, deadlines, final target validation");
     }
 }

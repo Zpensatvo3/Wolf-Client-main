@@ -7,105 +7,94 @@
 #include "../../platform/adapter/game_adapter.hpp"
 #include "../ui_redirect.hpp"
 #include <vector>
+#include <algorithm>
 #include <iostream>
 
-// ---- Game thread: natively toggle glowing for players ----
+namespace {
+    struct glow_record { jobject entity=nullptr; jboolean original=JNI_FALSE, written=JNI_TRUE; };
+    std::vector<glow_record> glow_records;
+    jobject glow_world=nullptr;
+    void release_native_glow(bool restore,bool final)
+    {
+        auto* env=jni::get_env(); if (!env) return;
+        jni::frame frame{};
+        for (auto it=glow_records.begin();it!=glow_records.end();) {
+            bool done=!restore;
+            if (restore) {
+                try {
+                    maps::Entity entity(it->entity,false);
+                    auto current=entity.getFlag(6);
+                    if (!platform::jni_context::clear_exception()) {
+                        // Preserve a newer, distinguishable external update.
+                        if (current==it->written) entity.setFlag(6,it->original);
+                        done=!platform::jni_context::clear_exception();
+                    }
+                } catch (...) { platform::jni_context::clear_exception(); }
+            }
+            if (done || final) { env->DeleteGlobalRef(it->entity); it=glow_records.erase(it); }
+            else ++it;
+        }
+        if (glow_records.empty() && glow_world) { env->DeleteGlobalRef(glow_world); glow_world=nullptr; }
+    }
+}
+
 void modules::glow_esp::run(::cache& cache)
 {
-    if constexpr (mc::target.build_id == 12111)
+    if constexpr (mc::target.build_id==12111)
         if (!native_fallback_.load(std::memory_order_acquire)) return;
+    auto* env=jni::get_env();
+    if (!env || !cache.is_valid() || !cache.world || !cache.player) return;
     jni::frame frame{};
-
-    try
-    {
-        if (!cache.is_valid() || !cache.instance || !cache.world || !cache.player) return;
-
-        JNIEnv* env = jni::get_env();
-
-        auto iterable = platform::adapter::get().get_entities(cache.world);
-        if (iterable) {
-            auto iterator = iterable.iterator.call();
-            if (iterator) {
-                while (iterator.hasNext.call() == JNI_TRUE) {
-                    auto obj = iterator.next.call();
-                    if (obj) {
-                        maps::Entity entity(obj.object_instance);
-                        if (!entity) continue;
-                        if (entity.is_same_object(cache.player)) continue;
-                        
-                        if (!entity.is_instance_of<maps::PlayerEntity>()) continue;
-                        
-                        if (entity.isAlive.call() == JNI_FALSE) continue;
-                        const jboolean glow = services::anti_bot::is_bot(entity) ? JNI_FALSE : JNI_TRUE;
-
-                        // Call native setGlowing function on the entity
-                        try {
-                            entity.setGlowing(glow);
-                        } catch (...) {
-                            if (env->ExceptionCheck()) env->ExceptionClear();
-                        }
-                        
-                        try {
-                            entity.setFlag(6, glow);
-                        } catch (...) {
-                            if (env->ExceptionCheck()) env->ExceptionClear();
-                        }
-                    }
-                }
-            }
+    try {
+        if (glow_world && !env->IsSameObject(glow_world,cache.world.object_instance))
+            release_native_glow(false,true);
+        if (!glow_world) glow_world=env->NewGlobalRef(cache.world.object_instance);
+        if (!glow_world || platform::jni_context::clear_exception()) return;
+        // Retain undo records only for currently eligible players.
+        std::vector<jobject> seen;
+        auto iterable=platform::adapter::get().get_players(cache.world);
+        if (!iterable) return;
+        maps::Iterable collection(iterable.object_instance,false);
+        auto iterator=collection.iterator.call();
+        if (!iterator || platform::jni_context::clear_exception()) return;
+        while (iterator.hasNext.call()==JNI_TRUE) {
+            auto object=iterator.next.call();
+            maps::Entity entity(object.object_instance,false);
+            if (!entity || entity.is_same_object(cache.player) ||
+                !entity.is_instance_of<maps::PlayerEntity>() || entity.isAlive.call()==JNI_FALSE ||
+                services::anti_bot::is_bot(entity)) continue;
+            auto found=std::find_if(glow_records.begin(),glow_records.end(),[&](const auto& record) {
+                return env->IsSameObject(record.entity,entity.object_instance)==JNI_TRUE;
+            });
+            if (found!=glow_records.end()) { seen.push_back(found->entity); continue; }
+            const auto original=entity.getFlag(6);
+            if (platform::jni_context::clear_exception() || original==JNI_TRUE) continue;
+            auto owned=env->NewGlobalRef(entity.object_instance);
+            if (!owned || platform::jni_context::clear_exception()) continue;
+            // Record before mutation so a failed write still has an undo owner.
+            glow_records.push_back({owned,original,JNI_TRUE}); seen.push_back(owned);
+            entity.setFlag(6,JNI_TRUE);
+            platform::jni_context::clear_exception();
         }
-    } catch (...) {
-        JNIEnv* env = jni::get_env();
-        if (env && env->ExceptionCheck()) env->ExceptionClear();
-    }
+        for (auto it=glow_records.begin();it!=glow_records.end();) {
+            if (std::find(seen.begin(),seen.end(),it->entity)!=seen.end()) { ++it; continue; }
+            maps::Entity entity(it->entity,false);
+            auto current=entity.getFlag(6);
+            if (platform::jni_context::clear_exception()) { ++it; continue; }
+            if (current==it->written) entity.setFlag(6,it->original);
+            if (platform::jni_context::clear_exception()) { ++it; continue; }
+            env->DeleteGlobalRef(it->entity); it=glow_records.erase(it);
+        }
+    } catch (...) { platform::jni_context::clear_exception(); }
 }
 
-// ---- Disable module: remove native glowing from all players ----
-void modules::glow_esp::on_disable(::cache& cache)
+void modules::glow_esp::on_disable(::cache&)
 {
-    if constexpr (mc::target.build_id == 12111) {
-        reset_requested_.store(true, std::memory_order_release);
-        if (!native_fallback_.load(std::memory_order_acquire)) return;
-    }
-    jni::frame frame{};
-
-    try
-    {
-        if (!cache.is_valid() || !cache.instance || !cache.world || !cache.player) return;
-
-        JNIEnv* env = jni::get_env();
-
-        auto iterable = platform::adapter::get().get_entities(cache.world);
-        if (iterable) {
-            auto iterator = iterable.iterator.call();
-            if (iterator) {
-                while (iterator.hasNext.call() == JNI_TRUE) {
-                    auto obj = iterator.next.call();
-                    if (obj) {
-                        maps::Entity entity(obj.object_instance);
-                        if (!entity) continue;
-                        
-                        if (!entity.is_instance_of<maps::PlayerEntity>()) continue;
-
-                        try {
-                            entity.setGlowing(JNI_FALSE);
-                        } catch (...) {
-                            if (env->ExceptionCheck()) env->ExceptionClear();
-                        }
-                        try {
-                            entity.setFlag(6, JNI_FALSE);
-                        } catch (...) {
-                            if (env->ExceptionCheck()) env->ExceptionClear();
-                        }
-                    }
-                }
-            }
-        }
-    } catch (...) {
-        JNIEnv* env = jni::get_env();
-        if (env && env->ExceptionCheck()) env->ExceptionClear();
-    }
+    reset_requested_.store(true,std::memory_order_release);
+    release_native_glow(true,false);
 }
+void modules::glow_esp::maintenance(::cache&) { if (!enabled) release_native_glow(true,false); }
+void modules::glow_esp::on_worker_shutdown(::cache&) { release_native_glow(true,true); }
 
 // We don't render 2D boxes anymore, so this is empty.
 void modules::glow_esp::render_overlay()

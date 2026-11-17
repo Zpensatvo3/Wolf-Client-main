@@ -39,6 +39,8 @@ void modules::clear_modules(::cache& cache)
     {
         if (current && (current->enabled || current->prev_enabled) && cache.is_valid())
             stop_module(*current, cache);
+        if (current)
+            current->on_worker_shutdown(cache);
         delete current;
     }
     registered_modules.clear();

@@ -34,7 +34,7 @@ bool modules::module::validate_config_settings(const std::string& object) const
 
 int modules::module::get_keybind() const { return keybind.load(std::memory_order_acquire); }
 void modules::module::set_keybind(int value) {
-    value = platform::keys::valid(value) ? value : 0;
+    value = platform::keys::binding_allowed(value) ? value : 0;
     if (keybind.exchange(value, std::memory_order_acq_rel) != value)
         keybind_revision.fetch_add(1, std::memory_order_release);
 }
@@ -71,7 +71,7 @@ std::string modules::module::make_stable_id(const char* value)
 void modules::module::key_bind_selector(float width)
 {
     const bool editable = supports_keybind();
-    utils::null_string display = !editable ? "Right Shift" : (scanning ? "LISTENING" : keycode_to_string(keybind));
+    utils::null_string display = !editable ? "Insert" : (scanning ? "LISTENING" : keycode_to_string(keybind));
     const ImVec2 button_size(std::max(1.f, width), 28.f);
     const ImVec2 button_min = ImGui::GetCursorScreenPos();
     ImGui::PushID(get_id());
@@ -93,6 +93,7 @@ void modules::module::key_bind_selector(float width)
     {
         int last_pressed = gui::get_last_pressed_key();
         if (!last_pressed) return;
+        if (last_pressed != VK_ESCAPE && !platform::keys::binding_allowed(last_pressed)) return;
         set_keybind(last_pressed == VK_ESCAPE ? 0 : last_pressed);
         scanning = false;
     }

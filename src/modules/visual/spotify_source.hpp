@@ -56,6 +56,14 @@ namespace modules
 			bool lyrics_loaded = false;
 			shared_media_buffer<lyric_line> lyrics;
 
+			void extrapolate(std::chrono::steady_clock::time_point now)
+			{
+				if (!active || !playing) return;
+				const double elapsed=std::chrono::duration<double>(now-sampled_at).count();
+				if (elapsed>0.0 && std::isfinite(elapsed)) position+=(std::min)(elapsed,5.0);
+				if (duration>0.0) position=(std::min)(position,duration);
+			}
+
 			// Index of the line that should be highlighted for `position`, or -1.
 			int current_lyric() const
 			{
@@ -108,6 +116,8 @@ namespace modules
 			std::mutex lifecycle_mutex;
 			std::atomic_bool closing{ false };
 			std::atomic_bool worker_finished{ true };
+			std::atomic<unsigned> startup_failures{ 0 };
+			std::atomic<std::int64_t> retry_after_ns{ 0 };
 			std::atomic<std::uint64_t> generation{ 0 };
 			std::mutex wake_mutex;
 			std::condition_variable wake_signal;

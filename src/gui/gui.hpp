@@ -20,8 +20,8 @@ namespace gui
 	inline bool draw = false;
 	inline std::atomic_bool should_unload{false};
 	inline bool loader_visible = true;
-	// Fixed shortcut: Click GUI is always opened with Right Shift.
-	inline int menu_key = VK_RSHIFT;
+	// Fixed shortcut: Click GUI is always opened with Insert.
+	inline int menu_key = VK_INSERT;
 	inline bool menu_key_scanning = false;
 	inline bool suppress_menu_key_until_release = false;
 	inline std::atomic_bool suppress_escape_until_release{false};

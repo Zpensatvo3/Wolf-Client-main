@@ -1,5 +1,7 @@
 #include "../src/services/input/input_service.hpp"
 #include "../src/modules/core/module.hpp"
+#include "../src/platform/input/key_codes.hpp"
+#include "../src/services/game/menu_input_policy.hpp"
 #include <cassert>
 #include <iostream>
 
@@ -28,6 +30,19 @@ int main()
     assert(!physical_key_down(VK_RCONTROL));
     observe_physical_key(VK_SHIFT,0x36,true);
     assert(physical_key_down(0xa1));
+    services::game::menu_input::focused_shortcut menu;
+    const auto insert_scan=platform::keys::scan_for(0x2d);
+    observe_physical_key(0x2d,0x52,true); // NumPad 0 with NumLock off.
+    assert(!menu.pressed(true,physical_scan_down(insert_scan)));
+    observe_physical_key(0x2d,0x52,false);
+    observe_physical_key(0x2d,0x152,true);
+    assert(menu.pressed(true,physical_scan_down(insert_scan)));
+    assert(!menu.pressed(true,physical_scan_down(insert_scan)));
+    menu.pressed(false,false);
+    reset_physical_keys(); // Focus loss clears the hooked physical state.
+    assert(!menu.pressed(true,physical_scan_down(insert_scan)));
+    observe_physical_key(0x2d,0x152,true);
+    assert(menu.pressed(true,physical_scan_down(insert_scan)));
     observe_physical_key(999,999,true);
     assert(!physical_key_down(999) && !physical_scan_down(999) && !physical_scan_down(0));
     reset_physical_buttons(); reset_physical_keys();

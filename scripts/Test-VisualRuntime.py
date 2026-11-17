@@ -148,7 +148,135 @@ int main() {
 }
 '''
 
+sky = (ROOT / "src/modules/visual/sky_panorama.cpp").read_text()
+sky_render = sky.split("    void render(const float* projection", 1)[1].split("\n};", 1)[0]
+assert "GetUniformLocation" not in sky_render, "Sky render must use cached uniform locations"
+assert "s.uniforms={}" in sky, "Sky shutdown must clear program-specific locations"
+uniforms_start = sky.index("    struct uniform_locations {")
+uniforms_end = sky.index("    } uniforms;", uniforms_start) + len("    } uniforms;")
+sky_fixture = common + r'''
+using GLuint=unsigned; using GLenum=unsigned; using GLint=int;
+const char* vertex_source="vertex"; const char* fragment_source="fragment";
+struct fake_gl {
+    int lookups=0; unsigned next_shader=0, next_program=0; bool link_ok=true, shader_ok=true;
+    GLuint CreateShader(GLenum) { return ++next_shader; }
+    void ShaderSource(GLuint,int,const char**,void*) {}
+    void CompileShader(GLuint) {}
+    void GetShaderiv(GLuint,GLenum,GLint* result) { *result=shader_ok; }
+    void DeleteShader(GLuint) {}
+    GLuint CreateProgram() { return ++next_program; }
+    void AttachShader(GLuint,GLuint) {}
+    void LinkProgram(GLuint) {}
+    void GetProgramiv(GLuint,GLenum,GLint* result) { *result=link_ok; }
+    void DeleteProgram(GLuint) {}
+    GLint GetUniformLocation(GLuint program,const char*) { ++lookups; return int(program*100+lookups); }
+    void GenVertexArrays(int,GLuint* value) { *value=1; }
+};
+struct runtime {
+    fake_gl gl; GLuint program=0,vao=0;
+'''
+sky_fixture += sky[uniforms_start:uniforms_end] + '\n'
+sky_fixture += function(sky, '    bool initialize()')
+sky_fixture += r'''
+};
+int main() {
+    runtime instance;
+    instance.gl.link_ok=false;
+    assert(!instance.initialize() && instance.program==0 && instance.gl.lookups==0);
+    instance.gl.link_ok=true;
+    assert(instance.initialize() && instance.gl.lookups==18);
+    const int old_location=instance.uniforms.Panorama;
+    for (int frame=0;frame<1000;++frame) {
+        volatile int value=instance.uniforms.Panorama+instance.uniforms.Opacity;
+        (void)value;
+    }
+    assert(instance.gl.lookups==18);
+    instance.program=0; instance.vao=0; instance.uniforms={};
+    assert(instance.initialize() && instance.gl.lookups==36);
+    assert(instance.uniforms.Panorama!=old_location);
+    std::cout << "PASS shipping Sky initialization: failed link, 18 lookups/program, reuse and recreation\n";
+}
+'''
+
 spotify = (ROOT / "src/modules/visual/spotify_source.cpp").read_text()
+cleanup = common + r'''
+#include <unordered_set>
+#include "src/modules/visual/runtime_budget.hpp"
+using jobject=void*;
+constexpr int JNI_TRUE=1;
+struct JNIEnv {
+    int deleted=0;
+    int IsSameObject(void* a,void* b) { return a==b; }
+    void DeleteGlobalRef(void*) { ++deleted; }
+} environment;
+bool attached=true, fail=false;
+namespace jni { struct frame {}; JNIEnv* get_env() { return attached ? &environment : nullptr; } }
+namespace platform::jni_context { bool clear_exception() { return std::exchange(fail,false); } }
+struct board_state { std::map<std::string,std::string> players; bool hidden=true; int removals=0; };
+namespace maps {
+    struct String { std::string value; static String create(const char* s) { return {s}; } };
+    struct Team {
+        std::string name;
+        explicit operator bool() const { return !name.empty(); }
+        bool is_same_object(const Team& t) const { return name==t.name; }
+    };
+    struct Scoreboard {
+        board_state* object_instance=nullptr;
+        explicit operator bool() const { return object_instance!=nullptr; }
+        Team getTeam(const String& s) const { return {s.value=="hidden" && !object_instance->hidden ? "" : s.value}; }
+        Team getScoreHolderTeam(const String& s) const { return {object_instance->players[s.value]}; }
+        void addScoreHolderToTeam(const String& s,const Team& t) const { object_instance->players[s.value]=t.name; }
+        void removeScoreHolderFromTeam(const String& s,const Team&) const { object_instance->players[s.value]=""; }
+        void removeTeam(const Team&) const { object_instance->hidden=false; ++object_instance->removals; }
+    };
+    struct World {
+        board_state* board=nullptr;
+        explicit operator bool() const { return board!=nullptr; }
+        Scoreboard getScoreboard() const { return {board}; }
+    };
+}
+struct cache { bool valid=true; maps::World world; bool is_valid() const { return valid; } };
+std::map<std::string,std::string> original_team_by_player;
+std::string retire_after,hidden_team_name;
+void* scoreboard_identity=nullptr;
+bool cleanup_pending=false, reject=false;
+int carrier_releases=0;
+bool release_suppressed_carriers(bool) { ++carrier_releases; return true; }
+bool restore_team(const maps::Scoreboard& board,const maps::Team&,const std::string& name,const std::string& original) {
+    if (reject && name=="a") return false;
+    if (board.object_instance->players[name]=="hidden") board.object_instance->players[name]=original;
+    return true;
+}
+'''
+cleanup += function(nametag, "    void process_tag_cleanup(")
+cleanup += r'''
+int main() {
+    board_state board; board.players={{"a","hidden"},{"b","hidden"},{"c","server"}};
+    cache game{true,{&board}};
+    scoreboard_identity=&board; hidden_team_name="hidden"; cleanup_pending=true;
+    original_team_by_player={{"a","red"},{"b","blue"},{"c","old"}};
+    reject=true; process_tag_cleanup(game,false);
+    assert(cleanup_pending && original_team_by_player.size()==1 && original_team_by_player.count("a"));
+    assert(board.hidden && board.players["b"]=="blue" && board.players["c"]=="server");
+    reject=false; process_tag_cleanup(game,false);
+    assert(!cleanup_pending && board.players["a"]=="red" && !board.hidden && board.removals==1);
+    assert(!scoreboard_identity && environment.deleted==1);
+    process_tag_cleanup(game,false); assert(environment.deleted==1 && board.removals==1);
+    board_state old_board,new_board;
+    scoreboard_identity=&old_board; hidden_team_name="hidden"; cleanup_pending=true;
+    original_team_by_player={{"a","red"}}; game.world.board=&new_board;
+    process_tag_cleanup(game,false);
+    assert(!cleanup_pending && new_board.removals==0 && environment.deleted==2);
+    scoreboard_identity=&old_board; cleanup_pending=true; hidden_team_name="hidden";
+    game.valid=false; process_tag_cleanup(game,false);
+    assert(cleanup_pending && scoreboard_identity && environment.deleted==2);
+    attached=false; process_tag_cleanup(game,true);
+    assert(cleanup_pending && scoreboard_identity && environment.deleted==2);
+    attached=true; process_tag_cleanup(game,true);
+    assert(!cleanup_pending && !scoreboard_identity && environment.deleted==3);
+    std::cout << "PASS shipping Nametag cleanup: failed retry, server team, world identity, invalid world, JNI shutdown\n";
+}
+'''
 hud = (ROOT / "src/modules/visual/spotify_hud.cpp").read_text()
 render = hud.split("void modules::spotify_hud::render_overlay()", 1)[1].split("void modules::", 1)[0]
 assert ".start(" not in render, "Render must not restart media after worker-side disable"
@@ -204,8 +332,9 @@ int main() {
     auto& service=modules::spotify::source::instance();
     service.start(true);
     eventually([&] { return !service.is_running(); }); // Failed COM setup must be restartable.
-    service.start(true);
-    eventually([] { return calls.load()>0; });
+    for (int i=0;i<100;++i) service.start(true);
+    assert(!service.is_running() && calls==0);
+    eventually([&] { service.start(true); return calls.load()>0; });
     const auto begin=std::chrono::steady_clock::now();
     service.stop(); // Operation is deliberately pending for up to 30 seconds.
     assert(std::chrono::steady_clock::now()-begin<250ms);
@@ -228,7 +357,7 @@ int main() {
 '''
 
 with tempfile.TemporaryDirectory(prefix="onestep-visual-runtime-") as directory:
-    for name, fixture in (("clipping", geometry), ("restore", restore), ("media", media)):
+    for name, fixture in (("clipping", geometry), ("restore", restore), ("cleanup", cleanup), ("sky", sky_fixture), ("media", media)):
         cpp = Path(directory) / (name + ".cpp")
         exe = Path(directory) / name
         cpp.write_text(fixture)

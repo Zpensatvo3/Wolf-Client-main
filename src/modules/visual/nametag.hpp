@@ -13,6 +13,8 @@ class nametag : public module
 
 		void run(::cache& cache) override;
 		void on_disable(::cache& cache) override;
+        void maintenance(::cache& cache) override;
+        void on_worker_shutdown(::cache& cache) override;
 		void render_overlay() override;
 		void render_options() override;
 		float get_options_height() override { return 230.0f; }
