@@ -63,6 +63,7 @@ namespace modules {
  module* find_module_by_id(const char*){return nullptr;}
 }
 namespace gui {
+ std::atomic_bool should_unload{false};
  namespace background {void shutdown(){}}
  namespace grim {void reset_runtime_state(){}}
  void reset_widget_runtime_state(){}
@@ -73,7 +74,7 @@ void ImGui_ImplOpenGL3_Shutdown(){++gl_stops;assert(imGuiContext && opengl_backe
 void ImGui_ImplWin32_Shutdown(){++win_stops;assert(imGuiContext && win32_backend_ready);}
 UNINIT
 PREFIX
- return original_wglSwapBuffers(device);
+ return FALSE; // Normal initialization would start here.
 }
 BOOL other_window(HWND current_window,HDC device){GATE return FALSE;}
 struct operations {
@@ -86,6 +87,7 @@ int main(){
  request_shutdown=true;assert(detour_wglSwapBuffers(handle(2))==TRUE);
  assert(shut_down && !request_shutdown && gl_stops==0 && win_stops==0 && procs_restored==0);
  assert(uninit(handle(2)));assert(gl_stops==0 && win_stops==0 && contexts_deleted==0);
+ gui::should_unload=true;assert(detour_wglSwapBuffers(handle(2))==TRUE);gui::should_unload=false;
  modules::test_module entry;modules::entries={&entry};
  // A different live window is a passthrough, not a teardown/rebind.
  window=handle(1);original_WndProc=proc_a;run_once=false;

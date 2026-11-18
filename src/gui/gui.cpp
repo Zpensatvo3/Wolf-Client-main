@@ -642,6 +642,10 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 		return result;
 	}
 
+    // A failed/aborted initialization must retain its partial resources until
+    // the worker's shutdown request, never overwrite them on the next swap.
+    if (gui::should_unload.load(std::memory_order_acquire)) return original_wglSwapBuffers(device);
+
 	HGLRC last_context = wglGetCurrentContext();
 
 	// if already init, and window changed, cleanup and reinit
