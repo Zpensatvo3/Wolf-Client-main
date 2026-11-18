@@ -50,4 +50,15 @@ Gerçek sol tıklama Java’da yalnız hazırlık yapar; ekstra saldırı gönde
 - Yeni ayarların varsayılanları ve eski config alanları remaining_settings/public_config/trigger_config testlerinde kontrol edilir. Modül kataloğu 55 ID olarak kalır.
 - Gerçek oyun/sunucu, shield-disable paketi, ek CPS HUD’larının callback algısı ve diğer Minecraft sürümlerinin oyun kabulü ayrıca yapılmalıdır.
 
-Derleme/teslim sonucu doğrulandıktan sonra bu dosyaya kaynak commit’i ve artifact bilgisi eklenecek. Eski DLL yeni Java kaynağının çıktısı olarak sunulmaz.
+## Doğrulanmış DLL teslimi
+
+- Hedef: **Fabric 1.21.11 Windows x64 Release**.
+- Kaynak commit’i: `bfc6b8e47a8a891015539e5beae7e94e3c156bad`; dal: `codex/shield-breaker-java-20261118`.
+- [GitHub çalıştırması](https://github.com/Zpensatvo3/Wolf-Client-main/actions/runs/44344276834): **success**. Ubuntu offline/EGL ve Windows kaynak/gömülü Java köprü testleri, JNI sözleşmeleri ve native derleme başarılı. Windows işi 13 dakika 1 saniye sürdü.
+- [DLL artifact’ı](https://github.com/Zpensatvo3/Wolf-Client-main/actions/runs/44344276834/artifacts/14447435290): `Onestep-1.21.11-Windows-x64`, ZIP 17.254.568 bayt; saklama bitişi 2 Aralık 2026, 16:25 UTC.
+- GitHub’ın ZIP için bildirdiği digest: `sha256:03605dbd5204167b5184e183430796ae930647c3ce2425f458a92ef65f1841c6`. Bu bağımsız hesaplanmış DLL hash’i değildir; ortam artifact indirmesine erişemediği için yerel PE/DLL kontrolü yapılamadı.
+- Yerelde tam 1.21.11 offline paketi, GrimUI, TriggerTiming/TriggerLifecycle, kaynak+gömülü Shield Breaker’ın 47 kontrolü, altı game bridge’in mevcut testleri ve repository hygiene başarılı. Modül kataloğu 55 ID olarak korundu.
+- İlk `44341114282` çalıştırması da başarılıydı; son aday/manuel override referans temizliği eklenince yukarıdaki güncel kaynak ayrıca derlendi. Teslim edilen artifact ikinci çalıştırmaya aittir.
+- Gerçek Minecraft/sunucu/CPS HUD kabulü yapılmadı; fixture veya DLL derleme başarısı bunların yerine geçmez.
+
+Bu bölüm derlemeden sonraki belge güncellemesidir; DLL’in kaynak kimliği yukarıdaki commit’tir.

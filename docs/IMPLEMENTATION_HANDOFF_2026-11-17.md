@@ -2,6 +2,10 @@
 
 Tarih: 17 Kasım 2026. Bu dosya inceleme ve iş tarifidir; bu turda uygulama kodu değiştirilmedi.
 
+## Shield Breaker Java teslimi — 18 Kasım 2026
+
+Shield Breaker oyun mantığı Java özelliği 9’a taşındı; Triggerbot hazırlığı/iptali aynı Java slot lease’ini kullanıyor. Kaynak `bfc6b8e47a8a891015539e5beae7e94e3c156bad`: [başarılı run](https://github.com/Zpensatvo3/Wolf-Client-main/actions/runs/44344276834), [güncel 1.21.11 Windows x64 DLL](https://github.com/Zpensatvo3/Wolf-Client-main/actions/runs/44344276834/artifacts/14447435290). [Ayarlar, davranış farkları, 47 kontrol ve kabul sınırları](SHIELD_BREAKER_JAVA.md). Aşağıdaki `b4704dc` teslimi önceki sürümdür; son DLL ayrıca bu önceki R01–R07 düzeltmelerini de içerir.
+
 ## Sonraki teslim — 18 Kasım 2026
 
 R01–R07 kod düzeltmeleri `b4704dc0016d1a09501b692ac113259e3e9780e5` kaynak commit'inden Fabric 1.21.11 Windows x64 olarak başarıyla derlendi. [Run](https://github.com/Zpensatvo3/Wolf-Client-main/actions/runs/44279607803), [artifact](https://github.com/Zpensatvo3/Wolf-Client-main/actions/runs/44279607803/artifacts/14415654916). Ayrıntılar ve açık gerçek oyun kabulü: [18 Kasım yeniden inceleme/uygulama kaydı](CLIENT_RECHECK_2026-11-18.md). Aşağıdaki 17 Kasım teslimi önceki sürümdür.
