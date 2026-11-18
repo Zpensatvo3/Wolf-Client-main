@@ -2,6 +2,10 @@
 
 Tarih: 17 Kasım 2026. Bu dosya inceleme ve iş tarifidir; bu turda uygulama kodu değiştirilmedi.
 
+## Sonraki teslim — 18 Kasım 2026
+
+R01–R07 kod düzeltmeleri `b4704dc0016d1a09501b692ac113259e3e9780e5` kaynak commit'inden Fabric 1.21.11 Windows x64 olarak başarıyla derlendi. [Run](https://github.com/Zpensatvo3/Wolf-Client-main/actions/runs/44279607803), [artifact](https://github.com/Zpensatvo3/Wolf-Client-main/actions/runs/44279607803/artifacts/14415654916). Ayrıntılar ve açık gerçek oyun kabulü: [18 Kasım yeniden inceleme/uygulama kaydı](CLIENT_RECHECK_2026-11-18.md). Aşağıdaki 17 Kasım teslimi önceki sürümdür.
+
 ## Son doğrulanan teslim
 
 Fabric 1.21.11 Windows x64 DLL, `4d665ac7ab2669d30615e79d725e6496e83aef3d` kaynak commit'inden başarıyla derlendi. [Run](https://github.com/Zpensatvo3/Wolf-Client-main/actions/runs/44198194449), [artifact](https://github.com/Zpensatvo3/Wolf-Client-main/actions/runs/44198194449/artifacts/14380169548). Önceki `3174c0d` kaydı tarihsel bilgidir. Yeni DLL Insert ve sonraki yerel düzeltmeleri içerir. Oyun kabulü açık maddeler için son denetimin üst tablosunu kullan.

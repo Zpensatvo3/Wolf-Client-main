@@ -1,6 +1,18 @@
 # Client yeniden inceleme — 18 Kasım 2026
 
-Bu tur incelemedir. Uygulama/test/workflow kodu değiştirilmedi; yeni DLL veya GitHub yayını yapılmadı. İnceleme mevcut çalışma ağacına, son derlenen `4d665ac` kaynak ağacına ve önceki `3174c0d` uygulamasına dayanır.
+Bu dosya ilk incelemeyi ve ardından yapılan düzeltme/test teslimini birlikte kaydeder. Güncel uygulama ve teslim bilgileri üst bölümlerdedir; R01–R07 bulgu açıklamaları düzeltme öncesi tarihsel kanıtlardır.
+
+## Doğrulanmış teslim — 18 Kasım 2026
+
+- Hedef: **Fabric 1.21.11 Windows x64 Release**.
+- Derlenen kaynak: `b4704dc0016d1a09501b692ac113259e3e9780e5`; dal: `codex/client-recheck-20261118`.
+- [GitHub çalıştırması](https://github.com/Zpensatvo3/Wolf-Client-main/actions/runs/44279607803): **success**. Ubuntu testleri/EGL shader ve Windows Java köprü/native derleme adımları geçti. Windows işi 10 dakika 12 saniye sürdü.
+- [DLL artifact'ı](https://github.com/Zpensatvo3/Wolf-Client-main/actions/runs/44279607803/artifacts/14415654916): `Onestep-1.21.11-Windows-x64`; ZIP 17.255.479 bayt. Saklama bitişi: 2 Aralık 2026, 10:01 UTC.
+- GitHub'ın artifact ZIP'i için bildirdiği digest: `sha256:e4604fa35c0467575fbeb97e67160dc1e560c30b4c3193fd8e8f80c9ce1edf5c`. Ortam artifact indirmesine erişemediğinden yerel PE/DLL hash kontrolü yapılmış sayılmıyor.
+- Yerelde tam 1.21.11 offline paketi, GrimUI, VisualRuntime, ClientConsistency ve üç yeni regresyon script'i geçti. Native Glow/Full Bright/Nametag kaynakları ayrıca 1.21.11 profiliyle GCC syntax kontrolünden geçti.
+- Gerçek Minecraft, Win32 pencere/context kabulü, SMTC, ThreadSanitizer ile tüm client, Haste ve uzun oturum ölçümü yapılmadı. Başarılı fixture/derleme bu kabullerin yerine geçmez.
+
+Bu teslim kaydı kaynak derlemesinden sonraki belge güncellemesidir; DLL'in kaynak kimliği yukarıdaki commit'tir. `44279054107` eski çalışma, son initialization korumasını derlemeye almak için iptal edildi; teslim artifact'ı **44279607803** çalışmasına aittir.
 
 ## Uygulama durumu — 18 Kasım 2026
 
@@ -16,7 +28,7 @@ Aşağıdaki bulgular düzeltme öncesi incelemenin kaydıdır. Bu uygulama turu
 | R06 | Dünya kapsamlı entity ID map'i + Java identity kontrolü; seen generation ile üyelik taraması. | 100/200/400 oyuncuda 101/201/401 JNI kimlik karşılaştırması; eski ölçümler aşağıda tarihsel. Gerçek FPS ölçülmedi. |
 | R07 | Hook kurulumu tamamlanan adımları sahiplenen RAII transaction kullanıyor. Başarısız aşamalar yalnız bu girişimin kaynaklarını geri alıyor. | Initialize/Create/Enable hataları ve başarılı commit için cleanup çağrı sayıları. |
 
-Yeni testler: `scripts/Test-RendererLifecycle.py`, `scripts/Test-GlowRuntime.py`, `scripts/Test-SpotifyTimeline.py`. İki workflow'un Ubuntu test job'ına eklendiler. Gerçek Windows/oyun kabulünün yerine geçmezler. Derleme sonucu teslim bölümüne kaydedilecek.
+Yeni testler: `scripts/Test-RendererLifecycle.py`, `scripts/Test-GlowRuntime.py`, `scripts/Test-SpotifyTimeline.py`. İki workflow'un Ubuntu test job'ına eklendiler. Gerçek Windows/oyun kabulünün yerine geçmezler. Windows derlemesi başarılı; teslim kaydı yukarıdadır.
 
 Önceki raporda açık kalan, render tamamen durduğunda güvenli unload'un tamamlanamaması bu yedi maddenin dışında kalır. Context edinilemiyorsa kaynak sahipliği korunup uygun callback beklenir; zorla DLL boşaltılmaz. Gerçek Haste, SMTC, GPU ve uzun oturum kabulü ayrıca yapılmalı.
 
