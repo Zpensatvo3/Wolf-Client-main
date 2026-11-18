@@ -2,6 +2,10 @@
 
 Tarih: 17 Kasım 2026. Bu dosya inceleme ve iş tarifidir; bu turda uygulama kodu değiştirilmedi.
 
+## Ana dal ve derleme önbelleği teslimi — 18 Kasım 2026
+
+Önceki bütün geliştirmeler ve derleme yenilikleri `main` dalında birleştirildi. Kaynak `41f15868b1f95bb00b2c2da073ff49a438438120`: [genel workflow](https://github.com/Zpensatvo3/Wolf-Client-main/actions/runs/44390600356) yedi hedefte başarılı; [son 1.21.11 çalıştırması](https://github.com/Zpensatvo3/Wolf-Client-main/actions/runs/44394889306) da başarılı. sccache ile ikinci DLL adımı 1 dk 53 sn ve 127/128 hit olarak ölçüldü. [Güncel derleme, artifact ve sayaç kaydı](BUILD_PERFORMANCE.md). Bilgisayara alma adımları ana README'de. Aşağıdaki teslim bölümleri tarihsel kayıttır; eski dal/index açıklamaları güncel `main` durumunu tarif etmez.
+
 ## Shield Breaker Java teslimi — 18 Kasım 2026
 
 Shield Breaker oyun mantığı Java özelliği 9’a taşındı; Triggerbot hazırlığı/iptali aynı Java slot lease’ini kullanıyor. Kaynak `bfc6b8e47a8a891015539e5beae7e94e3c156bad`: [başarılı run](https://github.com/Zpensatvo3/Wolf-Client-main/actions/runs/44344276834), [güncel 1.21.11 Windows x64 DLL](https://github.com/Zpensatvo3/Wolf-Client-main/actions/runs/44344276834/artifacts/14447435290). [Ayarlar, davranış farkları, 47 kontrol ve kabul sınırları](SHIELD_BREAKER_JAVA.md). Aşağıdaki `b4704dc` teslimi önceki sürümdür; son DLL ayrıca bu önceki R01–R07 düzeltmelerini de içerir.

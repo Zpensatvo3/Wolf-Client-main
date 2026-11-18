@@ -52,6 +52,8 @@ Gerçek sol tıklama Java’da yalnız hazırlık yapar; ekstra saldırı gönde
 
 ## Doğrulanmış DLL teslimi
 
+Derleme önbelleği güncellemesinden sonra bu Shield Breaker kodunu da içeren kaynaklar `main` dalında birleştirildi ve yedi hedef için yeniden derlendi. [Güncel kaynak, 1.21.1/1.21.11 artifact'leri ve doğrulama kaydı](BUILD_PERFORMANCE.md#18-kasım-2026-teslimi-ve-gerçek-ölçüm). Aşağıdaki `bfc6b8e` kaydı ilk Java Shield Breaker tesliminin tarihçesidir.
+
 - Hedef: **Fabric 1.21.11 Windows x64 Release**.
 - Kaynak commit’i: `bfc6b8e47a8a891015539e5beae7e94e3c156bad`; dal: `codex/shield-breaker-java-20261118`.
 - [GitHub çalıştırması](https://github.com/Zpensatvo3/Wolf-Client-main/actions/runs/44344276834): **success**. Ubuntu offline/EGL ve Windows kaynak/gömülü Java köprü testleri, JNI sözleşmeleri ve native derleme başarılı. Windows işi 13 dakika 1 saniye sürdü.

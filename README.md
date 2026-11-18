@@ -11,7 +11,7 @@ git switch main
 git pull --ff-only origin main
 ```
 
-Yerel dosyalarını değiştirdiysen önce commit veya `git stash push -u` ile sakla. Stash kullandıysan güncellemeden sonra `git stash pop` ile geri al; aynı satırlar değiştiyse çakışmaları çöz. İlk kez indiriyorsan:
+Yerel dosyalarını değiştirdiysen güncellemeden önce `git stash push -u` ile sakla. Güncellemeden sonra `git stash pop` ile geri al; aynı satırlar değiştiyse çakışmaları çöz. İlk kez indiriyorsan:
 
 ```sh
 git clone https://github.com/Zpensatvo3/Wolf-Client-main.git
@@ -44,6 +44,10 @@ Solution/proje: `OneStep.slnx` / `OneStep.vcxproj`. 1.21.1 çıktısı `build/On
 Normal yerel derleme artımlıdır; MSBuild değişen kaynakları ve bunlardan etkilenen dosyaları derler. `-Clean` yalnız tam yeniden derleme gerektiğinde kullanılır. `Build-Dev.ps1` 1.21.11 hedefini derler ve önceki DLL'yi yedekler. 1.21.1 dahil yedi hedef genel GitHub workflow'unda ayrı üretilir; 1.21.11 DLL'si 1.21.1 üzerinde çalışmaz.
 
 GitHub Actions, **sccache** ile derleme sonuçlarını sonraki çalıştırmalarda kullanır. İlk çalıştırma önbelleği doldurur; sonraki çalıştırmaların kazancı değişen dosyalara ve cache erişimine bağlıdır. Yalnız Markdown değişiklikleri otomatik DLL derlemesi başlatmaz; Actions'tan elle başlatılabilir. Loglarda cache hit/miss sayıları ve MSBuild görev süreleri görünür. Kurulum ve ölçüm yöntemi: [derleme ve önbellek](docs/BUILD_PERFORMANCE.md).
+
+Yalnız 1.21.11 DLL'si gerektiğinde [Build Fabric 1.21.11 DLL](https://github.com/Zpensatvo3/Wolf-Client-main/actions/workflows/build-1.21.11.yml) sayfasından `Run workflow > main` seç. [Build Onestep](https://github.com/Zpensatvo3/Wolf-Client-main/actions/workflows/build.yml) tüm hedefleri ve daha geniş test paketini çalıştırır; iki workflow'un toplam süreleri doğrudan karşılaştırılmamalıdır.
+
+18 Kasım doğrulamasında aynı kaynakla 1.21.11 DLL adımı ilk cache derlemesinde **13 dk 15 sn**, sonraki çalıştırmada **1 dk 53 sn** sürdü; 128 isteğin 127'si cache'ten karşılandı. [Yedi hedefin başarılı derlemesi ve DLL'leri](https://github.com/Zpensatvo3/Wolf-Client-main/actions/runs/44390600356), [son 1.21.11 DLL'si](https://github.com/Zpensatvo3/Wolf-Client-main/actions/runs/44394889306/artifacts/14471370175). Ayrıntılı sayaçlar ve ölçüm sınırları derleme belgesindedir.
 
 ## Config ve tuş profilleri
 
