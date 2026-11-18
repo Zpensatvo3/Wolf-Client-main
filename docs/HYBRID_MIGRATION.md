@@ -360,8 +360,7 @@ Mutasyon hatasında özellik askıya alınır; başka backend'e geçilip vuruş 
 
 C++ UI/config/reset, izin ve manuel giriş neslini taşır; On Click Only sol tuşu
 Java tarafında GLFW'den okur. Java'nın dar native callback'i yalnızca
-ortak Friends/Anti Bot, combat ownership ve mevcut Shield Breaker/Mace Swap
-hazırlama/bitirme servislerini çağırır. Bu servislerin kendi politikaları korunur.
+ortak Friends/Anti Bot, combat ownership ve Mace Swap hazırlama/bitirme servislerini çağırır. Shield Breaker hazırlama/bitirme işlemleri Java özelliği 9’a taşınmıştır.
 `trigger_adapter` artık native hedef/saldırı motoru çalıştırmaz ve Windows click
 ticket'i üretmez. Kullanılmayan eski C++ karar motoru ve ona ait fixture kaldırılmıştır;
 C++ tarafında yalnızca ayar doğrulaması, UI ve reset taşıması kalır.
@@ -596,3 +595,7 @@ WorldBridge tickAura ABI artık `(ZJ[I)[I`; native taraftan 11 tamsayılı ayar
 paketi gelir. Minimum/maximum hasar ve menziller 1/1000 ölçeklidir, son tamsayı
 place/break/auto-switch/restore/support/protection bitleridir. Eski config
 alanları yalnızca profil uyumluluğu için saklanır.
+
+## Shield Breaker Java denetleyicisi
+
+WorldBridge özelliği 9: hedef/kalkan/yön/ray kontrolü, tick gecikmeleri, balta seçimi ve senkronizasyonu, slot lease’i, rollback/geri dönüş, doğrudan saldırı ve click callback pulse’u Java client thread’indedir. C++ modül yalnız UI/config, atomik enable/generation izni ve Java çağrılarını taşır. Ortak Friends/Anti Bot ve saldırı sahipliği servisleri paylaşılır; native silah hazırlama veya native Shield Breaker saldırı motoru kalmadı. Triggerbot’un pending balta lease’i doğrudan aynı Java denetleyicisine bağlıdır. [Tasarım, testler ve farklar](SHIELD_BREAKER_JAVA.md).

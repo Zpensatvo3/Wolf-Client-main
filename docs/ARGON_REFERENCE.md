@@ -1,6 +1,6 @@
 # Argon kaynak referansı
 
-OneStep'in Hit Crystal, Triggerbot, Jump Reset, Anchor Macro ve Auto Totem modüllerinin bağımsız Java uygulamalarında incelenen referans:
+OneStep'in Hit Crystal, Triggerbot, Jump Reset, Anchor Macro, Auto Totem ve Shield Breaker modüllerinin bağımsız Java uygulamalarında incelenen referans:
 
 - Depo: [LvStrnggg/Argon](https://github.com/LvStrnggg/Argon)
 - Kaynak kodu: Java, Fabric
@@ -41,9 +41,7 @@ OneStep mevcut `cooldown`, `reaction`, `targets`, `weapon`, `criticals` ve
 `on_click` sözleşmesini korur; Argon'un silaha göre sabit ms gecikmeleriyle
 ayarları değiştirmez. Kararlar, rastgelelik, kritik bekleme, güncel vanilla
 ray sorgusu ve saldırı WorldBridge'in bağımsız 4 numaralı Java özelliğindedir.
-Paylaşılan arkadaş/Anti Bot servisi, saldırı sahipliği ve Shield Breaker/Mace Swap'ın
-kendi hazırlama/geri dönüş işlemleri native servis callback'i üzerinden kullanılır;
-bu diğer modüllerin Java'ya taşındığı anlamına gelmez. Windows tıklama üretimi yoktur.
+Paylaşılan arkadaş/Anti Bot servisi, saldırı sahipliği ve Mace Swap hazırlığı native callback üzerinden kullanılır. Shield Breaker’ın kendi hazırlama/geri dönüş mantığı da Java’ya taşındı; [güncel kapsam](SHIELD_BREAKER_JAVA.md). Windows tıklama üretimi yoktur.
 
 ### GLFW girişi ve Swing Hand
 
@@ -156,3 +154,7 @@ Native yalnızca ayar/yetki köprüsüdür; Windows tuş veya fare üretimi yokt
 `Test-AutoTotem.py`, gerçek Java denetleyicisini ve üretilen ekran bytecode'unu
 izole JVM'de çalıştırır. Bu testler Windows DLL derlemesi veya oyun içi kabulün
 yerine geçmez.
+
+## Shield Breaker referansı
+
+18 Kasım 2026 değişikliği, kullanıcının görüşmede paylaştığı Argon `ShieldDisabler` kodunu davranış referansı alır. Bu kaynak için önceki sabit depo commit’inin kullanıldığı iddia edilmez. Yeni Java denetleyicisi OneStep’in kendi slot sahipliği, güncel ray, ortak filtre ve Triggerbot akışına göre yazıldı. Referanstaki global non-physical attack iptali alınmadı; Triggerbot ile çakışma ortak saldırı sahipliği ve Java hazırlığıyla çözülür. [Ayarlar ve davranış](SHIELD_BREAKER_JAVA.md).

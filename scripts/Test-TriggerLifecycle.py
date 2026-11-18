@@ -46,6 +46,7 @@ public final class TriggerLifecycleTest {
     }
     public void attack(Object p, Object e) { attacks++; }
     public void swing(Object hand) { swings++; }
+    void shieldFinishTrigger(boolean consumed) {}
     void perform(boolean swingHand) throws Exception {
         Object m=this, p=this, e=new Object();
         ACTIONS

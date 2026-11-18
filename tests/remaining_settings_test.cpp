@@ -233,7 +233,9 @@ int main()
     check_contract<anti_bot>({"check_player_list","spawn_grace_ticks","missing_list_ticks"});
     assert(anti_bot_default_enabled && anti_bot{}.check_player_list);
     assert(anti_bot{}.spawn_grace_ticks == 40 && anti_bot{}.missing_list_ticks == 40);
-    check_contract<shield_breaker>({"switch_delay","return_delay","axe_slot"});
+    check_contract<shield_breaker>({"switch_delay","return_delay","axe_slot","switch_ticks","hit_delay","switch_back","stun","click_simulation","hold_axe"});
+    assert(shield_breaker{}.switch_ticks==0 && shield_breaker{}.hit_delay==0 && shield_breaker{}.switch_back &&
+        !shield_breaker{}.stun && !shield_breaker{}.click_simulation && !shield_breaker{}.hold_axe);
     check_contract<mace_swap>({"preferred_mace_slot","return_delay"});
     check_contract<hit_crystal>({"auto_switch","restore_slot","place_delay","break_delay"});
     check_contract<auto_totem>({"mode","delay","hotbar","totem_slot","auto_switch","force_totem","auto_open","stay_open_for"});

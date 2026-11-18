@@ -109,12 +109,17 @@ Tüm kararlar ve SWAP işlemleri oyun thread’inde Java’dan yapılır.
   Tab listesi güvenilmezse elemez; dünya/sunucu değişiminde geçmiş temizlenir.
 - **Triggerbot:** hedef/silah ve kritik kontrolleri, rastgele cooldown/reaction,
   güncel ray sorgusu ve vanilla saldırı Java WorldBridge'dedir. Arkadaş/bot
-  filtreleri ile Shield Breaker/Mace Swap hazırlıkları ortak native servislere
-  bağlanır. On Click Only, Java tarafında GLFW ile sol tuşu okur. Varsayılan
+  filtreleri ve Mace Swap hazırlığı ortak native servislere bağlanır. Shield
+  Breaker hazırlığı/geri dönüşü de Java’dadır. On Click Only, Java tarafında GLFW ile sol tuşu okur. Varsayılan
   açık Swing Hand seçeneği el sallamayı yönetir. Click Simulation (varsayılan
   kapalı), saldırı sonrası oyunun mouse callback'ine bir basma/bırakma çifti
   yollar; eklenen vanilla press kuyruğunu temizler. Eski config anahtarları korunur. Menü, odak, oturum,
   manuel slot veya ayar değişimi döngüyü iptal eder; Windows click üretilmez.
+- **Shield Breaker:** WorldBridge Java özelliği 9. Verilen Argon ShieldDisabler
+  davranışı referans alınarak yenilendi. Switch/Hit Delay tick, Switch Back,
+  Hold Axe ve Click Simulation seçenekleri var. Triggerbot açıkken yalnız balta
+  hazırlığı yapar; saldırı, cooldown ve son ray doğrulaması Triggerbot’ta kalır.
+  Stun yalnız bağımsız modda isteğe bağlı ikinci vuruştur. [Ayrıntılar](SHIELD_BREAKER_JAVA.md).
 - **Crystal Aura:** WorldBridge Java özelliği 8; hasara göre taban/kristal seçer,
   yerleştirme ve kırmayı ayrı zamanlar. Kılıç/havalanma şartı yoktur; mevcut
   tabanlar, hotbar/offhand kristalleri ve isteğe bağlı obsidyen desteği kullanılır.

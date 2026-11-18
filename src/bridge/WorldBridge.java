@@ -17,7 +17,7 @@ public class WorldBridge {
     private final Class<?> clientType, playerType;
     private final Field instance, player, world, screen, options, manager;
     private final Method onThread, alive;
-    private final boolean[] prepared = new boolean[9];
+    private final boolean[] prepared = new boolean[10];
     private Field sneak, bound, keySymbol, scanCode, mouse, vx, vz, minX, minY, minZ, maxX, maxZ;
     private Field selected, main, pearlItem, cooldown;
     private Method pressed, setPressed, code, category, ground, velocity, bounds, mainHand, empty, item, count, copy, same;
@@ -90,8 +90,9 @@ public class WorldBridge {
         throw new NoSuchMethodException(name);
     }
     public void prepare(int feature) throws ReflectiveOperationException {
-        if (stopped || feature < 1 || feature > 8 || (feature < 3 && target != 12111)) throw new IllegalStateException("World feature/lifecycle");
+        if (stopped || feature < 1 || feature > 9 || (feature < 3 && target != 12111)) throw new IllegalStateException("World feature/lifecycle");
         if (prepared[feature]) return;
+        if (feature == 9) { prepareShield(); prepared[9]=true; return; }
         if (feature == 8) { prepareAura(); prepared[8] = true; return; }
         if (feature == 7) { prepareTotem(); prepared[7] = true; return; }
         if (feature == 6) { prepareAnchor(); prepared[6] = true; return; }
@@ -702,10 +703,211 @@ public class WorldBridge {
         }
     }
 
-    // Triggerbot owns its complete decision loop in Java. The native callback
-    // only exposes shared friend/bot services, attack ownership and other
-    // modules' existing weapon preparation; it never chooses a trigger attack.
-    private native long triggerService(int operation, Object p, Object w, Object e, int value, long epoch);
+    // Shield decisions, tick delays, hotbar lease and attacks are Java-owned.
+    protected native long shieldService(int operation, Object p, Object w, Object e, long generation);
+    private volatile boolean shieldActive;
+    private volatile long shieldGeneration, shieldLastConfigTime;
+    private int shieldSwitchTicks, shieldHitTicks, shieldPreferred=0, shieldReturnDelay=110;
+    private boolean shieldSwitchBack=true, shieldStun, shieldClickSimulation, shieldHoldAxe, shieldFailed;
+    private Method shieldSync;
+    private Object shieldPlayer, shieldWorld, shieldManager, shieldInv, shieldTarget, shieldManualOverride;
+    private Object shieldPendingTarget;
+    private int shieldOldSlot=-1, shieldOwnedSlot=-1, shieldCandidateSlot=-1;
+    private long shieldTick, shieldSwitchReady, shieldHitReady, shieldLastAttackTick=-1, shieldReturnAt, shieldFallbackAt;
+    private boolean shieldTrigger, shieldRestoring;
+
+    private void prepareShield() throws ReflectiveOperationException {
+        prepare(4); // Shared exact ray/cooldown/input bindings, never native weapon logic.
+        shieldSync=mappedMethod(load("class_636"),"method_2911",void.class);
+    }
+    private void shieldClearLease() {
+        shieldPlayer=shieldWorld=shieldManager=shieldInv=shieldTarget=null;
+        shieldOldSlot=shieldOwnedSlot=shieldCandidateSlot=-1;
+        shieldReturnAt=shieldSwitchReady=shieldHitReady=0; shieldTrigger=shieldRestoring=false;
+    }
+    private boolean shieldRestore(boolean force) throws ReflectiveOperationException {
+        if (shieldOldSlot<0) { shieldClearLease(); return true; }
+        Object c=client(); if (c==null) return false;
+        if (player.get(c)==shieldPlayer && world.get(c)==shieldWorld && manager.get(c)==shieldManager &&
+            triggerInventory.invoke(shieldPlayer)==shieldInv &&
+            (triggerSelected.getInt(shieldInv)==shieldOwnedSlot || (shieldRestoring && triggerSelected.getInt(shieldInv)==shieldOldSlot)) &&
+            (force || shieldSwitchBack) && shieldOldSlot!=shieldOwnedSlot) {
+            shieldRestoring=true;
+            triggerSelected.setInt(shieldInv,shieldOldSlot);
+            shieldSync.invoke(shieldManager); // Keep the lease on failure; a later cleanup retries.
+        }
+        shieldClearLease(); return true;
+    }
+    public boolean cancelShield() throws ReflectiveOperationException {
+        shieldActive=false;
+        shieldPendingTarget=null; shieldManualOverride=null;
+        return shieldRestore(shieldReturnAt==0);
+    }
+    private boolean shieldCurrent() throws ReflectiveOperationException {
+        return shieldActive && !shieldFailed && System.nanoTime()-shieldLastConfigTime<=500_000_000L &&
+            shieldService(0,null,null,null,shieldGeneration)!=0;
+    }
+    private Object shieldFresh(Object c,Object p,Object w,Object m) throws ReflectiveOperationException {
+        if (!live(c,p,w) || m==null || (boolean)triggerUsing.invoke(p)) return null;
+        Object hit=triggerCrosshair.get(c);
+        Object e=triggerHitType.isInstance(hit)?triggerHitEntity.get(hit):null;
+        return e!=null && e!=p && triggerPlayerType.isInstance(e) && (boolean)triggerAlive.invoke(e) &&
+            !(boolean)triggerInvisible.invoke(e) && triggerShield(p,e) && triggerFresh(c,p)==e &&
+            shieldService(0,p,w,e,shieldGeneration)!=0 ? e : null;
+    }
+    private int shieldAxeSlot(Object inv,int selectedSlot) throws ReflectiveOperationException {
+        if (triggerAxe(triggerStack.invoke(inv,selectedSlot))) return selectedSlot;
+        if (shieldHoldAxe) return -1;
+        if (triggerAxe(triggerStack.invoke(inv,shieldPreferred))) return shieldPreferred;
+        for (int i=0;i<9;i++) if (triggerAxe(triggerStack.invoke(inv,i))) return i;
+        return -1;
+    }
+    private int shieldPrepare(Object c,Object p,Object w,Object m,Object e,boolean fromTrigger) throws ReflectiveOperationException {
+        if (!shieldCurrent() || e==null || shieldFresh(c,p,w,m)!=e) return -1;
+        Object inv=triggerInventory.invoke(p); if (inv==null) return -1;
+        int selectedSlot=triggerSelected.getInt(inv); if (selectedSlot<0 || selectedSlot>8) return -1;
+        if (shieldOldSlot>=0 && (shieldPlayer!=p || shieldWorld!=w || shieldManager!=m || shieldInv!=inv)) shieldClearLease();
+        if (shieldRestoring) {
+            if (!shieldRestore(true)) return -1;
+            selectedSlot=triggerSelected.getInt(inv);
+        }
+        if (shieldOldSlot>=0 && selectedSlot!=shieldOwnedSlot) {
+            shieldManualOverride=e; shieldClearLease(); return -1;
+        }
+        if (shieldManualOverride==e) return -1;
+        if (shieldManualOverride!=null) shieldManualOverride=null;
+        if (shieldHoldAxe && !triggerAxe(triggerStack.invoke(inv,shieldOldSlot>=0?shieldOldSlot:selectedSlot))) {
+            shieldRestore(true); return -1;
+        }
+        if (shieldTarget!=e || shieldPlayer!=p || shieldWorld!=w || (shieldOldSlot<0 && shieldCandidateSlot!=selectedSlot)) {
+            if (!shieldRestore(true)) return -1;
+            selectedSlot=triggerSelected.getInt(inv);
+            if (selectedSlot<0 || selectedSlot>8) return -1;
+            shieldPlayer=p; shieldWorld=w; shieldManager=m; shieldInv=inv; shieldTarget=e;
+            shieldCandidateSlot=selectedSlot; shieldSwitchReady=shieldTick+shieldSwitchTicks;
+        }
+        if (shieldTick<shieldSwitchReady) return -1;
+        if (shieldOldSlot<0) {
+            int axe=shieldAxeSlot(inv,selectedSlot); if (axe<0) return -1;
+            shieldOldSlot=selectedSlot; shieldOwnedSlot=axe; shieldTrigger=fromTrigger;
+            shieldHitReady=shieldTick+shieldHitTicks;
+            if (axe!=selectedSlot) { triggerSelected.setInt(inv,axe); shieldSync.invoke(m); }
+        }
+        if (!triggerAxe(triggerStack.invoke(inv,shieldOwnedSlot))) { shieldRestore(true); return -1; }
+        shieldTrigger=fromTrigger; shieldReturnAt=0;
+        return shieldOwnedSlot;
+    }
+    private int shieldStartingSlot(Object p,Object w,int selectedSlot) {
+        return shieldOldSlot>=0 && shieldPlayer==p && shieldWorld==w && shieldOwnedSlot==selectedSlot ? shieldOldSlot : -1;
+    }
+    private int shieldTriggerState(Object c,Object p,Object w,Object m,Object e,int slot) throws ReflectiveOperationException {
+        if (!shieldCurrent() || !shieldTrigger || shieldOldSlot<0 || shieldPlayer!=p || shieldWorld!=w ||
+            shieldManager!=m || shieldTarget!=e || shieldOwnedSlot!=slot || triggerInventory.invoke(p)!=shieldInv ||
+            triggerSelected.getInt(shieldInv)!=slot || !triggerAxe(triggerStack.invoke(shieldInv,slot)) ||
+            shieldFresh(c,p,w,m)!=e) return -1;
+        return shieldTick>=shieldHitReady ? 1 : 0;
+    }
+    private void shieldFinishTrigger(boolean consumed) throws ReflectiveOperationException {
+        if (!shieldTrigger) return;
+        shieldTrigger=false;
+        if (!consumed) { shieldRestore(true); return; }
+        shieldLastAttackTick=shieldTick; shieldHitReady=shieldTick+Math.max(1,shieldHitTicks);
+        if (shieldSwitchBack) shieldReturnAt=System.nanoTime()+shieldReturnDelay*1_000_000L;
+        else shieldClearLease();
+    }
+    public boolean prepareShieldManual() throws ReflectiveOperationException {
+        Object c=client(); if (c==null || !shieldCurrent()) return false;
+        Object p=player.get(c),w=world.get(c),m=manager.get(c),e=shieldFresh(c,p,w,m);
+        if (e==null) return false;
+        int slot=shieldPrepare(c,p,w,m,e,false);
+        // A real click takes the lease away from Triggerbot. Its vanilla attack
+        // is not submitted here, but its owned slot still needs timed cleanup.
+        if (slot>=0) {
+            if (shieldSwitchBack) shieldReturnAt=System.nanoTime()+shieldReturnDelay*1_000_000L;
+            else shieldClearLease();
+        }
+        return slot>=0 || (shieldTarget==e && shieldTick<shieldSwitchReady);
+    }
+    public void tickShield(boolean active,long generation,int switchTicks,int hitTicks,int preferred,int returnDelay,
+        boolean switchBack,boolean stun,boolean clickSimulation,boolean holdAxe) throws ReflectiveOperationException {
+        Object c=client(); if (c==null) return;
+        if (!active) { cancelShield(); return; }
+        if (shieldFailed) return;
+        if (switchTicks<0 || switchTicks>20 || hitTicks<0 || hitTicks>20 || preferred<0 || preferred>8 ||
+            returnDelay<75 || returnDelay>500) throw new IllegalArgumentException("Shield settings");
+        prepare(9);
+        if ((!shieldActive || shieldGeneration!=generation) && !shieldRestore(true)) return;
+        shieldGeneration=generation; shieldSwitchTicks=switchTicks; shieldHitTicks=hitTicks; shieldPreferred=preferred;
+        shieldReturnDelay=returnDelay; shieldSwitchBack=switchBack; shieldStun=stun;
+        shieldClickSimulation=clickSimulation; shieldHoldAxe=holdAxe;
+        shieldActive=true; shieldLastConfigTime=System.nanoTime();
+        if (clickSimulation) prepareTriggerSimulation();
+        // Fabric ticks are authoritative; the no-Fabric fallback is capped at 20 Hz.
+        if (!clientTickHooked && shieldLastConfigTime>=shieldFallbackAt) {
+            shieldFallbackAt=shieldLastConfigTime+50_000_000L; onShieldTick(c);
+        }
+    }
+    private void onShieldTick(Object c) {
+        if (stopped || (!shieldActive && shieldOldSlot<0)) return;
+        try {
+            ++shieldTick;
+            if (!shieldCurrent()) { cancelShield(); return; }
+            Object p=player.get(c),w=world.get(c),m=manager.get(c);
+            if (!live(c,p,w) || m==null) { cancelShield(); return; }
+            if (shieldRestoring) { shieldRestore(true); return; }
+            if (shieldOldSlot>=0 && (p!=shieldPlayer || w!=shieldWorld || m!=shieldManager)) shieldClearLease();
+            if (shieldOldSlot>=0 && triggerSelected.getInt(shieldInv)!=shieldOwnedSlot) {
+                shieldManualOverride=shieldTarget; shieldClearLease(); return;
+            }
+            if (shieldReturnAt>0) {
+                if (System.nanoTime()>=shieldReturnAt) shieldRestore(false);
+                return;
+            }
+            // Triggerbot alone chooses/cools down the hit whenever it is enabled.
+            if (triggerRequested && System.nanoTime()-triggerLastConfigTime<=500_000_000L) return;
+            Object e=shieldFresh(c,p,w,m);
+            if (e==null) { shieldManualOverride=null; shieldRestore(true); return; }
+            int slot=shieldPrepare(c,p,w,m,e,false);
+            if (slot<0 || shieldTick<shieldHitReady || shieldLastAttackTick==shieldTick) return;
+            float cooldownValue=(float)triggerCooldown.invoke(p,0.f);
+            if (!Float.isFinite(cooldownValue) || cooldownValue<.9f || cooldownValue>1.f) return;
+            shieldPendingTarget=e;
+            try { shieldService(1,p,w,e,shieldGeneration); }
+            finally { shieldPendingTarget=null; }
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            shieldFailed=true;
+            try { cancelShield(); } catch (ReflectiveOperationException cleanup) { error.addSuppressed(cleanup); }
+        }
+    }
+    public boolean executeShieldAction() throws ReflectiveOperationException {
+        Object c=client(); if (c==null || !shieldCurrent() || shieldPendingTarget==null) return false;
+        Object p=player.get(c),w=world.get(c),m=manager.get(c);
+        if (p!=shieldPlayer || w!=shieldWorld || m!=shieldManager || shieldTrigger ||
+            triggerInventory.invoke(p)!=shieldInv || triggerSelected.getInt(shieldInv)!=shieldOwnedSlot ||
+            !triggerAxe(triggerStack.invoke(shieldInv,shieldOwnedSlot)) ||
+            shieldFresh(c,p,w,m)!=shieldPendingTarget) return false;
+        float cd=(float)triggerCooldown.invoke(p,0.f);
+        if (!Float.isFinite(cd) || cd<.9f || cd>1.f || shieldTick<shieldHitReady || shieldLastAttackTick==shieldTick) return false;
+        long manual=shieldService(3,p,w,null,shieldGeneration);
+        if (manual<0) return false;
+        shieldLastAttackTick=shieldTick; // Never replay after a possibly sent attack.
+        shieldHitReady=shieldTick+Math.max(1,shieldHitTicks);
+        shieldReturnAt=System.nanoTime()+shieldReturnDelay*1_000_000L;
+        triggerAttack.invoke(m,p,shieldPendingTarget); triggerSwing.invoke(p,triggerHand);
+        if (shieldClickSimulation) simulateCombatClick(c,p,w,shieldGeneration,manual,true);
+        // Opt-in Argon-style second hit is standalone only; revalidate its target.
+        if (shieldStun && shieldFresh(c,p,w,m)==shieldPendingTarget &&
+            triggerSelected.getInt(shieldInv)==shieldOwnedSlot) {
+            triggerAttack.invoke(m,p,shieldPendingTarget); triggerSwing.invoke(p,triggerHand);
+            if (shieldClickSimulation) simulateCombatClick(c,p,w,shieldGeneration,manual,true);
+        }
+        if (!shieldSwitchBack) shieldClearLease();
+        return true;
+    }
+
+    // Triggerbot owns its decisions in Java; the native callback exposes shared
+    // filters/ownership and the remaining Mace Swap preparation only.
+    protected native long triggerService(int operation, Object p, Object w, Object e, int value, long epoch);
     private Class<?> triggerLiving, triggerPlayerType, triggerMob, triggerAnimal, triggerAxe, triggerSword, triggerHitType;
     private Field triggerCrosshair, triggerHitEntity, triggerSelected, triggerFall, triggerTicks, triggerYaw, triggerPos;
     private Field triggerX, triggerZ, triggerRenderer;
@@ -734,7 +936,7 @@ public class WorldBridge {
     private volatile int crystalPlaceDelayArg, crystalBreakDelayArg;
     private volatile int crystalKindArg, crystalKeyCodeArg;
     private volatile boolean crystalPhysicalUseArg;
-    private volatile boolean triggerActive;
+    private volatile boolean triggerActive, triggerRequested;
     private volatile long triggerLastConfigTime;
     private volatile long triggerGenerationArg, triggerManualArg;
     private volatile float triggerLowArg = .9f, triggerHighArg = 1.f;
@@ -825,6 +1027,7 @@ public class WorldBridge {
                     return "WorldBridgeTick";
                 }
                 if (a != null && a.length >= 1) {
+                    onShieldTick(a[0]);
                     onTriggerTick(a[0]);
                     onCrystalTick(a[0]);
                     onSafeAnchorTick(a[0]);
@@ -924,10 +1127,13 @@ public class WorldBridge {
         else triggerMouseCallback.invoke(mouse, handle, 0, action, 0);
     }
     private void simulateTriggerClick(Object c, Object p, Object w, long generation, long manual) throws ReflectiveOperationException {
+        simulateCombatClick(c,p,w,generation,manual,false);
+    }
+    private void simulateCombatClick(Object c,Object p,Object w,long generation,long manual,boolean shieldInput) throws ReflectiveOperationException {
         // Only notify the game's mouse callback after the single direct attack.
         // A synchronous pulse has no delayed UP and no worker outliving disable.
         if (client() != c || !live(c, p, w) || player.get(c) != p || world.get(c) != w ||
-            triggerService(8, p, w, null, 0, generation) != manual) return;
+            (shieldInput ? shieldService(3,p,w,null,generation) : triggerService(8,p,w,null,0,generation)) != manual) return;
         Object mouse = triggerMouse.get(c), window = triggerGetWindow.invoke(c);
         long handle = window == null ? 0 : (long) triggerGetHandle.invoke(window);
         Object registry = triggerBindings.get(null);
@@ -953,7 +1159,7 @@ public class WorldBridge {
             try {
                 sameSession = client() == c && player.get(c) == p && world.get(c) == w && screen.get(c) == null &&
                     triggerGetWindow.invoke(c) == window && (long) triggerGetHandle.invoke(window) == handle &&
-                    triggerService(8, p, w, null, 0, generation) == manual;
+                    (shieldInput ? shieldService(3,p,w,null,generation) : triggerService(8,p,w,null,0,generation)) == manual;
             } catch (ReflectiveOperationException failure) { if (error == null) error = failure; else error.addSuppressed(failure); }
             // Restore every left-mouse binding, including a rebound use key or
             // modded binding. Preserve pre-existing queued manual presses; do
@@ -988,7 +1194,8 @@ public class WorldBridge {
         return s != null && !(boolean) triggerEmpty.invoke(s) && triggerAxe.isInstance(triggerItem.invoke(s));
     }
     private boolean triggerWeapon(Object p, Object w, Object inv, int slot, int weapon) throws ReflectiveOperationException {
-        int original = (int) triggerService(6, p, w, null, slot, 0);
+        int original = shieldStartingSlot(p,w,slot);
+        if (original<0) original=(int)triggerService(6,p,w,null,slot,0);
         if (original >= 0 && original < 9) slot = original;
         Object s = triggerStack.invoke(inv, slot);
         return weapon == 0 || (weapon == 1 ? triggerSword(s) : triggerAxe(s));
@@ -1033,6 +1240,10 @@ public class WorldBridge {
         if (!triggerCycleSeeded) triggerCycle(now, low, high, reactionLow, reactionHigh);
         else triggerThreshold = Math.max(low, Math.min(high, triggerThreshold));
     }
+    public void deactivateTrigger() throws ReflectiveOperationException {
+        triggerRequested=false;
+        cancelTrigger();
+    }
     public void cancelTrigger() throws ReflectiveOperationException {
         triggerActive = false;
         resetTriggerCycle();
@@ -1041,8 +1252,9 @@ public class WorldBridge {
         // Do not retain targets or JNI objects across menus, focus/session loss or disable.
         try {
             Object c = client();
-            triggerService(5, triggerPlayer != null ? triggerPlayer : c != null ? player.get(c) : null,
-                triggerWorld != null ? triggerWorld : c != null ? world.get(c) : null, null, 0, 0);
+            try { shieldFinishTrigger(false); }
+            finally { triggerService(5, triggerPlayer != null ? triggerPlayer : c != null ? player.get(c) : null,
+                triggerWorld != null ? triggerWorld : c != null ? world.get(c) : null, null, 0, 0); }
         } finally {
             triggerPlayer = triggerWorld = triggerManager = triggerTarget = triggerInv = null;
             triggerSlot = triggerPreparedSlot = triggerPreparationTicks = triggerLastTicks = -1;
@@ -1055,6 +1267,8 @@ public class WorldBridge {
         float low, float high, int reactionLow, int reactionHigh, int targets, int weapon, int criticals, boolean onClick, boolean swingHand, boolean clickSimulation)
         throws ReflectiveOperationException {
         Object c = client(); if (c == null) return;
+        triggerRequested=active;
+        if (active) triggerLastConfigTime=System.nanoTime();
         if (!active) { cancelTrigger(); return; }
         if (triggerFailed) return;
         if (!Float.isFinite(low) || !Float.isFinite(high) || low < .5f || high > 1.f || low > high ||
@@ -1131,17 +1345,28 @@ public class WorldBridge {
                 if (now - triggerCritical < 150_000_000L) return;
             } else triggerCritical = -1;
             boolean shield = triggerShield(p, e);
-            if (triggerPreparedSlot >= 0) {
-                if (triggerService(7, p, w, e, triggerPreparedSlot, 0) <= 0) { cancelTrigger(); return; }
+            if (triggerPreparedSlot>=0) {
+                if (shieldTrigger) {
+                    int ready=shieldTriggerState(c,p,w,m,e,triggerPreparedSlot);
+                    if (ready<0) { cancelTrigger(); return; }
+                    if (ready==0) return;
+                } else if (triggerService(7,p,w,e,triggerPreparedSlot,0)<=0) { cancelTrigger(); return; }
             } else {
-                int chosen = (int) triggerService(shield && !triggerAxe(triggerStack.invoke(inv, slot)) ? 2 : shield ? 10 : 3,
-                    p, w, e, 0, 0);
-                if (chosen >= 0 && chosen < 9) {
-                    triggerPreparedSlot = triggerSlot = chosen;
-                    triggerPreparationTicks = ticks;
-                    triggerNotBefore = now + 25_000_000L; return;
+                int chosen;
+                if (shield && shieldActive) {
+                    chosen=shieldPrepare(c,p,w,m,e,true);
+                    if (chosen<0) return;
+                    if (chosen==slot) {
+                        int ready=shieldTriggerState(c,p,w,m,e,chosen);
+                        if (ready<0) { cancelTrigger(); return; }
+                        if (ready==0) return;
+                    }
+                } else chosen=(int)triggerService(shield?10:3,p,w,e,0,0);
+                if (chosen>=0 && chosen<9 && chosen!=slot) {
+                    triggerPreparedSlot=triggerSlot=chosen; triggerPreparationTicks=ticks;
+                    triggerNotBefore=now+25_000_000L; return;
                 }
-                if (shield && !triggerAxe(triggerStack.invoke(inv, slot))) return;
+                if (shield && !triggerAxe(triggerStack.invoke(inv,slot))) return;
             }
             // All checks and the vanilla calls happen synchronously on the client
             // thread. Never queue a Windows click, replay failures or catch up.
@@ -1153,6 +1378,7 @@ public class WorldBridge {
                 !Float.isFinite(finalCooldown) || finalCooldown > 1.f || finalCooldown < triggerThreshold ||
                 triggerService(8, p, w, e, 0, generation) != manual ||
                 (onClick && !triggerLeftDown(c)) ||
+                (shieldTrigger && shieldTriggerState(c,p,w,m,e,triggerSlot)!=1) ||
                 (triggerShield(p, e) && !triggerAxe(triggerStack.invoke(inv, triggerSlot)))) { cancelTrigger(); return; }
             // Reserve the next cycle before a mutating call: an exception may
             // follow an already sent packet, so this feature then suspends.
@@ -1160,6 +1386,7 @@ public class WorldBridge {
             triggerAttack.invoke(m, p, e);
             if (swingHand) triggerSwing.invoke(p, triggerHand);
             if (clickSimulation) simulateTriggerClick(c, p, w, generation, manual);
+            shieldFinishTrigger(true);
             triggerService(4, p, w, e, 0, 0);
             triggerPreparedSlot = triggerPreparationTicks = -1;
             triggerLastTicks = triggerTicks.getInt(p);
@@ -2761,6 +2988,8 @@ public class WorldBridge {
     }
 
     public synchronized void stop() {
+        try { cancelShield(); } catch (ReflectiveOperationException ignored) {}
+        shieldActive=false; shieldClearLease(); shieldPendingTarget=shieldManualOverride=null;
         try { cancelAura(); } catch (ReflectiveOperationException ignored) {}
         auraActive=false; auraPlayer=auraWorld=auraManager=auraInv=null; auraCycle();
         auraScene=List.of();auraDefenses.clear();auraBreakAttempts.clear();auraRejectedSites.clear();
@@ -2774,7 +3003,7 @@ public class WorldBridge {
         jumpSeeded = jumpHolding = jumpPending = false;
         jumpPlayer = jumpWorld = jumpOptions = jumpBinding = jumpInput = jumpPreviousSource = null;
         jumpOwner = null;
-        triggerActive = false;
+        triggerActive = triggerRequested = false;
         triggerPlayer = triggerWorld = triggerManager = triggerTarget = triggerInv = null;
         triggerCycleSeeded = false; triggerReady = triggerNotBefore = 0;
         stopped = true; sneakOwner = pearlOwner = null; bridgeNonce = pearlNonce = 0;

@@ -71,7 +71,8 @@ public final class TriggerTimingTest {
     Client c=new Client();
     long now=1_000_000_000L;
     int target=12108;
-    boolean triggerActive=true, triggerFailed, triggerCycleSeeded;
+    boolean shieldActive, shieldTrigger;
+    boolean triggerRequested, triggerActive=true, triggerFailed, triggerCycleSeeded;
     Object triggerPlayer, triggerWorld, triggerManager, triggerTarget, triggerInv;
     long triggerEpoch, triggerGeneration, triggerManual, triggerReady, triggerCritical=-1, triggerNotBefore;
     int triggerSlot=-1, triggerLastTicks=-1, triggerPreparedSlot=-1, triggerPreparationTicks=-1;
@@ -119,6 +120,9 @@ public final class TriggerTimingTest {
     void prepareTriggerSimulation() {}
     void simulateTriggerClick(Object c, Object p, Object w, long generation, long manual) {}
     boolean triggerWeapon(Object p, Object w, Object inv, int slot, int weapon) { return true; }
+    void shieldFinishTrigger(boolean consumed) {}
+    int shieldPrepare(Object c,Object p,Object w,Object m,Object e,boolean fromTrigger) { return -1; }
+    int shieldTriggerState(Object c,Object p,Object w,Object m,Object e,int slot) { return -1; }
     boolean triggerShield(Object p, Object e) { return false; }
     boolean triggerAxe(Object s) { return false; }
     METHODS

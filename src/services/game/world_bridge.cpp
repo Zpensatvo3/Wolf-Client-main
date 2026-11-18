@@ -18,7 +18,7 @@ extern JavaVM* jvm;
 #include "../../modules/combat/settings/anchor_macro_settings.hpp"
 #include "../../modules/combat/settings/auto_totem_settings.hpp"
 #include "../../modules/combat/settings/crystal_aura_settings.hpp"
-#include "../../modules/combat/shield_breaker.hpp"
+#include "../../modules/combat/settings/shield_breaker_settings.hpp"
 #include "../../modules/combat/mace_swap.hpp"
 #include "../../friends/friends.hpp"
 #include "anti_bot_service.hpp"
@@ -44,13 +44,17 @@ namespace
     jmethodID totem_tick_id = nullptr, totem_cancel_id = nullptr;
     const std::atomic<std::uint64_t>* totem_reset_source = nullptr;
     std::uint64_t totem_expected_generation = 0;
-    std::array<bool, 9> prepared{}, rejected{}, suspended{};
+    std::array<bool, 10> prepared{}, rejected{}, suspended{};
     jmethodID aura_tick_id = nullptr, aura_cancel_id = nullptr, aura_action_id = nullptr;
     const std::atomic<std::uint64_t>* aura_reset_source = nullptr;
     std::uint64_t aura_expected_generation = 0;
     const std::atomic<std::uint64_t>* trigger_reset_source = nullptr;
     std::uint64_t trigger_expected_generation = 0;
     int trigger_helper = 0;
+    jmethodID shield_tick_id=nullptr, shield_cancel_id=nullptr, shield_manual_id=nullptr, shield_action_id=nullptr;
+    const std::atomic<std::uint64_t>* shield_reset_source=nullptr;
+    const std::atomic_bool* shield_active_source=nullptr;
+    std::uint64_t shield_expected_generation=0;
     bool failed = false;
     void report_java_failure(JNIEnv* env, const char* operation)
     {
@@ -180,7 +184,6 @@ namespace
             jni::get_env()->IsSameObject(w, context.world.object_instance);
         const maps::ClientPlayerEntity player = same ? context.player : maps::ClientPlayerEntity{};
         const maps::ClientPlayerInteractionManager manager = same ? context.interaction : maps::ClientPlayerInteractionManager{};
-        if (trigger_helper == 2) modules::shield_breaker::finish_trigger_preparation(player, manager, consumed && same);
         if (trigger_helper == 3) modules::mace_swap::finish_trigger_preparation(player, manager, consumed && same);
         trigger_helper = 0;
     }
@@ -202,21 +205,16 @@ namespace
                     !platform::jni_context::clear_exception();
             }
             case 1: services::combat::claim_trigger(value, static_cast<std::uint64_t>(epoch)); return 1;
-            case 2:
-                trigger_helper = 2;
-                if (modules::shield_breaker::prepare_for_trigger_attack()) return modules::shield_breaker::trigger_prepared_slot();
-                return -1;
+            case 2: return -1; // Shield preparation is Java-owned.
             case 3:
                 trigger_helper = 3;
                 if (modules::mace_swap::prepare_for_trigger_attack()) return modules::mace_swap::trigger_prepared_slot();
                 return -1;
             case 6: {
                 maps::ClientPlayerEntity player(p, false); maps::ClientWorld world(w, false);
-                int slot = modules::shield_breaker::starting_slot_if_owned(player, world, value);
-                return slot >= 0 ? slot : modules::mace_swap::starting_slot_if_owned(player, world, value);
+                return modules::mace_swap::starting_slot_if_owned(player,world,value);
             }
-            case 7: return value == (trigger_helper == 2 ? modules::shield_breaker::trigger_prepared_slot() :
-                trigger_helper == 3 ? modules::mace_swap::trigger_prepared_slot() : -1);
+            case 7: return value==(trigger_helper==3 ? modules::mace_swap::trigger_prepared_slot() : -1);
             case 8: return static_cast<std::uint64_t>(epoch) == trigger_expected_generation ?
                 static_cast<jlong>(services::input::manual_attack_generation()) : -1;
             case 10: return -1; // Shield already handled by the selected axe.
@@ -263,6 +261,27 @@ namespace
             if (exception) env->ThrowNew(exception, "Crystal Aura shared service failed");
             return 0;
         }
+    }
+    jlong JNICALL shield_service(JNIEnv* env,jobject self,jint operation,jobject p,jobject w,jobject e,jlong generation) {
+        if (suspended[9] || rejected[9] || !permitted() || !shield_active_source || !shield_active_source->load(std::memory_order_acquire) ||
+            !shield_reset_source || static_cast<std::uint64_t>(generation)!=shield_expected_generation ||
+            shield_reset_source->load(std::memory_order_acquire)!=shield_expected_generation) return operation==3 ? -1 : 0;
+        try {
+            if (operation==0) {
+                if (!e) return 1;
+                maps::Entity target(e,false);
+                return target && !friends::is_friend(target) && !services::anti_bot::is_bot(target) && !platform::jni_context::clear_exception();
+            }
+            if (operation==1) return services::combat::try_unowned_attack([&] {
+                return env->CallBooleanMethod(self,shield_action_id)==JNI_TRUE && !env->ExceptionCheck();
+            });
+            if (operation==3) return static_cast<jlong>(services::input::manual_attack_generation());
+        } catch (...) {
+            platform::jni_context::clear_exception();
+            auto type=env->FindClass("java/lang/IllegalStateException");
+            if (type) env->ThrowNew(type,"Shield shared service failed");
+        }
+        return 0;
     }
     template<class T> T checked(JNIEnv* env, T value) {
         if (!value || env->ExceptionCheck()) throw std::runtime_error("World JNI binding");
@@ -645,6 +664,7 @@ namespace
             if (!bytes || !size || size > 0x7fffffffU) throw std::runtime_error("World resource");
             auto type = checked(env, env->DefineClass("net/onestep/hybrid/WorldBridge", loader, static_cast<const jbyte*>(bytes), static_cast<jsize>(size)));
             JNINativeMethod callbacks[]{
+                {const_cast<char*>("shieldService"),const_cast<char*>("(ILjava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;J)J"),reinterpret_cast<void*>(&shield_service)},
                 {const_cast<char*>("safeAnchorNativeTick"), const_cast<char*>("()V"), reinterpret_cast<void*>(&safe_anchor_native_tick)},
                 {const_cast<char*>("auraService"), const_cast<char*>("(ILjava/lang/Object;IJJ)J"), reinterpret_cast<void*>(&aura_service)},
                 {const_cast<char*>("triggerService"), const_cast<char*>("(ILjava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;IJ)J"), reinterpret_cast<void*>(&trigger_service)},
@@ -662,8 +682,12 @@ namespace
             anchor_cancel_id = checked(env, env->GetMethodID(type, "cancelAnchor", "()V"));
             jump_tick_id = checked(env, env->GetMethodID(type, "tickJump", "(ZJIIIZ)V"));
             jump_cancel_id = checked(env, env->GetMethodID(type, "cancelJump", "()V"));
+            shield_tick_id=checked(env,env->GetMethodID(type,"tickShield","(ZJIIIIZZZZ)V"));
+            shield_cancel_id=checked(env,env->GetMethodID(type,"cancelShield","()Z"));
+            shield_manual_id=checked(env,env->GetMethodID(type,"prepareShieldManual","()Z"));
+            shield_action_id=checked(env,env->GetMethodID(type,"executeShieldAction","()Z"));
             trigger_tick_id = checked(env, env->GetMethodID(type, "tickTrigger", "(ZJJFFIIIIIZZZ)V"));
-            trigger_cancel_id = checked(env, env->GetMethodID(type, "cancelTrigger", "()V"));
+            trigger_cancel_id = checked(env, env->GetMethodID(type, "deactivateTrigger", "()V"));
             aura_tick_id = checked(env,env->GetMethodID(type,"tickAura","(ZJ[I)[I"));
             aura_cancel_id = checked(env,env->GetMethodID(type,"cancelAura","()V"));
             aura_action_id = checked(env,env->GetMethodID(type,"executeAuraAction","()Z"));
@@ -693,7 +717,7 @@ namespace
     services::game::hybrid::result prepare(unsigned feature) {
         using services::game::hybrid::result;
 
-        if (feature < 1 || feature > 8) return result::unavailable;
+        if (feature < 1 || feature > 9) return result::unavailable;
         if constexpr (mc::target.build_id != 12111) if (feature < 3) return result::native_fallback;
         if (!permitted() || !platform::jni_context::bind_current_thread() || suspended[feature]) return result::unavailable;
         if (rejected[feature] || !connect(jni::get_env())) return result::native_fallback;
@@ -905,6 +929,36 @@ void services::game::world_bridge::cancel_trigger()
         suspended[4] = true;
     }
 }
+void services::game::world_bridge::tick_shield(const module_settings::shield_breaker& settings,const std::atomic_bool& active,
+    const std::atomic<std::uint64_t>& generation)
+{
+    if (!active || !permitted()) { cancel_shield(); return; }
+    if (!platform::jni_context::bind_current_thread()) return;
+    jni::frame frame{128};
+    if (prepare(9)!=hybrid::result::ready) { cancel_shield(); return; }
+    shield_expected_generation=generation.load(std::memory_order_acquire); shield_reset_source=&generation; shield_active_source=&active;
+    jni::get_env()->CallVoidMethod(bridge,shield_tick_id,JNI_TRUE,static_cast<jlong>(shield_expected_generation),
+        static_cast<jint>(settings.switch_ticks),static_cast<jint>(settings.hit_delay),static_cast<jint>(settings.config_axe_slot-1),
+        static_cast<jint>(settings.return_delay),static_cast<jboolean>(settings.switch_back),static_cast<jboolean>(settings.stun),
+        static_cast<jboolean>(settings.click_simulation),static_cast<jboolean>(settings.hold_axe));
+    if (!checked_result(9,true)) cancel_shield();
+}
+void services::game::world_bridge::cancel_shield()
+{
+    shield_reset_source=nullptr; shield_active_source=nullptr; shield_expected_generation=0;
+    if (!bridge || !shield_cancel_id || !platform::jni_context::bind_current_thread()) return;
+    jni::frame frame{32};
+    jni::get_env()->CallBooleanMethod(bridge,shield_cancel_id);
+    if (platform::jni_context::clear_exception()) suspended[9]=true;
+}
+bool services::game::world_bridge::prepare_shield_manual()
+{
+    if (!permitted() || !bridge || !prepared[9] || suspended[9] || !platform::jni_context::bind_current_thread()) return false;
+    jni::frame frame{96};
+    const bool prepared=checked_result(9,jni::get_env()->CallBooleanMethod(bridge,shield_manual_id)==JNI_TRUE);
+    if (suspended[9]) cancel_shield();
+    return prepared;
+}
 void services::game::world_bridge::tick_jump(const jump_reset_config::config& settings, bool active,
     const std::atomic<std::uint64_t>& generation)
 {
@@ -1051,6 +1105,7 @@ void services::game::world_bridge::shutdown()
 {
     set_safe_anchor_active_id = is_safe_anchor_active_id = nullptr;
     safe_anchor_active_state.store(false);
+    cancel_shield();
     cancel_aura();
     totem_reset_source = nullptr; totem_expected_generation = 0;
     anchor_reset_source = nullptr; anchor_expected_generation = 0;
@@ -1065,6 +1120,7 @@ void services::game::world_bridge::shutdown()
     bridge = nullptr; prepare_id = edge_id = support_id = force_id = input_id = release_edge_id = nullptr;
     pearl_id = begin_id = use_id = release_pearl_id = stop_id = nullptr;
     crystal_tick_id = crystal_cancel_id = crystal_input_id = nullptr;
+    shield_tick_id=shield_cancel_id=shield_manual_id=shield_action_id=nullptr;
     trigger_tick_id = trigger_cancel_id = nullptr; trigger_reset_source = nullptr; trigger_helper = 0;
     aura_tick_id = aura_cancel_id = aura_action_id = nullptr;
     jump_tick_id = jump_cancel_id = nullptr;

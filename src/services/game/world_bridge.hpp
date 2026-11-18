@@ -6,7 +6,7 @@
 
 namespace trigger_engine { struct config; }
 namespace jump_reset_config { struct config; }
-namespace module_settings { struct anchor_macro; struct auto_totem; struct crystal_aura; }
+namespace module_settings { struct shield_breaker; struct anchor_macro; struct auto_totem; struct crystal_aura; }
 
 namespace services::game::world_bridge
 {
@@ -33,6 +33,9 @@ namespace services::game::world_bridge
     void cancel_aura();
     void tick_trigger(const trigger_engine::config& settings, bool active, const std::atomic<std::uint64_t>& generation);
     void cancel_trigger();
+    void tick_shield(const module_settings::shield_breaker&,const std::atomic_bool& active,const std::atomic<std::uint64_t>& generation);
+    void cancel_shield();
+    bool prepare_shield_manual();
     void tick_jump(const jump_reset_config::config& settings, bool active, const std::atomic<std::uint64_t>& generation);
     void cancel_jump();
     void tick_anchor(const module_settings::anchor_macro& settings, bool active, const std::atomic<std::uint64_t>& generation,
