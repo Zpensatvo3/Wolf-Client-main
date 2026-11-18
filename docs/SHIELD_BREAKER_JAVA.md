@@ -32,7 +32,7 @@ Tamamlanmamış bir hazırlık iptal edilirse slot rollback’i yapılır; Switc
 - Sword Only filtresi otomatik balta hazırlığı yüzünden kendini reddetmez: modülün gerçekten sahip olduğu başlangıç slotu kullanılır. Kullanıcının elle tuttuğu balta, Sword Only filtresini aşmaz.
 - Slot değişiminden sonra aynı hazırlama tick’inde hit yapılmaz. Oyunun güncel cooldown’u ve Triggerbot’un cooldown/reaction/deadline durumları korunur. Hedeften çıkıp girmek zamanlamayı yeniden örneklemez.
 - Saldırıdan önce hedef, dünya, oyuncu, inventory, manager, slot, kalkan yönü, yeni ray, izin ve input nesli tekrar kontrol edilir. Tüm kontroller client thread’inde senkrondur.
-- Stun, Triggerbot açıkken ek vuruş göndermez; Triggerbot tek saldırı sahibidir. Referanstaki global non-physical attack cancellation kopyalanmadı; aksi halde Triggerbot’un kendi Java hit’i de iptal edilebilirdi.
+- Stun, Triggerbot açıkken ek vuruş göndermez; Triggerbot tek saldırı sahibidir; vuruşun Swing Hand ve Click Simulation tercihleri Triggerbot ayarından gelir. Referanstaki global non-physical attack cancellation kopyalanmadı; aksi halde Triggerbot’un kendi Java hit’i de iptal edilebilirdi.
 
 Bağımsız modda ana hit için ayrıca en az %90 oyun cooldown’u gerekir. Stun açıkken isteğe bağlı ikinci hit, referanstaki gibi aynı işlemde gönderilebilir; her ikinci hit öncesi hedef tekrar doğrulanır. Dolayısıyla bu seçenek her iki hit’in de tam hasarlı olacağı garantisi değildir. Varsayılanı kapalıdır.
 
@@ -44,8 +44,8 @@ Gerçek sol tıklama Java’da yalnız hazırlık yapar; ekstra saldırı gönde
 
 ## Doğrulama
 
-- `scripts/Test-ShieldBreaker.py`: gerçek WorldBridge sınıfında 43 kontrol; kaynak ve gömülü classfile ayrı çalıştırılır. Oyun API’leri inert fixture’lardır; gerçek Minecraft uyumluluk kabulü değildir.
-- Kontroller: tick/render ayrımı, switch/hit gecikmesi, balta yokluğu, Hold Axe, Switch Back, manuel override, menü/oturum kaybı, yön/arkadaş/using/ray filtreleri, sahiplik sonrası hedef/izin değişimi, Stun, callback queue/hold koruması, sync hatası/retry, Triggerbot Sword Only ve tek hit, On Click iptali, mutasyon hatası sonrası replay olmaması, manuel takeover, fallback tick sınırı ve stop referans temizliği.
+- `scripts/Test-ShieldBreaker.py`: gerçek WorldBridge sınıfında 47 kontrol; kaynak ve gömülü classfile ayrı çalıştırılır. Oyun API’leri inert fixture’lardır; gerçek Minecraft uyumluluk kabulü değildir.
+- Kontroller: tick/render ayrımı, switch/hit gecikmesi, balta yokluğu, Hold Axe, Switch Back, manuel override, menü/oturum kaybı, yön/arkadaş/using/ray filtreleri, sahiplik sonrası hedef/izin değişimi, Stun, callback queue/hold koruması, sync hatası/retry, Triggerbot Sword Only ve tek hit, On Click iptali, mutasyon hatası sonrası replay olmaması, manuel takeover, fallback tick sınırı, geçiş öncesi aday/manuel override dünya temizliği ve stop referans temizliği.
 - Mevcut TriggerTiming/TriggerLifecycle testleri korunur. Test-HybridBridge yeni testi hem kaynak hem gömülü bytecode için çalıştırır. JNI sözleşme kontrolü yeni 5 bridge sözleşmesiyle 78 giriş doğrular.
 - Yeni ayarların varsayılanları ve eski config alanları remaining_settings/public_config/trigger_config testlerinde kontrol edilir. Modül kataloğu 55 ID olarak kalır.
 - Gerçek oyun/sunucu, shield-disable paketi, ek CPS HUD’larının callback algısı ve diğer Minecraft sürümlerinin oyun kabulü ayrıca yapılmalıdır.

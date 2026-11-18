@@ -113,6 +113,13 @@ public final class ShieldBreakerBridgeTest {
         recover(c);f("triggerNotBefore").setLong(b,1);publish(b);trigger(b);ClientTickEvents.fire(c);
         check(c.field_1761.attacks==1 && c.field_1761.slots.equals(List.of(3)),"Trigger owns a single hit, no standalone stun duplicate");
         recover(c);publish(b);trigger(b);ClientTickEvents.fire(c);check(c.field_1761.attacks==1,"preserve Trigger post-hit timing");
+        c=setup();b=new Bridge();b.switches=4;publish(b);trigger(b);ClientTickEvents.fire(c);
+        check(f("shieldTarget").get(b)!=null && (int)f("shieldOldSlot").get(b)==-1,"waiting switch delay tracks a Java candidate");
+        c.fresh=null;ClientTickEvents.fire(c);check(f("shieldTarget").get(b)==null && f("shieldPlayer").get(b)==null,"Trigger target loss clears pre-switch candidate references");
+        c=setup();b=new Bridge();publish(b);trigger(b);ClientTickEvents.fire(c);c.field_1724.inv.slot=5;ClientTickEvents.fire(c);
+        check(f("shieldManualOverride").get(b)!=null,"manual override tracks current target");
+        c.field_1687=new class_638();c.field_1724=new class_746();c.fresh=null;ClientTickEvents.fire(c);
+        check(f("shieldManualOverride").get(b)==null && f("shieldTarget").get(b)==null,"new world drops manual override and candidate references");
         c=setup();b=new Bridge();publish(b);trigger(b);ClientTickEvents.fire(c);b.cancelTrigger();check(c.field_1724.inv.slot==0,"Trigger cancellation rolls Java axe preparation back");
         c=setup();b=new Bridge();publish(b);trigger(b);ClientTickEvents.fire(c);c.field_1761.failSync=true;
         try{b.cancelTrigger();throw new AssertionError("trigger restore failure expected");}catch(ReflectiveOperationException expected){}

@@ -766,7 +766,7 @@ public class WorldBridge {
         if (!shieldCurrent() || e==null || shieldFresh(c,p,w,m)!=e) return -1;
         Object inv=triggerInventory.invoke(p); if (inv==null) return -1;
         int selectedSlot=triggerSelected.getInt(inv); if (selectedSlot<0 || selectedSlot>8) return -1;
-        if (shieldOldSlot>=0 && (shieldPlayer!=p || shieldWorld!=w || shieldManager!=m || shieldInv!=inv)) shieldClearLease();
+        if (shieldPlayer!=null && (shieldPlayer!=p || shieldWorld!=w || shieldManager!=m || shieldInv!=inv)) shieldClearLease();
         if (shieldRestoring) {
             if (!shieldRestore(true)) return -1;
             selectedSlot=triggerSelected.getInt(inv);
@@ -786,7 +786,7 @@ public class WorldBridge {
             shieldPlayer=p; shieldWorld=w; shieldManager=m; shieldInv=inv; shieldTarget=e;
             shieldCandidateSlot=selectedSlot; shieldSwitchReady=shieldTick+shieldSwitchTicks;
         }
-        if (shieldTick<shieldSwitchReady) return -1;
+        if (shieldTick<shieldSwitchReady) { shieldTrigger=fromTrigger; return -1; }
         if (shieldOldSlot<0) {
             int axe=shieldAxeSlot(inv,selectedSlot); if (axe<0) return -1;
             shieldOldSlot=selectedSlot; shieldOwnedSlot=axe; shieldTrigger=fromTrigger;
@@ -855,7 +855,9 @@ public class WorldBridge {
             Object p=player.get(c),w=world.get(c),m=manager.get(c);
             if (!live(c,p,w) || m==null) { cancelShield(); return; }
             if (shieldRestoring) { shieldRestore(true); return; }
-            if (shieldOldSlot>=0 && (p!=shieldPlayer || w!=shieldWorld || m!=shieldManager)) shieldClearLease();
+            if (shieldPlayer!=null && (p!=shieldPlayer || w!=shieldWorld || m!=shieldManager ||
+                triggerInventory.invoke(p)!=shieldInv)) shieldClearLease();
+            if (shieldManualOverride!=null && triggerFresh(c,p)!=shieldManualOverride) shieldManualOverride=null;
             if (shieldOldSlot>=0 && triggerSelected.getInt(shieldInv)!=shieldOwnedSlot) {
                 shieldManualOverride=shieldTarget; shieldClearLease(); return;
             }
