@@ -7,32 +7,41 @@
 #include "../../platform/adapter/game_adapter.hpp"
 #include "../ui_redirect.hpp"
 #include <vector>
+#include <map>
+#include <cstdint>
 #include <algorithm>
 #include <iostream>
 
 namespace {
-    struct glow_record { jobject entity=nullptr; jboolean original=JNI_FALSE, written=JNI_TRUE; };
-    std::vector<glow_record> glow_records;
+    struct glow_record {
+        jobject entity=nullptr;
+        jboolean original=JNI_FALSE, written=JNI_TRUE;
+        bool applied=false;
+        std::uint64_t seen=0;
+    };
+    // IDs are scoped by glow_world; Java identity also guards ID reuse.
+    std::map<int,glow_record> glow_records;
     jobject glow_world=nullptr;
+    std::uint64_t glow_generation=0;
+    bool restore_native_glow(glow_record& record,bool restore)
+    {
+        if (!restore || !record.applied) return true;
+        try {
+            maps::Entity entity(record.entity,false);
+            auto current=entity.getFlag(6);
+            if (platform::jni_context::clear_exception()) return false;
+            if (current==record.written) entity.setFlag(6,record.original);
+            return !platform::jni_context::clear_exception();
+        } catch (...) { platform::jni_context::clear_exception(); return false; }
+    }
     void release_native_glow(bool restore,bool final)
     {
         auto* env=jni::get_env(); if (!env) return;
         jni::frame frame{};
         for (auto it=glow_records.begin();it!=glow_records.end();) {
-            bool done=!restore;
-            if (restore) {
-                try {
-                    maps::Entity entity(it->entity,false);
-                    auto current=entity.getFlag(6);
-                    if (!platform::jni_context::clear_exception()) {
-                        // Preserve a newer, distinguishable external update.
-                        if (current==it->written) entity.setFlag(6,it->original);
-                        done=!platform::jni_context::clear_exception();
-                    }
-                } catch (...) { platform::jni_context::clear_exception(); }
-            }
-            if (done || final) { env->DeleteGlobalRef(it->entity); it=glow_records.erase(it); }
-            else ++it;
+            if (restore_native_glow(it->second,restore) || final) {
+                env->DeleteGlobalRef(it->second.entity); it=glow_records.erase(it);
+            } else ++it;
         }
         if (glow_records.empty() && glow_world) { env->DeleteGlobalRef(glow_world); glow_world=nullptr; }
     }
@@ -50,40 +59,54 @@ void modules::glow_esp::run(::cache& cache)
             release_native_glow(false,true);
         if (!glow_world) glow_world=env->NewGlobalRef(cache.world.object_instance);
         if (!glow_world || platform::jni_context::clear_exception()) return;
-        // Retain undo records only for currently eligible players.
-        std::vector<jobject> seen;
         auto iterable=platform::adapter::get().get_players(cache.world);
         if (!iterable) return;
         maps::Iterable collection(iterable.object_instance,false);
         auto iterator=collection.iterator.call();
         if (!iterator || platform::jni_context::clear_exception()) return;
+        if (++glow_generation==0) { // Avoid a generation collision after wrap.
+            for (auto& [id,record]:glow_records) record.seen=0;
+            ++glow_generation;
+        }
         while (iterator.hasNext.call()==JNI_TRUE) {
             auto object=iterator.next.call();
+            if (platform::jni_context::clear_exception()) return; // Incomplete scan cannot retire owners.
             maps::Entity entity(object.object_instance,false);
             if (!entity || entity.is_same_object(cache.player) ||
                 !entity.is_instance_of<maps::PlayerEntity>() || entity.isAlive.call()==JNI_FALSE ||
                 services::anti_bot::is_bot(entity)) continue;
-            auto found=std::find_if(glow_records.begin(),glow_records.end(),[&](const auto& record) {
-                return env->IsSameObject(record.entity,entity.object_instance)==JNI_TRUE;
-            });
-            if (found!=glow_records.end()) { seen.push_back(found->entity); continue; }
-            const auto original=entity.getFlag(6);
-            if (platform::jni_context::clear_exception() || original==JNI_TRUE) continue;
-            auto owned=env->NewGlobalRef(entity.object_instance);
-            if (!owned || platform::jni_context::clear_exception()) continue;
-            // Record before mutation so a failed write still has an undo owner.
-            glow_records.push_back({owned,original,JNI_TRUE}); seen.push_back(owned);
+            const int id=entity.getId.call();
+            if (platform::jni_context::clear_exception()) return;
+            auto found=glow_records.find(id);
+            if (found!=glow_records.end() && !env->IsSameObject(found->second.entity,entity.object_instance)) {
+                // Reused numeric ID: finish the old object's undo before ownership changes.
+                if (!restore_native_glow(found->second,true)) { found->second.seen=glow_generation; continue; }
+                env->DeleteGlobalRef(found->second.entity); glow_records.erase(found); found=glow_records.end();
+            }
+            if (found==glow_records.end()) {
+                const auto original=entity.getFlag(6);
+                if (platform::jni_context::clear_exception() || original==JNI_TRUE) continue;
+                auto owned=env->NewGlobalRef(entity.object_instance);
+                if (!owned || platform::jni_context::clear_exception()) continue;
+                try { found=glow_records.emplace(id,glow_record{owned,original,JNI_TRUE,false,0}).first; }
+                catch (...) { env->DeleteGlobalRef(owned); throw; }
+            }
+            auto& record=found->second; record.seen=glow_generation;
+            if (record.applied) continue;
+            // A failed first write is retried. If someone else enabled glow
+            // before retry, leave that value alone and abandon our pending owner.
+            if (entity.getFlag(6)==JNI_TRUE) {
+                if (platform::jni_context::clear_exception()) continue;
+                env->DeleteGlobalRef(record.entity); glow_records.erase(found); continue;
+            }
+            if (platform::jni_context::clear_exception()) continue;
             entity.setFlag(6,JNI_TRUE);
-            platform::jni_context::clear_exception();
+            record.applied=!platform::jni_context::clear_exception();
         }
+        if (platform::jni_context::clear_exception()) return;
         for (auto it=glow_records.begin();it!=glow_records.end();) {
-            if (std::find(seen.begin(),seen.end(),it->entity)!=seen.end()) { ++it; continue; }
-            maps::Entity entity(it->entity,false);
-            auto current=entity.getFlag(6);
-            if (platform::jni_context::clear_exception()) { ++it; continue; }
-            if (current==it->written) entity.setFlag(6,it->original);
-            if (platform::jni_context::clear_exception()) { ++it; continue; }
-            env->DeleteGlobalRef(it->entity); it=glow_records.erase(it);
+            if (it->second.seen==glow_generation || !restore_native_glow(it->second,true)) { ++it; continue; }
+            env->DeleteGlobalRef(it->second.entity); it=glow_records.erase(it);
         }
     } catch (...) { platform::jni_context::clear_exception(); }
 }

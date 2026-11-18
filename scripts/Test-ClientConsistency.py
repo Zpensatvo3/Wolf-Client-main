@@ -16,6 +16,8 @@ source=r'''
 #include <cassert>
 #include <algorithm>
 #include <vector>
+#include <map>
+#include <cstdint>
 #include <iostream>
 #include "src/platform/input/key_codes.hpp"
 constexpr int VK_SPACE=0x20;
@@ -53,9 +55,10 @@ struct suppressed_carrier {void* entity;void* original_text;carrier_kind kind;in
 CARRIER
 std::vector<suppressed_carrier> suppressed_carriers;
 RELEASE_LIST
-struct glow_record { jobject entity=nullptr; jboolean original=JNI_FALSE,written=JNI_TRUE; };
-std::vector<glow_record> glow_records;
+struct glow_record { jobject entity=nullptr; jboolean original=JNI_FALSE,written=JNI_TRUE; bool applied=false; std::uint64_t seen=0; };
+std::map<int,glow_record> glow_records;
 jobject glow_world=nullptr;
+RESTORE_NATIVE
 GLOW
 bool write_gamma(maps::SimpleOption& option,double value){if(failure){failure=false;return false;} *static_cast<double*>(option.object)=value;return true;}
 namespace modules { struct full_bright {void* gamma_option_=nullptr;double original_gamma=.5;bool original_gamma_captured=true;void restore_gamma(bool);}; }
@@ -74,7 +77,7 @@ int main(){
  int original=3; item display; suppressed_carrier text{&display,&original,carrier_kind::text_display,0};
  failure=true; assert(!restore_and_release_carrier(text,true)); assert(text.original_text && deleted==1);
  assert(restore_and_release_carrier(text,true)); assert(display.text==3 && deleted==3);
- item first{1},external{0}; glow_records={{&first,0,1},{&external,1,1}};
+ item first{1},external{0}; glow_records={{1,{&first,0,1,true,0}},{2,{&external,1,1,true,0}}};
  failure=true; release_native_glow(true,false); assert(glow_records.size()==1 && first.value==1 && external.value==0);
  release_native_glow(true,false); assert(glow_records.empty() && first.value==0);
  double gamma=16; modules::full_bright bright; bright.gamma_option_=&gamma;
@@ -92,6 +95,7 @@ for marker,value in {
  'BLOCK':block,
  'CARRIER':function((ROOT/'src/modules/visual/nametag.cpp').read_text(),'bool restore_and_release_carrier('),
  'RELEASE_LIST':function((ROOT/'src/modules/visual/nametag.cpp').read_text(),'    bool release_suppressed_carriers('),
+ 'RESTORE_NATIVE':function((ROOT/'src/modules/visual/glow_esp.cpp').read_text(),'    bool restore_native_glow('),
  'GLOW':function((ROOT/'src/modules/visual/glow_esp.cpp').read_text(),'    void release_native_glow('),
  'GAMMA':function((ROOT/'src/modules/visual/full_bright.cpp').read_text(),'void modules::full_bright::restore_gamma('),
 }.items(): source=source.replace(marker,value)

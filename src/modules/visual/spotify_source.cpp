@@ -841,9 +841,9 @@ void modules::spotify::source::poll(now_playing& local,std::string& active_key,p
     }
 
     const bool session_changed=cache.selected!=session;
-    const auto timeline=session.GetTimelineProperties();
-    const double base_position=static_cast<double>(timeline.Position().count())/1e7;
-    const double duration=static_cast<double>(timeline.EndTime().count())/1e7;
+    const auto timeline_before=session.GetTimelineProperties();
+    const double base_position=static_cast<double>(timeline_before.Position().count())/1e7;
+    const double duration=static_cast<double>(timeline_before.EndTime().count())/1e7;
     const auto now=std::chrono::steady_clock::now();
     // Retain the manager and metadata. Timeline/playback remain live every poll;
     // periodic fallback also catches title changes with identical durations.
@@ -863,6 +863,13 @@ void modules::spotify::source::poll(now_playing& local,std::string& active_key,p
 	trim(album);
 	if (title.empty()) title = "Unknown track";
 
+    // Metadata can wait seconds. Read a fresh timeline and stamp the same
+    // instant used for its wall-clock extrapolation, never the refresh start.
+    const auto timeline=session.GetTimelineProperties();
+    const auto sample_wall=winrt::clock::now();
+    const auto sampled_at=std::chrono::steady_clock::now();
+    const double sample_position=static_cast<double>(timeline.Position().count())/1e7;
+    const double sample_duration=static_cast<double>(timeline.EndTime().count())/1e7;
 	const auto playback = session.GetPlaybackInfo();
 	const bool playing =
 		playback.PlaybackStatus() == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing;
@@ -871,19 +878,19 @@ void modules::spotify::source::poll(now_playing& local,std::string& active_key,p
 	const std::string key = title + "\x1f" + artist + "\x1f" + album;
 	const bool track_changed = session_changed || (key != active_key);
 
-	double real_position = base_position;
+	double real_position = sample_position;
 	if (playing && last_updated.time_since_epoch().count() > 0)
 	{
-		const auto now_winrt = winrt::clock::now();
+		const auto now_winrt = sample_wall;
 		const int64_t diff = now_winrt.time_since_epoch().count() - last_updated.time_since_epoch().count();
 		if (diff > 0)
 		{
 			const double elapsed = static_cast<double>(diff) / 1e7;
-			real_position = base_position + elapsed;
+			real_position = sample_position + elapsed;
 		}
 	}
 
-	if (duration > 0.0 && real_position > duration) real_position = duration;
+	if (sample_duration > 0.0 && real_position > sample_duration) real_position = sample_duration;
 	if (real_position < 0.0) real_position = 0.0;
 
 
@@ -892,9 +899,9 @@ void modules::spotify::source::poll(now_playing& local,std::string& active_key,p
 	local.title = title;
 	local.artist = artist;
 	local.album = album;
-	local.duration = (std::max)(0.0, duration);
+	local.duration = (std::max)(0.0, sample_duration);
 	local.position = real_position;
-	local.sampled_at = now;
+	local.sampled_at = sampled_at;
 
     const auto update_lyrics=[&] {
         refresh_lyrics(local, title, artist, album, local.duration,epoch);

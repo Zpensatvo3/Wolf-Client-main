@@ -17,9 +17,9 @@ namespace gui
         count
 	};
 
-	inline bool draw = false;
+	inline std::atomic_bool draw{false};
 	inline std::atomic_bool should_unload{false};
-	inline bool loader_visible = true;
+	inline std::atomic_bool loader_visible{true};
 	// Fixed shortcut: Click GUI is always opened with Insert.
 	inline int menu_key = VK_INSERT;
 	inline bool menu_key_scanning = false;

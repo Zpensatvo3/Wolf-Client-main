@@ -3,6 +3,7 @@
 #endif
 
 #include "gui.hpp"
+#include "hook_transaction.hpp"
 #include "ui_state.hpp"
 #include "theme_palette.hpp"
 #include "surface_style.hpp"
@@ -64,7 +65,7 @@ namespace
 	wglSwapBuffers_t original_wglSwapBuffers = nullptr;
 	WNDPROC original_WndProc = nullptr;
 
-	HWND window = nullptr;
+	std::atomic<HWND> window{nullptr};
 	ImGuiContext* imGuiContext = nullptr;
 	HGLRC original_context = nullptr;
 	HGLRC new_context = nullptr;
@@ -72,7 +73,9 @@ namespace
 	std::atomic_bool request_shutdown{ false };
 	std::atomic_bool shut_down{ false };
 	std::atomic_bool focus_reset_pending{ false };
-	volatile bool run_once = true;
+	bool run_once = true; // Render-thread initialization state.
+    bool opengl_backend_ready=false, win32_backend_ready=false;
+    bool hook_engine_owned=false, swap_hook_owned=false;
 
 	int last_pressed_key = 0;
 	ImVector<ImWchar> text_glyph_ranges{};
@@ -562,56 +565,72 @@ static LRESULT CALLBACK detour_WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	return CallWindowProcA(original_WndProc, hWnd, msg, wParam, lParam);
 }
 
-static void uninit(HWND hWnd, HDC device)
+static bool uninit(HDC device)
 {
-    services::game::menu_input::shutdown();
-	panel_was_open = false;
-    for (auto* module : modules::get_modules())
-        module->on_render_shutdown();
-	// Release owned jump input while client-thread JNI and the input guard are
-	// still available, before module destruction/unhooking on the worker.
-	if (auto* jump = dynamic_cast<modules::jump_reset*>(modules::find_module_by_id("jump_reset")))
-		jump->cancel_on_client_thread();
-	if (auto* walk = dynamic_cast<modules::inv_walk*>(modules::find_module_by_id("inv_walk")))
-		walk->cancel_on_client_thread();
-	// UI textures are owned by the injected OpenGL context. Release them while
-	// that context is still valid so repeated window recreation and unloads do
-	// not leak the embedded logo/background textures.
-	if (new_context)
-	{
-		wglMakeCurrent(device, new_context);
-		gui::background::shutdown();
-		for (GLuint& texture : icon_textures)
-		{
-			if (texture)
-			{
-				glDeleteTextures(1, &texture);
-				texture = 0;
-			}
-		}
-		icon_texture_attempted.fill(false);
-	}
-	gui::grim::reset_runtime_state();
-	configs::keybind_profile::flush(true);
-	gui::reset_widget_runtime_state();
-	ImGui_ImplOpenGL3_Shutdown();
-	ImGui_ImplWin32_Shutdown();
-	ImGui::DestroyContext(imGuiContext);
-	SetWindowLongPtrA(hWnd, GWLP_WNDPROC, (LONG_PTR)original_WndProc);
-	wglMakeCurrent(device, original_context);
-	wglDeleteContext(new_context);
+    // Module callbacks may own the game's context (Sky); run them before
+    // switching to the UI context. Failed context acquisition keeps ownership
+    // intact so a later compatible swap can complete cleanup safely.
+    const HGLRC return_context=wglGetCurrentContext();
+    const HDC return_device=wglGetCurrentDC();
+    if (new_context) {
+        if (!wglMakeCurrent(device,new_context)) {
+            OutputDebugStringA("OneStep: renderer cleanup waiting for a compatible GL device\n");
+            return false;
+        }
+        if (!wglMakeCurrent(return_device,return_context)) return false;
+    }
+    if (!run_once) {
+        services::game::menu_input::shutdown();
+        panel_was_open=false;
+        for (auto* module:modules::get_modules()) module->on_render_shutdown();
+        if (auto* jump=dynamic_cast<modules::jump_reset*>(modules::find_module_by_id("jump_reset"))) jump->cancel_on_client_thread();
+        if (auto* walk=dynamic_cast<modules::inv_walk*>(modules::find_module_by_id("inv_walk"))) walk->cancel_on_client_thread();
+    }
+    if (imGuiContext) ImGui::SetCurrentContext(imGuiContext);
+    if (new_context) {
+        if (!wglMakeCurrent(device,new_context)) return false;
+        gui::background::shutdown();
+        for (GLuint& texture:icon_textures) {
+            if (texture) glDeleteTextures(1,&texture);
+            texture=0;
+        }
+        icon_texture_attempted.fill(false);
+    }
+    if (imGuiContext) {
+        gui::grim::reset_runtime_state();
+        configs::keybind_profile::flush(true);
+        gui::reset_widget_runtime_state();
+        if (opengl_backend_ready) ImGui_ImplOpenGL3_Shutdown();
+        if (win32_backend_ready) ImGui_ImplWin32_Shutdown();
+        ImGui::DestroyContext(imGuiContext); imGuiContext=nullptr;
+    }
+    opengl_backend_ready=win32_backend_ready=false;
+    // Restore the saved proc on its owning HWND, never on the incoming swap's window.
+    const HWND owner=window.load(std::memory_order_acquire);
+    if (original_WndProc && owner && IsWindow(owner))
+        SetWindowLongPtrA(owner,GWLP_WNDPROC,reinterpret_cast<LONG_PTR>(original_WndProc));
+    original_WndProc=nullptr;
+    if (new_context) {
+        wglMakeCurrent(return_device,return_context==new_context ? nullptr : return_context);
+        wglDeleteContext(new_context); new_context=nullptr;
+    }
+    original_context=nullptr; window.store(nullptr,std::memory_order_release);
+    run_once=true;
+    return true;
 }
 
 static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 {
-	HWND current_window = WindowFromDC(device);
+    HWND current_window=WindowFromDC(device);
+    const HWND owner=window.load(std::memory_order_acquire);
+    if (owner && owner!=current_window && IsWindow(owner))
+        return original_wglSwapBuffers(device);
 
-
-	if (request_shutdown.load(std::memory_order_acquire))
+    if (request_shutdown.load(std::memory_order_acquire))
 	{
-		request_shutdown.store(false, std::memory_order_release);
-		MH_DisableHook(wglSwapBuffers);
-		uninit(current_window, device);
+        if (!uninit(device)) return original_wglSwapBuffers(device);
+        request_shutdown.store(false,std::memory_order_release);
+        MH_DisableHook(wglSwapBuffers);
 
 		// Finish the current swap through MinHook's trampoline before telling
 		// the worker thread that the render side is safe to remove. Signalling
@@ -628,16 +647,19 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 	// if already init, and window changed, cleanup and reinit
 	if (!run_once && window != current_window)
 	{
-		uninit(current_window, device);
-		run_once = true;
+        // Auxiliary windows do not own this renderer or its input hook.
+        if (IsWindow(window.load(std::memory_order_acquire))) return original_wglSwapBuffers(device);
+        if (!uninit(device)) return original_wglSwapBuffers(device);
 	}
 
 	if (run_once)
 	{
 		window = current_window;
-		if (!window) {
-			loader_ui::fail("Minecraft render window was not available");
-		}
+        if (!window) {
+            loader_ui::fail("Minecraft render window was not available");
+            gui::should_unload=true;
+            return original_wglSwapBuffers(device);
+        }
 		else
 		{
 			// Injection happens from another process, so explicitly return the
@@ -651,12 +673,19 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 		{
 			wglShareLists(last_context, new_context);
 		}
-		wglMakeCurrent(device, new_context);
+        if (!new_context || !wglMakeCurrent(device,new_context)) {
+            loader_ui::fail("Minecraft UI context initialization failed");
+            gui::should_unload=true;
+            return original_wglSwapBuffers(device);
+        }
 
 		original_WndProc = (WNDPROC)SetWindowLongPtrA(window, GWLP_WNDPROC, (LONG_PTR)detour_WndProc);
 		if (!original_WndProc) {
-			loader_ui::fail("Minecraft input window hook failed");
-		}
+            loader_ui::fail("Minecraft input window hook failed");
+            gui::should_unload=true;
+            wglMakeCurrent(device,last_context);
+            return original_wglSwapBuffers(device);
+        }
 
 		imGuiContext = ImGui::CreateContext();
 		ImGuiIO& io = ImGui::GetIO();
@@ -820,9 +849,15 @@ static BOOL WINAPI detour_wglSwapBuffers(HDC device)
 			colors[ImGuiCol_TabUnfocusedActive]     = ImVec4(0.16f, 0.15f, 0.20f, 1.00f);
 		}
 
-		ImGui_ImplOpenGL3_Init();
-		ImGui_ImplWin32_Init(window);
-		run_once = false;
+        opengl_backend_ready=ImGui_ImplOpenGL3_Init();
+        win32_backend_ready=opengl_backend_ready && ImGui_ImplWin32_Init(window);
+        if (!opengl_backend_ready || !win32_backend_ready) {
+            loader_ui::fail("Minecraft UI backend initialization failed");
+            gui::should_unload=true;
+            wglMakeCurrent(device,last_context);
+            return original_wglSwapBuffers(device);
+        }
+        run_once=false;
 	}
 
 	wglMakeCurrent(device, new_context);
@@ -1010,23 +1045,20 @@ bool gui::init()
 		return false;
 	}
 
-	if (MH_Initialize() != MH_OK)
-	{
-		loader_ui::fail("Native hook engine initialization failed");
-		return false;
-	}
-
-	if (MH_CreateHook(wglSwapBuffers, detour_wglSwapBuffers, (void**)&original_wglSwapBuffers) != MH_OK)
-	{
-		loader_ui::fail("OpenGL hook creation failed");
-		return false;
-	}
-
-	if (MH_EnableHook(wglSwapBuffers) != MH_OK)
-	{
-		loader_ui::fail("OpenGL hook activation failed");
-		return false;
-	}
+    struct hook_operations {
+        bool initialize() { return MH_Initialize()==MH_OK; }
+        bool create() { return MH_CreateHook(wglSwapBuffers,detour_wglSwapBuffers,reinterpret_cast<void**>(&original_wglSwapBuffers))==MH_OK; }
+        bool enable() { return MH_EnableHook(wglSwapBuffers)==MH_OK; }
+        void remove() { MH_RemoveHook(wglSwapBuffers); original_wglSwapBuffers=nullptr; }
+        void uninitialize() { MH_Uninitialize(); }
+    } operations;
+    gui::hook_transaction transaction(operations);
+    if (!transaction.initialize()) { loader_ui::fail("Native hook engine initialization failed"); return false; }
+    if (!transaction.create()) { loader_ui::fail("OpenGL hook creation failed"); return false; }
+    if (!transaction.enable()) { loader_ui::fail("OpenGL hook activation failed"); return false; }
+    hook_engine_owned=swap_hook_owned=true;
+    request_shutdown=false; shut_down=false;
+    transaction.commit();
 	return true;
 }
 
@@ -1175,8 +1207,8 @@ void gui::shutdown()
 	// Give the detour epilogue time to return completely before MinHook data
 	// and the DLL image can be released by the worker thread.
 	std::this_thread::sleep_for(std::chrono::milliseconds(50));
-	MH_RemoveHook(wglSwapBuffers);
-	MH_Uninitialize();
+    if (swap_hook_owned) { MH_RemoveHook(wglSwapBuffers); swap_hook_owned=false; }
+    if (hook_engine_owned) { MH_Uninitialize(); hook_engine_owned=false; }
 }
 
 int gui::get_last_pressed_key()

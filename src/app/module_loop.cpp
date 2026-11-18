@@ -45,7 +45,7 @@ void app::module_loop::tick(::cache& game)
             pressed = services::input::physical_scan_down(scan);
         pressed = pressed && platform::keys::binding_allowed(binding) && binding != gui::menu_key;
         if (keys_[entry].sample(binding, pressed, allow_input))
-            entry->enabled = !entry->enabled;
+            entry->toggle_enabled();
         const bool before = entry->prev_enabled;
         entry->maintenance(game);
         modules::tick_module(*entry, game);

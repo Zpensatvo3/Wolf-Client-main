@@ -6,6 +6,7 @@
 #include <random>
 #include <string>
 #include "config_fields.hpp"
+#include "module_runtime_state.hpp"
 
 class cache;
 
@@ -52,7 +53,12 @@ namespace modules
 
         bool display_options = false;
         float display_options_progress = 0.0f;
-        bool enabled = false;
+        // Requested state is shared by UI, worker and render callbacks.
+        std::atomic_bool enabled{false};
+        void toggle_enabled()
+        {
+            toggle_requested_state(enabled);
+        }
         bool prev_enabled = false;
         virtual float get_options_height() { return 45.0f; }
         // Legacy height describes custom controls; informational-only panels

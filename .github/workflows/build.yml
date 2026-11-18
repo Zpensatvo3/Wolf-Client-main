@@ -41,6 +41,9 @@ jobs:
         run: |
           python scripts/Test-Offline.py --jobs 2
           python scripts/Test-SpotifyTexture.py
+          python scripts/Test-RendererLifecycle.py
+          python scripts/Test-GlowRuntime.py
+          python scripts/Test-SpotifyTimeline.py
           python scripts/Test-ClientConsistency.py
           python scripts/Test-VisualRuntime.py
           python scripts/Test-NametagJvm.py --java-home "$JAVA_HOME"

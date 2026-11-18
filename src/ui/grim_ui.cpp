@@ -230,7 +230,7 @@ namespace
             state.selected = toggle_panel && state.selected == module ? nullptr : module;
         } else {
             state.selected = nullptr;
-            module->enabled = !module->enabled;
+            module->toggle_enabled();
         }
     }
 
@@ -737,7 +737,8 @@ namespace
         {
             ImGui::BeginDisabled(state.selected != module);
             const ImVec2 content_top = ImGui::GetCursorScreenPos();
-            gui::option_toggle("Enabled", &module->enabled, false);
+            bool requested=module->enabled.load(std::memory_order_acquire);
+            if (gui::option_toggle("Enabled", &requested, false)) module->toggle_enabled();
             const ImVec2 top = ImGui::GetCursorScreenPos();
             draw_text(ImGui::GetWindowDrawList(), gui::ui_font, 13.f,
                 ImVec2(top.x + 10.f, top.y + 8.f), ImGui::GetColorU32(ImGuiCol_Text), "Keybind");

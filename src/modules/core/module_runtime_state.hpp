@@ -1,7 +1,15 @@
 #pragma once
+#include <atomic>
 
 namespace modules
 {
+    inline void toggle_requested_state(std::atomic_bool& state)
+    {
+        bool expected=state.load(std::memory_order_acquire);
+        while (!state.compare_exchange_weak(expected,!expected,
+            std::memory_order_acq_rel,std::memory_order_acquire)) {}
+    }
+
     // Numeric input state, independent of Windows/JNI/UI for offline testing.
     class key_edge
     {

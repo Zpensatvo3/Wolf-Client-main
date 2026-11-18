@@ -369,7 +369,7 @@ void gui::hud_editor::render(const ImGuiViewport* viewport)
         const float scale = value[selected].scale;
         if (button("##visible", selected_module && selected_module->enabled ? "Visible" : "Hidden",
             location(0), button_size, selected_module && selected_module->enabled, !selected_module))
-        { remember(); selected_module->enabled = !selected_module->enabled; save(); }
+        { remember(); selected_module->toggle_enabled(); save(); }
         if (button("##scale_down", "-", location(1), button_size, false, !scalable || scale <= .5f)) set_scale(scale - .05f);
         char scale_text[24];
         std::snprintf(scale_text, sizeof(scale_text), "%.2fx", scale);

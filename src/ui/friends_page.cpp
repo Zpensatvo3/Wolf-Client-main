@@ -88,7 +88,7 @@ namespace gui::friends_page
             const auto p = ImGui::GetCursorScreenPos();
             const float width = ImGui::GetContentRegionAvail().x;
             ImGui::BeginDisabled(!manager);
-            if (ImGui::InvisibleButton("##middle_click_friends", ImVec2(width, 32)) && manager) manager->enabled = !manager->enabled;
+            if (ImGui::InvisibleButton("##middle_click_friends", ImVec2(width, 32)) && manager) manager->toggle_enabled();
             hint("Enable the friend manager. Aim at a player and press the mouse wheel to add or remove them.");
             const bool enabled = manager && manager->enabled;
             const float target = enabled ? 1.f : 0.f;
