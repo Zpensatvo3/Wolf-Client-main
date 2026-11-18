@@ -4,6 +4,8 @@ param(
     [switch]$AllMinecraftVersions,
     [switch]$Clean,
     [switch]$SkipSign,
+    [switch]$CompilerCache,
+    [switch]$Timing,
     [string]$PlatformToolset = ''
 )
 
@@ -40,8 +42,48 @@ $target = if ($Clean) { 'Rebuild' } else { 'Build' }
 $buildArgs = @($project, '/m', "/t:$target", '/p:Configuration=Release', '/p:Platform=x64', '/v:minimal', '/nologo')
 $buildArgs += "/p:MinecraftVersion=$MinecraftVersion"
 if ($PlatformToolset) { $buildArgs += "/p:PlatformToolset=$PlatformToolset" }
-& $msbuild @buildArgs
-if ($LASTEXITCODE -ne 0) { throw "Release build failed ($LASTEXITCODE)." }
+$buildArgs += '/p:PreferredToolArchitecture=x64'
+
+if ($CompilerCache) {
+    $cacheCommand = if ($env:SCCACHE_PATH) { Get-Command $env:SCCACHE_PATH -CommandType Application -ErrorAction SilentlyContinue }
+    if (-not $cacheCommand) {
+        throw 'CompilerCache requires SCCACHE_PATH pointing to sccache.exe.'
+    }
+    $env:SCCACHE_PATH = $cacheCommand.Source
+    $toolArguments = @($project, '/nologo', '/v:quiet', '/p:Configuration=Release', '/p:Platform=x64', '/getProperty:VCToolsInstallDir')
+    if ($PlatformToolset) { $toolArguments += "/p:PlatformToolset=$PlatformToolset" }
+    $toolsDirectory = (& $msbuild @toolArguments | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0) { throw 'Could not resolve the selected MSVC toolchain.' }
+    $env:ONESTEP_REAL_CL = Join-Path $toolsDirectory 'bin\Hostx64\x64\cl.exe'
+    if (-not (Test-Path -LiteralPath $env:ONESTEP_REAL_CL)) { throw "MSVC compiler missing: $env:ONESTEP_REAL_CL" }
+    $launcherDirectory = Join-Path $projectRoot 'build\tools\compiler-cache'
+    New-Item -ItemType Directory -Force -Path $launcherDirectory | Out-Null
+    $launcher = Join-Path $launcherDirectory 'Onestep.CompilerCache.exe'
+    $csharpCompiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+    & $csharpCompiler /nologo /optimize+ /target:exe "/out:$launcher" (Join-Path $PSScriptRoot 'CompilerCache.cs')
+    if ($LASTEXITCODE -ne 0) { throw 'Compiler cache launcher build failed.' }
+    # MSVC PCH invocations cannot be cached by sccache. Use one CL task per
+    # source with MSBuild's bounded parallel task scheduler in this mode only.
+    $buildArgs += @('/p:CompilerCache=true', '/p:UseMultiToolTask=true', '/p:EnforceProcessCountAcrossBuilds=true',
+                    "/p:CL_MPCount=$([Environment]::ProcessorCount)", "/p:CLToolPath=$launcherDirectory\", '/p:CLToolExe=Onestep.CompilerCache.exe')
+    & $env:SCCACHE_PATH --zero-stats
+    if ($LASTEXITCODE -ne 0) { throw 'Could not initialize sccache statistics.' }
+}
+if ($Timing) {
+    $logDirectory = Join-Path $projectRoot "build\logs\$MinecraftVersion"
+    New-Item -ItemType Directory -Force -Path $logDirectory | Out-Null
+    $buildArgs += @("/bl:$(Join-Path $logDirectory 'release.binlog')", '/clp:PerformanceSummary')
+}
+$buildWatch = [Diagnostics.Stopwatch]::StartNew()
+try {
+    & $msbuild @buildArgs
+    if ($LASTEXITCODE -ne 0) { throw "Release build failed ($LASTEXITCODE)." }
+}
+finally {
+    $buildWatch.Stop()
+    Write-Host ("MSBuild elapsed: {0}" -f $buildWatch.Elapsed)
+    if ($CompilerCache) { & $env:SCCACHE_PATH --show-stats }
+}
 
 $minecraftOutput = if ($MinecraftVersion -eq '1.21.1') { 'build\Onestep.dll' } else { "build\minecraft\$MinecraftVersion\Onestep.dll" }
 $output = Join-Path $projectRoot $minecraftOutput

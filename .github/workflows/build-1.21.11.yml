@@ -6,6 +6,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   offline-tests:
     runs-on: ubuntu-latest
@@ -23,6 +27,7 @@ jobs:
         run: |
           python scripts/Test-Infrastructure.py
           python -m unittest discover -s tests -p 'test_repository_hygiene.py' -v
+          python -m unittest discover -s tests -p 'test_build_cache.py' -v
           python scripts/Test-Offline.py --minecraft-version 1.21.11 --test visual_runtime --test spotify_snapshot --test visual_animation --test snapshot_session --test cosmetic_physics --test remaining_settings --test key_codes --test keybinds_presentation --test input_tracking --test inv_walk_engine --jobs 2
           python scripts/Test-RendererLifecycle.py
           python scripts/Test-GlowRuntime.py
@@ -43,13 +48,24 @@ jobs:
   windows-dll:
     needs: offline-tests
     runs-on: windows-2025
-    timeout-minutes: 30
+    timeout-minutes: 45
+    env:
+      SCCACHE_GHA_ENABLED: 'true'
+      SCCACHE_GHA_VERSION: onestep-msvc-v1
+      SCCACHE_IGNORE_SERVER_IO_ERROR: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
+      - name: Set up compiler cache
+        uses: mozilla-actions/sccache-action@v0.0.11
+        with:
+          version: v0.16.0
+      - name: Validate compiler launcher
+        shell: pwsh
+        run: ./scripts/Test-CompilerCache.ps1
       - name: Check project and embedded Java bridges
         shell: pwsh
         run: |
@@ -59,7 +75,7 @@ jobs:
           if ($LASTEXITCODE) { throw 'Hybrid bridge checks failed' }
       - name: Build Release x64
         shell: pwsh
-        run: ./scripts/Build-Release.ps1 -Clean -SkipSign -PlatformToolset v143 -MinecraftVersion 1.21.11
+        run: ./scripts/Build-Release.ps1 -CompilerCache -Timing -SkipSign -PlatformToolset v143 -MinecraftVersion 1.21.11
       - uses: actions/upload-artifact@v4
         with:
           name: Onestep-1.21.11-Windows-x64

@@ -3,10 +3,16 @@ name: Build Onestep
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   offline-tests:
@@ -25,6 +31,7 @@ jobs:
         run: |
           python scripts/Test-Infrastructure.py
           python -m unittest discover -s tests -p 'test_repository_hygiene.py' -v
+          python -m unittest discover -s tests -p 'test_build_cache.py' -v
           python scripts/Test-AimAssistSources.py
           python scripts/Test-TriggerbotSources.py
           python scripts/Test-JumpResetSources.py
@@ -89,7 +96,11 @@ jobs:
   windows-dll:
     needs: offline-tests
     runs-on: windows-2025
-    timeout-minutes: 30
+    timeout-minutes: 45
+    env:
+      SCCACHE_GHA_ENABLED: 'true'
+      SCCACHE_GHA_VERSION: onestep-msvc-v1
+      SCCACHE_IGNORE_SERVER_IO_ERROR: '1'
     strategy:
       fail-fast: false
       matrix:
@@ -121,9 +132,16 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      - name: Set up compiler cache
+        uses: mozilla-actions/sccache-action@v0.0.11
+        with:
+          version: v0.16.0
+      - name: Validate compiler launcher
+        shell: pwsh
+        run: ./scripts/Test-CompilerCache.ps1
       - name: Build Release x64
         shell: pwsh
-        run: ./scripts/Build-Release.ps1 -Clean -SkipSign -PlatformToolset v143 -MinecraftVersion '${{ matrix.minecraft }}'
+        run: ./scripts/Build-Release.ps1 -CompilerCache -Timing -SkipSign -PlatformToolset v143 -MinecraftVersion '${{ matrix.minecraft }}'
       - name: Publish DLL
         uses: actions/upload-artifact@v4
         with:

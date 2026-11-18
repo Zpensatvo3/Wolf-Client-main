@@ -171,6 +171,8 @@
       <ForcedIncludeFiles>pch.hpp;%(ForcedIncludeFiles)</ForcedIncludeFiles>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <PrecompiledHeader Condition="'$(CompilerCache)' == 'true'">NotUsing</PrecompiledHeader>
+      <MultiProcessorCompilation Condition="'$(CompilerCache)' == 'true'">false</MultiProcessorCompilation>
       <DebugInformationFormat>None</DebugInformationFormat>
       <AdditionalOptions>/utf-8 /bigobj %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
@@ -216,7 +218,7 @@
     <ClCompile Include="include\minhook\hook.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><ForcedIncludeFiles></ForcedIncludeFiles></ClCompile>
     <ClCompile Include="include\minhook\mem\mem.cpp"><PrecompiledHeader>NotUsing</PrecompiledHeader><ForcedIncludeFiles></ForcedIncludeFiles></ClCompile>
     <ClCompile Include="include\minhook\trampoline.c"><PrecompiledHeader>NotUsing</PrecompiledHeader><ForcedIncludeFiles></ForcedIncludeFiles></ClCompile>
-    <ClCompile Include="src\pch.cpp"><PrecompiledHeader Condition="'$(Configuration)' == 'Release' or '$(LocalTestDll)' == 'true'">Create</PrecompiledHeader></ClCompile>
+    <ClCompile Include="src\pch.cpp"><PrecompiledHeader Condition="('$(Configuration)' == 'Release' or '$(LocalTestDll)' == 'true') and '$(CompilerCache)' != 'true'">Create</PrecompiledHeader></ClCompile>
     <ClCompile Include="src\cache\cache.cpp" />
     <ClCompile Include="src\loader\loader_ui.cpp" />
     <ClCompile Include="src\friends\friends.cpp" />
